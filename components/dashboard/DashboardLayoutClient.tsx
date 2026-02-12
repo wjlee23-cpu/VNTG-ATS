@@ -46,12 +46,13 @@ export function DashboardLayoutClient({
   }, [searchParams])
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-white" style={{ position: 'relative', width: '100%', height: '100vh' }}>
       {/* Sidebar */}
       <aside
-        className={`w-64 bg-[#08102B] shadow-lg transition-opacity ${
+        className={`w-64 bg-[#08102B] shadow-lg transition-opacity flex-shrink-0 ${
           isJobNewPage ? 'opacity-50' : 'opacity-100'
         }`}
+        style={{ position: 'relative', zIndex: 10 }}
       >
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center border-b border-[#1a1f3a] px-6">
@@ -98,7 +99,7 @@ export function DashboardLayoutClient({
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Navigation Bar */}
         {!isJobNewPage && (
-          <div className="bg-[#08102B] text-white px-6 py-3 flex-shrink-0">
+          <div className="bg-[#08102B] text-white px-6 py-3 flex-shrink-0" style={{ position: 'relative', zIndex: 10 }}>
             <div className="flex items-center gap-6">
               <Link
                 href="/jobs"
@@ -137,7 +138,7 @@ export function DashboardLayoutClient({
         )}
 
         {/* Main content area */}
-        <main className={`flex-1 overflow-y-auto bg-gray-50 ${isJobNewPage ? 'p-0' : 'p-8'}`}>
+        <main className={`flex-1 overflow-hidden bg-gray-50 ${isJobNewPage ? 'p-0' : 'p-0'}`} style={{ minHeight: 0, maxHeight: '100%', display: 'flex', flexDirection: 'column' }}>
           {children}
         </main>
       </div>

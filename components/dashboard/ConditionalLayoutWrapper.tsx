@@ -22,9 +22,10 @@ export function ConditionalLayoutWrapper({
 }: ConditionalLayoutWrapperProps) {
   const pathname = usePathname()
   const isJobsPage = pathname === '/jobs'
+  const isRootPage = pathname === '/'
 
-  // Jobs 페이지는 자체 레이아웃을 사용하므로 layout을 적용하지 않음
-  if (isJobsPage) {
+  // Jobs 페이지와 루트 페이지(어플리칸트/인터뷰/아카이브)는 자체 레이아웃을 사용하므로 layout을 적용하지 않음
+  if (isJobsPage || isRootPage) {
     return <>{children}</>
   }
 
