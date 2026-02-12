@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Search, Filter, MoreVertical, CheckSquare, Square, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,13 +40,30 @@ interface CandidateDashboardProps {
 }
 
 export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: CandidateDashboardProps) {
-  const [activeStage, setActiveStage] = useState<'Applicant' | 'Interview' | 'Archive'>('Interview')
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  
+  // URL 파라미터에서 탭 정보를 읽어서 초기 상태 설정
+  const getInitialStage = (): 'Applicant' | 'Interview' | 'Archive' => {
+    if (tabParam === 'applicant') return 'Applicant'
+    if (tabParam === 'interview') return 'Interview'
+    if (tabParam === 'archive') return 'Archive'
+    return 'Interview' // 기본값
+  }
+  
+  const [activeStage, setActiveStage] = useState<'Applicant' | 'Interview' | 'Archive'>(getInitialStage())
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [activeApplicantSubStage, setActiveApplicantSubStage] = useState('new-applicant')
   const [activeArchiveReason, setActiveArchiveReason] = useState('position-filled')
   const [selectedJob, setSelectedJob] = useState<string | null>(jobs[0]?.id || null)
   const [activeInterviewStage, setActiveInterviewStage] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // URL 파라미터가 변경되면 activeStage 업데이트
+  useEffect(() => {
+    const newStage = getInitialStage()
+    setActiveStage(newStage)
+  }, [tabParam])
 
   // Update selectedJob when jobs change
   useEffect(() => {
@@ -283,6 +301,15 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
         {/* Top Navigation */}
         <div className="bg-[#08102B] text-white px-6 py-3">
           <div className="flex items-center gap-6">
+            <Link
+              href="/jobs"
+              className="px-4 py-2 rounded-t transition-colors text-gray-300 hover:text-white"
+            >
+              <span style={{ fontFamily: 'Roboto, sans-serif' }}>Jobs</span>
+              <span className="ml-2 px-2 py-0.5 rounded-full bg-[#0248FF] text-white text-xs">
+                {jobs.length}
+              </span>
+            </Link>
             {(['Applicant', 'Interview', 'Archive'] as const).map((stage) => (
               <button
                 key={stage}
@@ -317,16 +344,6 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
               />
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/jobs/new">
-                <Button
-                  variant="outline"
-                  className="border-[#0248FF] text-[#0248FF] hover:bg-[#0248FF] hover:text-white"
-                  style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
-                >
-                  <Plus size={18} className="mr-2" />
-                  포지션 생성
-                </Button>
-              </Link>
               <Button
                 className="bg-[#0248FF] hover:bg-[#0236cc] text-white"
                 style={{ fontFamily: 'Noto Sans KR, sans-serif' }}

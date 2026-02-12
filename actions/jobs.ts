@@ -58,6 +58,12 @@ export async function createJobPost(jobData: {
     .single()
 
   if (error) {
+    // 개발 모드: 더 명확한 에러 메시지
+    if (isDevelopment && error.message.includes('schema cache')) {
+      throw new Error(
+        `테이블 'job_posts'를 찾을 수 없습니다. 마이그레이션을 실행해주세요: supabase/migrations/001_initial_schema.sql\n원본 에러: ${error.message}`
+      )
+    }
     throw new Error(error.message)
   }
 
@@ -110,10 +116,16 @@ export async function getJobPosts() {
     .order('created_at', { ascending: false })
 
   if (error) {
+    // 개발 모드: 테이블이 없거나 에러가 발생해도 빈 배열 반환
+    if (isDevelopment) {
+      console.warn('Development mode: Error fetching job posts (table may not exist):', error.message)
+      console.warn('Please run the migration: supabase/migrations/001_initial_schema.sql')
+      return []
+    }
     throw new Error(error.message)
   }
 
-  return data
+  return data || []
 }
 
 export async function getJobPost(id: string) {
@@ -136,6 +148,12 @@ export async function getJobPost(id: string) {
     .single()
 
   if (error) {
+    // 개발 모드: 테이블이 없거나 에러가 발생해도 null 반환
+    if (isDevelopment) {
+      console.warn('Development mode: Error fetching job post (table may not exist):', error.message)
+      console.warn('Please run the migration: supabase/migrations/001_initial_schema.sql')
+      return null
+    }
     throw new Error(error.message)
   }
 

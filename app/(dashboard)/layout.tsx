@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient'
+import { ConditionalLayoutWrapper } from '@/components/dashboard/ConditionalLayoutWrapper'
 
 export default async function DashboardLayout({
   children,
@@ -23,12 +24,12 @@ export default async function DashboardLayout({
   const displayUser = user || { email: 'dev@example.com' }
 
   return (
-    <DashboardLayoutClient
+    <ConditionalLayoutWrapper
       userEmail={displayUser.email}
       hasUser={!!user}
       isDevelopment={isDevelopment}
     >
       {children}
-    </DashboardLayoutClient>
+    </ConditionalLayoutWrapper>
   )
 }
