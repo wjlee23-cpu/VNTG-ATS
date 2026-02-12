@@ -5,6 +5,7 @@ import { Search, Filter, MoreVertical, CheckSquare, Square } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { VNTGSymbol } from '@/components/vntg/VNTGSymbol'
+import { StageCards } from './StageCards'
 import Link from 'next/link'
 
 interface Candidate {
@@ -294,39 +295,23 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
           </div>
         )}
 
-        {/* Interview Stage Filter Bar */}
+        {/* Interview Stage Cards */}
         {activeStage === 'Interview' && interviewStages.length > 0 && (
-          <div className="bg-white border-b px-6 py-4">
-            <div className="flex items-center gap-4 overflow-x-auto">
-              {interviewStages.map((stage) => (
-                <button
-                  key={stage.id}
-                  onClick={() => setActiveInterviewStage(stage.id)}
-                  className={`bg-white border rounded-lg p-4 text-center transition-all hover:shadow-md min-w-[140px] ${
-                    activeInterviewStage === stage.id
-                      ? 'border-[#0248FF] border-b-4 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="text-3xl mb-2" style={{ fontFamily: 'Roboto, sans-serif' }}>
-                    {filteredCandidates.filter((c) => c.current_stage_id === stage.id).length}
-                  </div>
-                  <div className="text-sm text-gray-700" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-                    {stage.name}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          <StageCards
+            stages={interviewStages}
+            candidates={candidates.filter((c) => c.status === 'in_progress')}
+            activeStage={activeInterviewStage}
+            onStageSelect={setActiveInterviewStage}
+          />
         )}
 
         {/* Candidate List */}
         <div className="flex-1 overflow-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 sticky top-0">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="w-12 p-4">
-                  <button onClick={toggleAll}>
+                  <button onClick={toggleAll} className="hover:opacity-70 transition-opacity">
                     {selectedIds.length === filteredCandidates.length && filteredCandidates.length > 0 ? (
                       <CheckSquare className="text-[#0248FF]" size={20} />
                     ) : (
@@ -334,28 +319,28 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
                     )}
                   </button>
                 </th>
-                <th className="text-left p-4 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
                   이름
                 </th>
-                <th className="text-left p-4 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
                   포지션
                 </th>
                 {activeStage === 'Interview' && (
-                  <th className="text-left p-4 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                  <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
                     AI 스케줄링 상태
                   </th>
                 )}
                 {activeStage === 'Applicant' && (
-                  <th className="text-left p-4 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                  <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
                     현재 리뷰 상태
                   </th>
                 )}
                 {activeStage === 'Archive' && (
-                  <th className="text-left p-4 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                  <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
                     보관 사유
                   </th>
                 )}
-                <th className="text-left p-4 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
                   지원일
                 </th>
                 <th className="w-12 p-4"></th>
@@ -366,7 +351,7 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
                 filteredCandidates.map((candidate) => (
                   <tr
                     key={candidate.id}
-                    className="border-b hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
                     onClick={() => handleCandidateClick(candidate.id)}
                   >
                     <td className="p-4">
@@ -392,8 +377,12 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
                     </td>
                     {activeStage === 'Interview' && (
                       <td className="p-4">
-                        <Badge className="bg-[#5287FF] text-white hover:bg-[#5287FF]">
-                          Pending
+                        <Badge
+                          className={
+                            'bg-gray-400 text-white hover:bg-gray-400'
+                          }
+                        >
+                          Internal Sync
                         </Badge>
                       </td>
                     )}
@@ -410,7 +399,13 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
                       </td>
                     )}
                     <td className="p-4 text-sm text-gray-600">
-                      {new Date(candidate.created_at).toLocaleDateString('ko-KR')}
+                      {(() => {
+                        const date = new Date(candidate.created_at)
+                        const year = date.getFullYear()
+                        const month = date.getMonth() + 1
+                        const day = date.getDate()
+                        return `${year}. ${month}. ${day}.`
+                      })()}
                     </td>
                     <td className="p-4">
                       <button
