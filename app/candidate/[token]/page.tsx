@@ -5,8 +5,9 @@ import { redirect } from 'next/navigation'
 import { SchedulingPageClient } from '@/components/candidate/SchedulingPageClient'
 import { format } from 'date-fns'
 
-export default async function CandidatePage({ params }: { params: { token: string } }) {
-  const candidate = await getCandidateByToken(params.token)
+export default async function CandidatePage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  const candidate = await getCandidateByToken(token)
 
   if (!candidate) {
     redirect('/login')
@@ -50,7 +51,7 @@ export default async function CandidatePage({ params }: { params: { token: strin
         id: opt.id,
         scheduledAt: new Date(opt.scheduled_at),
       }))}
-      candidateToken={params.token}
+      candidateToken={token}
     />
   )
 }

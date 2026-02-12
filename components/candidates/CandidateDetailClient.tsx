@@ -23,7 +23,6 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { VNTGSymbol } from '@/components/vntg/VNTGSymbol'
 import Link from 'next/link'
 import { updateCandidateStatus } from '@/actions/candidates'
 
@@ -51,12 +50,25 @@ export function CandidateDetailClient({
     else if (event.type === 'scorecard') type = 'scorecard'
     else if (event.type === 'approval') type = 'approval'
 
+    // Handle content - it might be an object or string
+    let content = ''
+    if (event.content) {
+      if (typeof event.content === 'string') {
+        content = event.content
+      } else if (typeof event.content === 'object') {
+        // If content is an object, try to extract message or stringify it
+        content = event.content.message || event.content.content || JSON.stringify(event.content)
+      }
+    } else if (event.description) {
+      content = typeof event.description === 'string' ? event.description : JSON.stringify(event.description)
+    }
+
     return {
       id: event.id,
       type,
       timestamp: event.created_at,
       author: event.users?.email || event.created_by || 'System',
-      content: event.content || event.description || '',
+      content,
       rating: event.rating,
     }
   })
@@ -83,36 +95,22 @@ export function CandidateDetailClient({
   }
 
   return (
-    <div className="flex min-h-screen bg-white">
-      {/* Sticky Dimmed Sidebar */}
-      <div className="w-64 bg-[#2D2D2D] text-white p-6 sticky top-0 h-screen">
-        <div className="flex items-center gap-2 mb-8">
-          <VNTGSymbol className="text-[#0248FF]" size={32} />
-          <span className="font-medium" style={{ fontFamily: 'Roboto, sans-serif' }}>
-            VNTG
-          </span>
-        </div>
-        <div className="text-sm text-gray-400">Dashboard</div>
+    <div className="bg-white">
+      {/* Top Nav */}
+      <div className="mb-6 flex items-center gap-4">
+        <Link
+          href="/"
+          className="hover:bg-gray-100 p-2 rounded transition-colors"
+        >
+          <ArrowLeft size={20} />
+        </Link>
+        <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Roboto, sans-serif' }}>
+          Candidate Details
+        </h2>
       </div>
 
-      {/* Main Content - Full Height, Natural Scroll */}
-      <div className="flex-1">
-        {/* Top Nav - Sticky */}
-        <div className="bg-[#08102B] text-white px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
-          <Link
-            href="/"
-            className="hover:bg-[#0f1a3d] p-2 rounded transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <VNTGSymbol className="text-[#0248FF]" size={24} />
-          <span className="text-lg" style={{ fontFamily: 'Roboto, sans-serif' }}>
-            Candidate Details
-          </span>
-        </div>
-
-        {/* Candidate Header */}
-        <div className="bg-white border-b px-8 py-6">
+      {/* Candidate Header */}
+      <div className="bg-white border-b px-0 py-6">
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-3xl mb-2" style={{ fontFamily: 'Roboto, sans-serif' }}>
@@ -159,8 +157,8 @@ export function CandidateDetailClient({
           </div>
         </div>
 
-        {/* AI Parsed Data Section */}
-        <div className="px-8 py-6 bg-gray-50 border-b">
+      {/* AI Parsed Data Section */}
+      <div className="px-0 py-6 bg-gray-50 border-b">
           <h3 className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
             AI 분석 데이터
           </h3>
@@ -215,8 +213,8 @@ export function CandidateDetailClient({
           </div>
         </div>
 
-        {/* Attached Documents Section */}
-        <div className="px-8 py-6 bg-white border-b">
+      {/* Attached Documents Section */}
+      <div className="px-0 py-6 bg-white border-b">
           <h3 className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
             첨부 문서
           </h3>
@@ -286,9 +284,9 @@ export function CandidateDetailClient({
           </div>
         </div>
 
-        {/* AI Scheduling Progress Module - Collapsible */}
-        {scheduleWithInterviewers && (
-          <div className="px-8 py-4 bg-white border-b">
+      {/* AI Scheduling Progress Module - Collapsible */}
+      {scheduleWithInterviewers && (
+        <div className="px-0 py-4 bg-white border-b">
             <div className="bg-blue-50 border border-[#5287FF] rounded-lg overflow-hidden">
               {/* Collapsible Header - Always Visible */}
               <button
@@ -397,8 +395,8 @@ export function CandidateDetailClient({
           </div>
         )}
 
-        {/* Timeline Thread - Natural Scroll */}
-        <div className="px-8 py-6 pb-12">
+      {/* Timeline Thread */}
+      <div className="px-0 py-6 pb-12">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
               타임라인
@@ -472,7 +470,6 @@ export function CandidateDetailClient({
             ))}
           </div>
         </div>
-      </div>
     </div>
   )
 }

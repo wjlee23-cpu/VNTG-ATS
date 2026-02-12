@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation'
 import { ScheduleRequestForm } from '@/components/schedule/ScheduleRequestForm'
 import { addDays } from 'date-fns'
 
-export default async function SchedulePage({ params }: { params: { id: string } }) {
+export default async function SchedulePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   const {
     data: { user },
@@ -18,7 +19,7 @@ export default async function SchedulePage({ params }: { params: { id: string } 
     redirect('/login')
   }
 
-  const candidate = await getCandidate(params.id)
+  const candidate = await getCandidate(id)
   const jobPost = candidate.job_posts as any
   const process = jobPost?.processes
   const stages = (process?.stages as any) || []
@@ -47,7 +48,7 @@ export default async function SchedulePage({ params }: { params: { id: string } 
       </div>
 
       <ScheduleRequestForm
-        candidateId={params.id}
+        candidateId={id}
         stageId={currentStage.id}
         defaultStartDate={defaultStartDate}
         defaultEndDate={defaultEndDate}

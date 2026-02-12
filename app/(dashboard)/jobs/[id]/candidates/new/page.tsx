@@ -4,7 +4,8 @@ import { createCandidate } from '@/actions/candidates'
 import { redirect } from 'next/navigation'
 import { CandidateForm } from '@/components/candidates/CandidateForm'
 
-export default async function NewCandidatePage({ params }: { params: { id: string } }) {
+export default async function NewCandidatePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   const {
     data: { user },
@@ -17,7 +18,7 @@ export default async function NewCandidatePage({ params }: { params: { id: strin
     redirect('/login')
   }
 
-  const job = await getJobPost(params.id)
+  const job = await getJobPost(id)
 
   return (
     <div className="space-y-6">
@@ -25,7 +26,7 @@ export default async function NewCandidatePage({ params }: { params: { id: strin
         <h1 className="text-2xl font-bold text-gray-900">새 후보자 추가</h1>
         <p className="mt-1 text-sm text-gray-600">{job.title}</p>
       </div>
-      <CandidateForm jobPostId={params.id} />
+      <CandidateForm jobPostId={id} />
     </div>
   )
 }

@@ -8,6 +8,8 @@ interface ConditionalLayoutWrapperProps {
   userEmail: string
   hasUser: boolean
   isDevelopment: boolean
+  candidates?: any[]
+  jobs?: any[]
 }
 
 export function ConditionalLayoutWrapper({
@@ -15,6 +17,8 @@ export function ConditionalLayoutWrapper({
   userEmail,
   hasUser,
   isDevelopment,
+  candidates = [],
+  jobs = [],
 }: ConditionalLayoutWrapperProps) {
   const pathname = usePathname()
   const isJobsPage = pathname === '/jobs'
@@ -29,6 +33,8 @@ export function ConditionalLayoutWrapper({
       userEmail={userEmail}
       hasUser={hasUser}
       isDevelopment={isDevelopment}
+      candidates={candidates}
+      jobs={jobs}
     >
       {children}
     </DashboardLayoutClient>

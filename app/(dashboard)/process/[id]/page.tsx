@@ -3,7 +3,8 @@ import { getProcess, updateProcess } from '@/actions/processes'
 import { WorkflowBuilder } from '@/components/process/WorkflowBuilder'
 import { redirect } from 'next/navigation'
 
-export default async function ProcessPage({ params }: { params: { id: string } }) {
+export default async function ProcessPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   const {
     data: { user },
@@ -16,7 +17,7 @@ export default async function ProcessPage({ params }: { params: { id: string } }
     redirect('/login')
   }
 
-  const process = await getProcess(params.id)
+  const process = await getProcess(id)
   const stages = (process.stages as any) || []
 
   // Get available interviewers
@@ -34,7 +35,7 @@ export default async function ProcessPage({ params }: { params: { id: string } }
 
   async function handleSave(stages: any[]) {
     'use server'
-    await updateProcess(params.id, { stages })
+    await updateProcess(id, { stages })
   }
 
   return (

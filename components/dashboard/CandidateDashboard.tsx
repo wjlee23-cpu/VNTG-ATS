@@ -298,37 +298,6 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Top Navigation */}
-        <div className="bg-[#08102B] text-white px-6 py-3">
-          <div className="flex items-center gap-6">
-            <Link
-              href="/jobs"
-              className="px-4 py-2 rounded-t transition-colors text-gray-300 hover:text-white"
-            >
-              <span style={{ fontFamily: 'Roboto, sans-serif' }}>Jobs</span>
-              <span className="ml-2 px-2 py-0.5 rounded-full bg-[#0248FF] text-white text-xs">
-                {jobs.length}
-              </span>
-            </Link>
-            {(['Applicant', 'Interview', 'Archive'] as const).map((stage) => (
-              <button
-                key={stage}
-                onClick={() => setActiveStage(stage)}
-                className={`px-4 py-2 rounded-t transition-colors ${
-                  activeStage === stage
-                    ? 'bg-white text-[#08102B]'
-                    : 'text-gray-300 hover:text-white'
-                }`}
-              >
-                <span style={{ fontFamily: 'Roboto, sans-serif' }}>{stage}</span>
-                <span className="ml-2 px-2 py-0.5 rounded-full bg-[#0248FF] text-white text-xs">
-                  {stageCounts[stage]}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Search & Actions */}
         <div className="bg-white border-b px-6 py-4">
           <div className="flex items-center justify-between gap-4">

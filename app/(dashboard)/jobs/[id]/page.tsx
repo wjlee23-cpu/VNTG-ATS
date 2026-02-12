@@ -5,7 +5,8 @@ import { KanbanBoard } from '@/components/dashboard/KanbanBoard'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
-export default async function JobDetailPage({ params }: { params: { id: string } }) {
+export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   const {
     data: { user },
@@ -18,8 +19,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     redirect('/login')
   }
 
-  const job = await getJobPost(params.id)
-  const candidates = await getCandidates(params.id)
+  const job = await getJobPost(id)
+  const candidates = await getCandidates(id)
 
   // Fetch full candidate data with job post and process info
   const candidatesWithDetails = await Promise.all(
@@ -50,14 +51,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           )}
         </div>
         <Link
-          href={`/jobs/${params.id}/candidates/new`}
+          href={`/jobs/${id}/candidates/new`}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
           후보자 추가
         </Link>
       </div>
 
-      <KanbanBoard candidates={candidatesWithDetails} jobPostId={params.id} />
+      <KanbanBoard candidates={candidatesWithDetails} jobPostId={id} />
     </div>
   )
 }
