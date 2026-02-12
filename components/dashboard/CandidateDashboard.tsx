@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { Search, Filter, MoreVertical, CheckSquare, Square } from 'lucide-react'
+import { Search, Filter, MoreVertical, CheckSquare, Square, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { VNTGSymbol } from '@/components/vntg/VNTGSymbol'
@@ -216,9 +216,18 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
         </div>
 
         <div className="mb-6">
-          <h3 className="text-sm text-gray-400 mb-3" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-            내 채용 공고
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm text-gray-400" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+              내 채용 공고
+            </h3>
+            <Link
+              href="/jobs/new"
+              className="text-[#0248FF] hover:text-[#0236cc] transition-colors"
+              title="새 포지션 생성"
+            >
+              <Plus size={18} />
+            </Link>
+          </div>
           <div className="space-y-2">
             {jobs.map((job) => (
               <div
@@ -307,16 +316,28 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
                 style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
               />
             </div>
-            <Button
-              className="bg-[#0248FF] hover:bg-[#0236cc] text-white"
-              style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
-            >
-              {activeStage === 'Applicant'
-                ? 'Add Candidate'
-                : activeStage === 'Interview'
-                  ? 'Schedule Interview'
-                  : 'Smart Action'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Link href="/jobs/new">
+                <Button
+                  variant="outline"
+                  className="border-[#0248FF] text-[#0248FF] hover:bg-[#0248FF] hover:text-white"
+                  style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+                >
+                  <Plus size={18} className="mr-2" />
+                  포지션 생성
+                </Button>
+              </Link>
+              <Button
+                className="bg-[#0248FF] hover:bg-[#0236cc] text-white"
+                style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+              >
+                {activeStage === 'Applicant'
+                  ? 'Add Candidate'
+                  : activeStage === 'Interview'
+                    ? 'Schedule Interview'
+                    : 'Smart Action'}
+              </Button>
+            </div>
           </div>
         </div>
 

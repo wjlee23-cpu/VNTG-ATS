@@ -41,8 +41,12 @@ export default async function Home() {
       })
     )
   } catch (error) {
-    // 데이터베이스 에러는 무시 (개발 초기 단계)
-    console.error('Error loading data:', error)
+    // 개발 모드: 에러를 조용히 처리 (인증 없이도 동작 가능)
+    if (isDevelopment) {
+      console.warn('Development mode: Error loading data (this is expected without auth):', error)
+    } else {
+      console.error('Error loading data:', error)
+    }
   }
 
   return <CandidateDashboard candidates={candidatesWithDetails} jobs={jobs} />

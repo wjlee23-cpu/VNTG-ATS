@@ -145,10 +145,15 @@ export async function getProcesses() {
     .order('created_at', { ascending: false })
 
   if (error) {
+    // 개발 모드: 테이블이 없거나 에러가 발생해도 빈 배열 반환
+    if (isDevelopment) {
+      console.warn('Development mode: Error fetching processes (table may not exist):', error.message)
+      return []
+    }
     throw new Error(error.message)
   }
 
-  return data
+  return data || []
 }
 
 export async function getProcess(id: string) {
@@ -171,6 +176,11 @@ export async function getProcess(id: string) {
     .single()
 
   if (error) {
+    // 개발 모드: 테이블이 없거나 에러가 발생해도 null 반환
+    if (isDevelopment) {
+      console.warn('Development mode: Error fetching process (table may not exist):', error.message)
+      return null
+    }
     throw new Error(error.message)
   }
 

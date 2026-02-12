@@ -77,18 +77,7 @@ export function JobPostingBuilder({ processes = [] }: JobPostingBuilderProps) {
   }
 
   return (
-    <div className="flex h-screen bg-white">
-      {/* Dimmed Sidebar */}
-      <div className="w-64 bg-[#2D2D2D] text-white p-6 flex flex-col opacity-50">
-        <div className="flex items-center gap-2 mb-8">
-          <VNTGSymbol className="text-[#0248FF]" size={32} />
-          <span className="font-medium" style={{ fontFamily: 'Roboto, sans-serif' }}>
-            VNTG
-          </span>
-        </div>
-        <div className="text-sm text-gray-400">Dashboard</div>
-      </div>
-
+    <div className="flex flex-col h-screen w-full bg-white">
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}

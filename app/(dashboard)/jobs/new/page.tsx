@@ -16,7 +16,18 @@ export default async function NewJobPage() {
     redirect('/login')
   }
 
-  const processes = await getProcesses()
+  let processes: any[] = []
+  
+  try {
+    processes = await getProcesses()
+  } catch (error) {
+    // 개발 모드: 에러를 조용히 처리 (테이블이 없을 수 있음)
+    if (isDevelopment) {
+      console.warn('Development mode: Error loading processes (this is expected if table does not exist):', error)
+    } else {
+      console.error('Error loading processes:', error)
+    }
+  }
 
-  return <JobPostingBuilder processes={processes} />
+  return <JobPostingBuilder processes={processes || []} />
 }

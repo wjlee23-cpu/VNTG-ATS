@@ -147,12 +147,12 @@ export async function getCandidates(jobPostId?: string) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
+  // 개발 모드: 인증 체크 비활성화
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  
+  if (!isDevelopment && !user) {
     throw new Error('Unauthorized')
   }
-
-  // 개발 모드: mock organization 사용
-  const isDevelopment = process.env.NODE_ENV === 'development'
   let userData: any = null
   
   if (user) {
@@ -189,10 +189,15 @@ export async function getCandidates(jobPostId?: string) {
   const { data, error } = await query.order('created_at', { ascending: false })
 
   if (error) {
+    // 개발 모드: 에러를 조용히 처리
+    if (isDevelopment) {
+      console.warn('Development mode: Error fetching candidates:', error.message)
+      return []
+    }
     throw new Error(error.message)
   }
 
-  return data
+  return data || []
 }
 
 export async function getCandidate(id: string) {
@@ -201,7 +206,10 @@ export async function getCandidate(id: string) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
+  // 개발 모드: 인증 체크 비활성화
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  
+  if (!isDevelopment && !user) {
     throw new Error('Unauthorized')
   }
 
