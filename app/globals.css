@@ -3,13 +3,25 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  
+  /* VNTG Color Palette */
+  --vntg-blue: #0248FF;
+  --vntg-deep-blue: #08102B;
+  --vntg-light-blue: #5287FF;
+  --vntg-dimmed: #2D2D2D;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-roboto), var(--font-noto-sans-kr), sans-serif;
   --font-mono: var(--font-geist-mono);
+  
+  /* VNTG Colors */
+  --color-vntg-blue: var(--vntg-blue);
+  --color-vntg-deep-blue: var(--vntg-deep-blue);
+  --color-vntg-light-blue: var(--vntg-light-blue);
+  --color-vntg-dimmed: var(--vntg-dimmed);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +34,5 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-roboto), var(--font-noto-sans-kr), sans-serif;
 }
