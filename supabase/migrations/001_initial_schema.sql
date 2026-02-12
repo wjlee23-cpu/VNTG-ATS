@@ -1,9 +1,11 @@
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Enable UUID extension (public schema에 설치)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+-- Enable pgcrypto extension for gen_random_bytes
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA public;
 
 -- Organizations table
 CREATE TABLE organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -23,7 +25,7 @@ CREATE TABLE users (
 
 -- Processes table
 CREATE TABLE processes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   stages JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -33,7 +35,7 @@ CREATE TABLE processes (
 
 -- Job posts table
 CREATE TABLE job_posts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
@@ -44,21 +46,21 @@ CREATE TABLE job_posts (
 
 -- Candidates table
 CREATE TABLE candidates (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_post_id UUID NOT NULL REFERENCES job_posts(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   email TEXT NOT NULL,
   phone TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'confirmed', 'rejected', 'issue')),
   current_stage_id TEXT,
-  token TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
+  token TEXT NOT NULL UNIQUE DEFAULT replace(gen_random_uuid()::text, '-', ''),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Schedules table
 CREATE TABLE schedules (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
   stage_id TEXT NOT NULL,
   scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -73,7 +75,7 @@ CREATE TABLE schedules (
 
 -- Schedule options table (AI-generated options)
 CREATE TABLE schedule_options (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   schedule_id UUID NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
   scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'selected', 'rejected')),
@@ -82,7 +84,7 @@ CREATE TABLE schedule_options (
 
 -- Timeline events table
 CREATE TABLE timeline_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('system_log', 'schedule_created', 'schedule_confirmed', 'stage_changed')),
   content JSONB NOT NULL DEFAULT '{}'::jsonb,

@@ -5,10 +5,16 @@ import { Database } from './types'
 
 export async function createClient() {
   const cookieStore = await cookies()
+  
+  // 개발 모드에서 Service Role Key 사용 (RLS 우회)
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const supabaseKey = isDevelopment && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? process.env.SUPABASE_SERVICE_ROLE_KEY
+    : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseKey,
     {
       cookies: {
         getAll() {
