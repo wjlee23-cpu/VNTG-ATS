@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { updateCandidateStatus } from '@/actions/candidates'
 
 interface CandidateDetailClientProps {
@@ -42,6 +42,7 @@ export function CandidateDetailClient({
   scheduleWithInterviewers,
 }: CandidateDetailClientProps) {
   const [isSchedulingExpanded, setIsSchedulingExpanded] = useState(false)
+  const router = useRouter()
 
   // Convert timeline events to figma format
   const timelineItems = timelineEvents.map((event) => {
@@ -95,22 +96,25 @@ export function CandidateDetailClient({
   }
 
   return (
-    <div className="bg-white">
+    <div className="h-full flex flex-col overflow-hidden bg-white">
       {/* Top Nav */}
-      <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/"
+      <div className="mb-6 flex items-center gap-4 px-6 pt-6 flex-shrink-0">
+        <button
+          onClick={() => router.back()}
           className="hover:bg-gray-100 p-2 rounded transition-colors"
         >
           <ArrowLeft size={20} />
-        </Link>
+        </button>
         <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Roboto, sans-serif' }}>
           Candidate Details
         </h2>
       </div>
 
-      {/* Candidate Header */}
-      <div className="bg-white border-b px-0 py-6">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto px-6">
+
+        {/* Candidate Header */}
+        <div className="bg-white border-b px-0 py-6">
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-3xl mb-2" style={{ fontFamily: 'Roboto, sans-serif' }}>
@@ -157,8 +161,8 @@ export function CandidateDetailClient({
           </div>
         </div>
 
-      {/* AI Parsed Data Section */}
-      <div className="px-0 py-6 bg-gray-50 border-b">
+        {/* AI Parsed Data Section */}
+        <div className="px-0 py-6 bg-gray-50 border-b">
           <h3 className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
             AI 분석 데이터
           </h3>
@@ -213,8 +217,8 @@ export function CandidateDetailClient({
           </div>
         </div>
 
-      {/* Attached Documents Section */}
-      <div className="px-0 py-6 bg-white border-b">
+        {/* Attached Documents Section */}
+        <div className="px-0 py-6 bg-white border-b">
           <h3 className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
             첨부 문서
           </h3>
@@ -284,9 +288,9 @@ export function CandidateDetailClient({
           </div>
         </div>
 
-      {/* AI Scheduling Progress Module - Collapsible */}
-      {scheduleWithInterviewers && (
-        <div className="px-0 py-4 bg-white border-b">
+        {/* AI Scheduling Progress Module - Collapsible */}
+        {scheduleWithInterviewers && (
+          <div className="px-0 py-4 bg-white border-b">
             <div className="bg-blue-50 border border-[#5287FF] rounded-lg overflow-hidden">
               {/* Collapsible Header - Always Visible */}
               <button
@@ -395,8 +399,8 @@ export function CandidateDetailClient({
           </div>
         )}
 
-      {/* Timeline Thread */}
-      <div className="px-0 py-6 pb-12">
+        {/* Timeline Thread */}
+        <div className="px-0 py-6 pb-12">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
               타임라인
@@ -470,6 +474,7 @@ export function CandidateDetailClient({
             ))}
           </div>
         </div>
+      </div>
     </div>
   )
 }
