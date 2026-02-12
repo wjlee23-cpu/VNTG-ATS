@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Filter, Plus } from 'lucide-react'
 import { VNTGSymbol } from '@/components/vntg/VNTGSymbol'
 import Link from 'next/link'
@@ -19,6 +19,7 @@ interface Job {
 interface Candidate {
   id: string
   status: string
+  job_post_id?: string
 }
 
 interface JobsPageClientProps {
@@ -28,12 +29,25 @@ interface JobsPageClientProps {
 }
 
 export function JobsPageClient({ jobs, allJobs, candidates = [] }: JobsPageClientProps) {
+  const [selectedJob, setSelectedJob] = useState<string | null>(null) // null = 모든 채용 공고
+
   // Calculate stage counts (same as CandidateDashboard)
   const stageCounts = {
     Applicant: candidates.filter((c) => c.status === 'pending').length,
     Interview: candidates.filter((c) => c.status === 'in_progress').length,
     Archive: candidates.filter((c) => ['rejected', 'confirmed'].includes(c.status)).length,
   }
+
+  // Calculate job-specific candidate counts for sidebar
+  const getJobCandidateCount = (jobId: string) => {
+    return candidates.filter((c) => c.job_post_id === jobId).length
+  }
+
+  // Filter jobs based on selectedJob
+  const filteredJobs = useMemo(() => {
+    if (!selectedJob) return jobs
+    return jobs.filter((job) => job.id === selectedJob)
+  }, [jobs, selectedJob])
 
   return (
     <div className="flex h-screen bg-white">
@@ -60,14 +74,35 @@ export function JobsPageClient({ jobs, allJobs, candidates = [] }: JobsPageClien
             </Link>
           </div>
           <div className="space-y-2">
+            {/* 모든 채용 공고 옵션 */}
+            <div
+              onClick={() => setSelectedJob(null)}
+              className={`text-sm p-2 rounded cursor-pointer transition-colors ${
+                selectedJob === null
+                  ? 'bg-[#0248FF] text-white'
+                  : 'hover:bg-[#0f1a3d]'
+              }`}
+            >
+              모든 채용 공고{' '}
+              <span className={selectedJob === null ? 'text-blue-200' : 'text-gray-400'}>
+                ({allJobs.length})
+              </span>
+            </div>
             {allJobs.map((job) => (
-              <Link
+              <div
                 key={job.id}
-                href={`/jobs/${job.id}`}
-                className="block text-sm p-2 rounded cursor-pointer transition-colors hover:bg-[#0f1a3d]"
+                onClick={() => setSelectedJob(job.id)}
+                className={`text-sm p-2 rounded cursor-pointer transition-colors ${
+                  selectedJob === job.id
+                    ? 'bg-[#0248FF] text-white'
+                    : 'hover:bg-[#0f1a3d]'
+                }`}
               >
-                {job.title}
-              </Link>
+                {job.title}{' '}
+                <span className={selectedJob === job.id ? 'text-blue-200' : 'text-gray-400'}>
+                  ({getJobCandidateCount(job.id)})
+                </span>
+              </div>
             ))}
           </div>
         </div>
@@ -109,7 +144,7 @@ export function JobsPageClient({ jobs, allJobs, candidates = [] }: JobsPageClien
             >
               <span style={{ fontFamily: 'Roboto, sans-serif' }}>Jobs</span>
               <span className="ml-2 px-2 py-0.5 rounded-full bg-[#0248FF] text-white text-xs">
-                {jobs.length}
+                {filteredJobs.length}
               </span>
             </Link>
             {(['Applicant', 'Interview', 'Archive'] as const).map((stage) => (
@@ -143,43 +178,74 @@ export function JobsPageClient({ jobs, allJobs, candidates = [] }: JobsPageClien
               </Link>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {jobs.map((job) => (
-                <Link
-                  key={job.id}
-                  href={`/jobs/${job.id}`}
-                  className="rounded-lg border bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
-                >
-                  <h3 className="text-lg font-semibold text-gray-900" style={{ fontFamily: 'Roboto, sans-serif' }}>
-                    {job.title}
-                  </h3>
-                  {job.description && (
-                    <p className="mt-2 text-sm text-gray-600 line-clamp-2" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-                      {job.description}
-                    </p>
+            {/* Jobs List Table */}
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                      채용 공고명
+                    </th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                      설명
+                    </th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                      프로세스
+                    </th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                      생성일
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredJobs.length > 0 ? (
+                    filteredJobs.map((job) => (
+                      <tr
+                        key={job.id}
+                        className="border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => window.location.href = `/jobs/${job.id}`}
+                      >
+                        <td className="p-4">
+                          <div className="font-medium text-gray-900" style={{ fontFamily: 'Roboto, sans-serif' }}>
+                            {job.title}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm text-gray-600 line-clamp-2" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                            {job.description || '-'}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                            {job.processes?.name || '프로세스 없음'}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm text-gray-600">
+                            {formatDate(job.created_at)}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="p-12 text-center">
+                        <p className="text-gray-500 mb-4" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                          아직 채용 공고가 없습니다.
+                        </p>
+                        <Link
+                          href="/jobs/new"
+                          className="inline-block text-blue-600 hover:text-blue-700"
+                          style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+                        >
+                          첫 공고 만들기
+                        </Link>
+                      </td>
+                    </tr>
                   )}
-                  <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
-                    <span>{formatDate(job.created_at)}</span>
-                    <span>{job.processes?.name || '프로세스 없음'}</span>
-                  </div>
-                </Link>
-              ))}
+                </tbody>
+              </table>
             </div>
-
-            {jobs.length === 0 && (
-              <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-                <p className="text-gray-500" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-                  아직 채용 공고가 없습니다.
-                </p>
-                <Link
-                  href="/jobs/new"
-                  className="mt-4 inline-block text-blue-600 hover:text-blue-700"
-                  style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
-                >
-                  첫 공고 만들기
-                </Link>
-              </div>
-            )}
           </div>
         </div>
       </div>

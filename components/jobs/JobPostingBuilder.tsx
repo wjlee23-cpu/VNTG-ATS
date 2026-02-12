@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { Plus, Trash2, ChevronDown, Save, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { VNTGSymbol } from '@/components/vntg/VNTGSymbol'
-import { createJobPost } from '@/actions/jobs'
+import { createJobPost, updateJobPost } from '@/actions/jobs'
 import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 interface WorkflowStage {
   id: string
@@ -15,14 +16,44 @@ interface WorkflowStage {
 
 interface JobPostingBuilderProps {
   processes?: Array<{ id: string; name: string }>
+  jobId?: string
+  initialJob?: {
+    title: string
+    description?: string | null
+    department?: string
+    processes?: {
+      stages?: any
+    } | null
+  }
 }
 
-export function JobPostingBuilder({ processes = [] }: JobPostingBuilderProps) {
+export function JobPostingBuilder({ processes = [], jobId, initialJob }: JobPostingBuilderProps) {
   const router = useRouter()
-  const [jobTitle, setJobTitle] = useState('')
-  const [department, setDepartment] = useState('Product')
-  const [jobDescription, setJobDescription] = useState('')
+  const isEditMode = !!jobId && !!initialJob
+  
+  const [jobTitle, setJobTitle] = useState(initialJob?.title || '')
+  const [department, setDepartment] = useState(initialJob?.department || 'Product')
+  const [jobDescription, setJobDescription] = useState(initialJob?.description || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Load stages from initial job if in edit mode
+  useEffect(() => {
+    if (isEditMode && initialJob?.processes?.stages) {
+      const stages = Array.isArray(initialJob.processes.stages) 
+        ? initialJob.processes.stages 
+        : typeof initialJob.processes.stages === 'string'
+          ? JSON.parse(initialJob.processes.stages)
+          : []
+      
+      if (stages.length > 0) {
+        setStages(stages.map((stage: any, index: number) => ({
+          id: stage.id || `stage-${index}`,
+          name: stage.name || '',
+          assignedTo: stage.assignedTo || '',
+        })))
+      }
+    }
+  }, [isEditMode, initialJob])
 
   const [stages, setStages] = useState<WorkflowStage[]>([
     { id: '1', name: 'Document Review', assignedTo: 'HR Team' },
@@ -54,17 +85,27 @@ export function JobPostingBuilder({ processes = [] }: JobPostingBuilderProps) {
 
     setIsSubmitting(true)
     try {
-      // TODO: 실제 프로세스 생성 및 연결 로직 구현
-      await createJobPost({
-        title: jobTitle,
-        description: jobDescription,
-        department,
-      })
-      alert('채용 공고가 생성되었습니다!')
+      if (isEditMode && jobId) {
+        // Update existing job
+        await updateJobPost(jobId, {
+          title: jobTitle,
+          description: jobDescription,
+        })
+        alert('채용 공고가 수정되었습니다!')
+      } else {
+        // Create new job
+        // TODO: 실제 프로세스 생성 및 연결 로직 구현
+        await createJobPost({
+          title: jobTitle,
+          description: jobDescription,
+          processId: '', // TODO: 실제 process ID 사용
+        })
+        alert('채용 공고가 생성되었습니다!')
+      }
       router.push('/jobs')
     } catch (error) {
-      console.error('Failed to create job post:', error)
-      alert('채용 공고 생성에 실패했습니다.')
+      console.error(`Failed to ${isEditMode ? 'update' : 'create'} job post:`, error)
+      alert(`채용 공고 ${isEditMode ? '수정' : '생성'}에 실패했습니다.`)
     } finally {
       setIsSubmitting(false)
     }
@@ -77,47 +118,45 @@ export function JobPostingBuilder({ processes = [] }: JobPostingBuilderProps) {
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-white">
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Fixed Header */}
-        <div className="bg-[#08102B] text-white px-8 py-5 border-b border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <VNTGSymbol className="text-[#0248FF]" size={36} />
-              <div>
-                <h1 className="text-2xl" style={{ fontFamily: 'Roboto, sans-serif' }}>
-                  Create New Job Posting
-                </h1>
-                <p className="text-sm text-gray-400" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-                  채용 공고 및 프로세스 설정
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={handleCancel}
-                className="bg-transparent border-white text-white hover:bg-[#0f1a3d]"
-                style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={isSubmitting}
-                className="bg-[#0248FF] hover:bg-[#0236cc] text-white flex items-center gap-2"
-                style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
-              >
-                <Save size={18} />
-                {isSubmitting ? '저장 중...' : 'Publish Job'}
-              </Button>
+    <div className="h-full flex flex-col overflow-hidden bg-white">
+      {/* Header */}
+      <div className="bg-[#08102B] text-white px-8 py-5 border-b border-gray-700 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <VNTGSymbol className="text-[#0248FF]" size={36} />
+            <div>
+              <h1 className="text-2xl" style={{ fontFamily: 'Roboto, sans-serif' }}>
+                {isEditMode ? 'Edit Job Posting' : 'Create New Job Posting'}
+              </h1>
+              <p className="text-sm text-gray-400" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                채용 공고 및 프로세스 설정
+              </p>
             </div>
           </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              className="bg-transparent border-white text-white hover:bg-[#0f1a3d]"
+              style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isSubmitting}
+              className="bg-[#0248FF] hover:bg-[#0236cc] text-white flex items-center gap-2"
+              style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+            >
+              <Save size={18} />
+              {isSubmitting ? '저장 중...' : (isEditMode ? 'Update Job' : 'Publish Job')}
+            </Button>
+          </div>
         </div>
+      </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-auto bg-[#F5F7FA] px-8 py-8">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto bg-[#F5F7FA] px-8 py-8">
           <div className="max-w-4xl mx-auto space-y-8">
             {/* Section 1: Job Basic Info */}
             <div className="bg-white rounded-lg shadow-sm p-8">
@@ -337,7 +376,6 @@ export function JobPostingBuilder({ processes = [] }: JobPostingBuilderProps) {
             </div>
           </div>
         </div>
-      </div>
     </div>
   )
 }

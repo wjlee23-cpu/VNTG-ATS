@@ -56,7 +56,7 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [activeApplicantSubStage, setActiveApplicantSubStage] = useState('new-applicant')
   const [activeArchiveReason, setActiveArchiveReason] = useState('position-filled')
-  const [selectedJob, setSelectedJob] = useState<string | null>(jobs[0]?.id || null)
+  const [selectedJob, setSelectedJob] = useState<string | null>(null) // null = 모든 채용 공고
   const [activeInterviewStage, setActiveInterviewStage] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -73,29 +73,46 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
     }
   }, [tabParam])
 
-  // Update selectedJob when jobs change
-  useEffect(() => {
-    if (!selectedJob && jobs.length > 0) {
-      setSelectedJob(jobs[0].id)
-    }
-  }, [jobs, selectedJob])
-
-  // Calculate stage counts
+  // Calculate stage counts based on selectedJob
   const stageCounts = useMemo(() => {
-    const applicant = candidates.filter((c) => c.status === 'pending').length
-    const interview = candidates.filter((c) => c.status === 'in_progress').length
-    const archive = candidates.filter((c) => ['rejected', 'confirmed'].includes(c.status)).length
+    let filtered = candidates
+    
+    // Filter by selected job if one is selected
+    if (selectedJob) {
+      filtered = filtered.filter((c) => c.job_posts?.id === selectedJob)
+    }
+    
+    const applicant = filtered.filter((c) => c.status === 'pending').length
+    const interview = filtered.filter((c) => c.status === 'in_progress').length
+    const archive = filtered.filter((c) => ['rejected', 'confirmed'].includes(c.status)).length
     return { Applicant: applicant, Interview: interview, Archive: archive }
-  }, [candidates])
+  }, [candidates, selectedJob])
+  
+  // Calculate job-specific counts for sidebar (based on activeStage)
+  const getJobCandidateCount = (jobId: string) => {
+    let filtered = candidates.filter((c) => c.job_posts?.id === jobId)
+    
+    // Filter by active stage
+    if (activeStage === 'Applicant') {
+      filtered = filtered.filter((c) => c.status === 'pending')
+    } else if (activeStage === 'Interview') {
+      filtered = filtered.filter((c) => c.status === 'in_progress')
+    } else if (activeStage === 'Archive') {
+      filtered = filtered.filter((c) => ['rejected', 'confirmed'].includes(c.status))
+    }
+    
+    return filtered.length
+  }
 
-  // Get interview stages for selected job
+  // Get interview stages for selected job (or first job if all jobs selected)
   const interviewStages = useMemo(() => {
-    if (!selectedJob) {
+    const jobToUse = selectedJob || jobs[0]?.id
+    if (!jobToUse) {
       return []
     }
     
     // First try to get from jobs data directly
-    const selectedJobData = jobs.find((j) => j.id === selectedJob)
+    const selectedJobData = jobs.find((j) => j.id === jobToUse)
     if (!selectedJobData) {
       return []
     }
@@ -126,7 +143,7 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
     }
     
     // Fallback: try to get stages from candidates
-    const candidateWithJob = candidates.find((c) => c.job_posts?.id === selectedJob)
+    const candidateWithJob = candidates.find((c) => c.job_posts?.id === jobToUse)
     if (candidateWithJob?.job_posts?.processes) {
       let candidateProcesses = candidateWithJob.job_posts.processes
       if (Array.isArray(candidateProcesses)) {
@@ -155,20 +172,68 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
     
     return []
   }, [jobs, candidates, selectedJob])
+  
+  // Get all unique interview stages from all jobs when "모든 채용 공고" is selected
+  const allInterviewStages = useMemo(() => {
+    if (selectedJob) {
+      return interviewStages
+    }
+    
+    // Collect all stages from all jobs
+    const allStages: any[] = []
+    const stageIds = new Set<string>()
+    
+    jobs.forEach((job) => {
+      let processes = job.processes
+      if (Array.isArray(processes)) {
+        processes = processes[0]
+      }
+      
+      if (processes?.stages) {
+        let stages = processes.stages
+        if (typeof stages === 'string') {
+          try {
+            stages = JSON.parse(stages)
+          } catch (e) {
+            return
+          }
+        }
+        
+        if (Array.isArray(stages)) {
+          stages.forEach((stage: any) => {
+            if (!stageIds.has(stage.id)) {
+              stageIds.add(stage.id)
+              allStages.push(stage)
+            }
+          })
+        }
+      }
+    })
+    
+    return allStages.sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+  }, [jobs, selectedJob, interviewStages])
 
   // Auto-select first stage when interviewStages change or Interview tab is selected
   useEffect(() => {
-    if (activeStage === 'Interview' && interviewStages.length > 0) {
-      // If no stage is selected or selected stage is not in current stages, select first one
-      if (!activeInterviewStage || !interviewStages.find((s) => s.id === activeInterviewStage)) {
-        setActiveInterviewStage(interviewStages[0].id)
+    if (activeStage === 'Interview') {
+      const stagesToUse = selectedJob ? interviewStages : allInterviewStages
+      if (stagesToUse.length > 0) {
+        // If no stage is selected or selected stage is not in current stages, select first one
+        if (!activeInterviewStage || !stagesToUse.find((s: any) => s.id === activeInterviewStage)) {
+          setActiveInterviewStage(stagesToUse[0].id)
+        }
       }
     }
-  }, [activeStage, interviewStages, activeInterviewStage])
+  }, [activeStage, interviewStages, allInterviewStages, activeInterviewStage, selectedJob])
 
-  // Filter candidates based on active stage
+  // Filter candidates based on active stage and selected job
   const filteredCandidates = useMemo(() => {
     let filtered = candidates
+
+    // Filter by selected job if one is selected
+    if (selectedJob) {
+      filtered = filtered.filter((c) => c.job_posts?.id === selectedJob)
+    }
 
     // Tab-based filtering
     if (activeStage === 'Applicant') {
@@ -193,7 +258,7 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
     }
 
     return filtered
-  }, [candidates, activeStage, activeInterviewStage, searchQuery])
+  }, [candidates, activeStage, activeInterviewStage, searchQuery, selectedJob])
 
   const toggleSelection = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
@@ -255,6 +320,23 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
             </Link>
           </div>
           <div className="space-y-2">
+            {/* 모든 채용 공고 옵션 */}
+            <div
+              onClick={() => {
+                setSelectedJob(null)
+                setActiveInterviewStage(null)
+              }}
+              className={`text-sm p-2 rounded cursor-pointer transition-colors ${
+                selectedJob === null
+                  ? 'bg-[#0248FF] text-white'
+                  : 'hover:bg-[#0f1a3d]'
+              }`}
+            >
+              모든 채용 공고{' '}
+              <span className={selectedJob === null ? 'text-blue-200' : 'text-gray-400'}>
+                ({stageCounts[activeStage]})
+              </span>
+            </div>
             {jobs.map((job) => (
               <div
                 key={job.id}
@@ -271,7 +353,7 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
               >
                 {job.title}{' '}
                 <span className={selectedJob === job.id ? 'text-blue-200' : 'text-gray-400'}>
-                  ({candidates.filter((c) => c.job_posts?.id === job.id).length})
+                  ({getJobCandidateCount(job.id)})
                 </span>
               </div>
             ))}
@@ -429,9 +511,9 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
 
           {/* Interview Stage Cards */}
           {activeStage === 'Interview' && (
-            interviewStages.length > 0 ? (
+            (selectedJob ? interviewStages : allInterviewStages).length > 0 ? (
               <StageCards
-                stages={interviewStages}
+                stages={selectedJob ? interviewStages : allInterviewStages}
                 candidates={candidates.filter((c) => c.status === 'in_progress')}
                 activeStage={activeInterviewStage}
                 onStageSelect={setActiveInterviewStage}

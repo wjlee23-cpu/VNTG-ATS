@@ -1,9 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { getJobPost } from '@/actions/jobs'
-import { getCandidates } from '@/actions/candidates'
-import { KanbanBoard } from '@/components/dashboard/KanbanBoard'
+import { getProcesses } from '@/actions/processes'
+import { JobPostingBuilder } from '@/components/jobs/JobPostingBuilder'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -20,45 +19,34 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   }
 
   const job = await getJobPost(id)
-  const candidates = await getCandidates(id)
+  
+  if (!job) {
+    redirect('/jobs')
+  }
 
-  // Fetch full candidate data with job post and process info
-  const candidatesWithDetails = await Promise.all(
-    candidates.map(async (candidate: any) => {
-      const { data: jobPost } = await supabase
-        .from('job_posts')
-        .select('*, processes(*)')
-        .eq('id', candidate.job_post_id)
-        .single()
-
-      return {
-        ...candidate,
-        job_posts: jobPost,
-      }
-    })
-  )
+  let processes: any[] = []
+  
+  try {
+    processes = await getProcesses()
+  } catch (error) {
+    // 개발 모드: 에러를 조용히 처리 (테이블이 없을 수 있음)
+    if (isDevelopment) {
+      console.warn('Development mode: Error loading processes (this is expected if table does not exist):', error)
+    } else {
+      console.error('Error loading processes:', error)
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link href="/jobs" className="text-sm text-gray-600 hover:text-gray-900">
-            ← 채용 공고 목록
-          </Link>
-          <h1 className="mt-2 text-2xl font-bold text-gray-900">{job.title}</h1>
-          {job.description && (
-            <p className="mt-1 text-sm text-gray-600">{job.description}</p>
-          )}
-        </div>
-        <Link
-          href={`/jobs/${id}/candidates/new`}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          후보자 추가
-        </Link>
-      </div>
-
-      <KanbanBoard candidates={candidatesWithDetails} jobPostId={id} />
-    </div>
+    <JobPostingBuilder 
+      processes={processes || []} 
+      jobId={id}
+      initialJob={{
+        title: job.title,
+        description: job.description,
+        department: 'Product', // TODO: department 필드가 있다면 사용
+        processes: job.processes,
+      }}
+    />
   )
 }

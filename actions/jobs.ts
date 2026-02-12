@@ -71,6 +71,48 @@ export async function createJobPost(jobData: {
   return data
 }
 
+export async function updateJobPost(id: string, jobData: {
+  title: string
+  description?: string
+  processId?: string
+}) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // 개발 모드: 인증 체크 비활성화
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  
+  if (!isDevelopment && !user) {
+    throw new Error('Unauthorized')
+  }
+
+  const updatePayload: any = {
+    title: jobData.title,
+    description: jobData.description || null,
+  }
+  
+  if (jobData.processId) {
+    updatePayload.process_id = jobData.processId
+  }
+
+  const { data, error } = await (supabase as any)
+    .from('job_posts')
+    .update(updatePayload)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/jobs')
+  revalidatePath(`/jobs/${id}`)
+  return data
+}
+
 export async function getJobPosts() {
   const supabase = await createClient()
   const {

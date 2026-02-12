@@ -28,22 +28,7 @@ export function DashboardLayoutClient({
   const searchParams = useSearchParams()
   const isJobNewPage = pathname === '/jobs/new'
   const isCandidateDetailPage = pathname?.startsWith('/candidates/')
-  const [selectedJob, setSelectedJob] = useState<string | null>(jobs[0]?.id || null)
-
-  // Update selectedJob when jobs change
-  useEffect(() => {
-    if (!selectedJob && jobs.length > 0) {
-      setSelectedJob(jobs[0].id)
-    }
-  }, [jobs, selectedJob])
-
-  // Calculate stage counts
-  const stageCounts = useMemo(() => {
-    const applicant = candidates.filter((c) => c.status === 'pending').length
-    const interview = candidates.filter((c) => c.status === 'in_progress').length
-    const archive = candidates.filter((c) => ['rejected', 'confirmed'].includes(c.status)).length
-    return { Applicant: applicant, Interview: interview, Archive: archive }
-  }, [candidates])
+  const [selectedJob, setSelectedJob] = useState<string | null>(null)
 
   // Get active tab from URL or default
   const activeTab = useMemo(() => {
@@ -51,29 +36,58 @@ export function DashboardLayoutClient({
     if (tabParam === 'applicant') return 'Applicant'
     if (tabParam === 'interview') return 'Interview'
     if (tabParam === 'archive') return 'Archive'
-    return null
+    return 'Interview' // 기본값
   }, [searchParams])
+
+  // Calculate stage counts
+  const stageCounts = useMemo(() => {
+    let filtered = candidates
+    
+    // Filter by selected job if one is selected
+    if (selectedJob) {
+      filtered = filtered.filter((c) => c.job_posts?.id === selectedJob)
+    }
+    
+    const applicant = filtered.filter((c) => c.status === 'pending').length
+    const interview = filtered.filter((c) => c.status === 'in_progress').length
+    const archive = filtered.filter((c) => ['rejected', 'confirmed'].includes(c.status)).length
+    return { Applicant: applicant, Interview: interview, Archive: archive }
+  }, [candidates, selectedJob])
+  
+  // Calculate job-specific counts for sidebar (based on activeTab)
+  const getJobCandidateCount = (jobId: string) => {
+    let filtered = candidates.filter((c) => c.job_posts?.id === jobId)
+    
+    // Filter by active tab
+    if (activeTab === 'Applicant') {
+      filtered = filtered.filter((c) => c.status === 'pending')
+    } else if (activeTab === 'Interview') {
+      filtered = filtered.filter((c) => c.status === 'in_progress')
+    } else if (activeTab === 'Archive') {
+      filtered = filtered.filter((c) => ['rejected', 'confirmed'].includes(c.status))
+    }
+    
+    return filtered.length
+  }
 
   return (
     <div className="flex h-screen bg-white" style={{ position: 'relative', width: '100%', height: '100vh' }}>
       {/* Sidebar */}
       <aside
-        className={`w-64 bg-[#08102B] shadow-lg transition-opacity flex-shrink-0 ${
-          isJobNewPage ? 'opacity-50' : 'opacity-100'
-        }`}
+        className="w-64 bg-[#08102B] shadow-lg flex-shrink-0"
         style={{ position: 'relative', zIndex: 10 }}
       >
-        <div className="flex h-full flex-col p-6">
+        <div className="flex h-full flex-col p-6 text-white">
           <div className="flex items-center gap-2 mb-8">
             <VNTGSymbol className="text-[#0248FF]" size={32} />
-            <span className="font-medium" style={{ fontFamily: 'Roboto, sans-serif' }}>
+            <span className="font-medium text-white" style={{ fontFamily: 'Roboto, sans-serif' }}>
               VNTG
             </span>
           </div>
 
-          {isCandidateDetailPage ? (
+          {isCandidateDetailPage || isJobNewPage ? (
             <>
-              {/* Candidate Detail Sidebar - Same as CandidateDashboard */}
+              {/* Candidate Detail / Job New Sidebar - Same as CandidateDashboard */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm text-gray-400" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
@@ -88,6 +102,20 @@ export function DashboardLayoutClient({
                   </Link>
                 </div>
                 <div className="space-y-2">
+                  {/* 모든 채용 공고 옵션 */}
+                  <div
+                    onClick={() => setSelectedJob(null)}
+                    className={`text-sm p-2 rounded cursor-pointer transition-colors ${
+                      selectedJob === null
+                        ? 'bg-[#0248FF] text-white'
+                        : 'text-white hover:bg-[#0f1a3d]'
+                    }`}
+                  >
+                    모든 채용 공고{' '}
+                    <span className={selectedJob === null ? 'text-blue-200' : 'text-gray-300'}>
+                      ({stageCounts[activeTab]})
+                    </span>
+                  </div>
                   {jobs.map((job) => (
                     <div
                       key={job.id}
@@ -95,12 +123,12 @@ export function DashboardLayoutClient({
                       className={`text-sm p-2 rounded cursor-pointer transition-colors ${
                         selectedJob === job.id
                           ? 'bg-[#0248FF] text-white'
-                          : 'hover:bg-[#0f1a3d]'
+                          : 'text-white hover:bg-[#0f1a3d]'
                       }`}
                     >
                       {job.title}{' '}
-                      <span className={selectedJob === job.id ? 'text-blue-200' : 'text-gray-400'}>
-                        ({candidates.filter((c) => c.job_posts?.id === job.id).length})
+                      <span className={selectedJob === job.id ? 'text-blue-200' : 'text-gray-300'}>
+                        ({getJobCandidateCount(job.id)})
                       </span>
                     </div>
                   ))}
@@ -112,16 +140,16 @@ export function DashboardLayoutClient({
                   필터
                 </h3>
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm p-2 rounded hover:bg-[#0f1a3d] cursor-pointer transition-colors">
-                    <Filter size={16} />
+                  <div className="flex items-center gap-2 text-sm text-white p-2 rounded hover:bg-[#0f1a3d] cursor-pointer transition-colors">
+                    <Filter size={16} className="text-white" />
                     <span>지원 날짜</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm p-2 rounded hover:bg-[#0f1a3d] cursor-pointer transition-colors">
-                    <Filter size={16} />
+                  <div className="flex items-center gap-2 text-sm text-white p-2 rounded hover:bg-[#0f1a3d] cursor-pointer transition-colors">
+                    <Filter size={16} className="text-white" />
                     <span>평가 점수</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm p-2 rounded hover:bg-[#0f1a3d] cursor-pointer transition-colors">
-                    <Filter size={16} />
+                  <div className="flex items-center gap-2 text-sm text-white p-2 rounded hover:bg-[#0f1a3d] cursor-pointer transition-colors">
+                    <Filter size={16} className="text-white" />
                     <span>AI 분석 상태</span>
                   </div>
                 </div>
@@ -177,8 +205,7 @@ export function DashboardLayoutClient({
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Navigation Bar */}
-        {!isJobNewPage && (
-          <div className="bg-[#08102B] text-white px-6 py-3 flex-shrink-0" style={{ position: 'relative', zIndex: 10 }}>
+        <div className="bg-[#08102B] text-white px-6 py-3 flex-shrink-0" style={{ position: 'relative', zIndex: 10 }}>
             <div className="flex items-center gap-6">
               <Link
                 href="/jobs"
@@ -214,10 +241,9 @@ export function DashboardLayoutClient({
               })}
             </div>
           </div>
-        )}
 
         {/* Main content area */}
-        <main className={`flex-1 overflow-hidden bg-gray-50 ${isJobNewPage ? 'p-0' : 'p-0'}`} style={{ minHeight: 0, maxHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+        <main className="flex-1 overflow-hidden bg-gray-50 p-0" style={{ minHeight: 0, maxHeight: '100%', display: 'flex', flexDirection: 'column' }}>
           {children}
         </main>
       </div>
