@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCandidates } from '@/actions/candidates'
 import { getJobPosts } from '@/actions/jobs'
-import { MainDashboard } from '@/components/dashboard/MainDashboard'
+import { CandidateDashboard } from '@/components/dashboard/CandidateDashboard'
 import { redirect } from 'next/navigation'
 
 export default async function DashboardPage() {
@@ -36,18 +36,5 @@ export default async function DashboardPage() {
     })
   )
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-          대시보드
-        </h1>
-        <p className="mt-1 text-sm text-gray-600" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
-          {candidates.length}명의 후보자, {jobs.length}개의 채용 공고
-        </p>
-      </div>
-
-      <MainDashboard candidates={candidatesWithDetails} jobs={jobs} />
-    </div>
-  )
+  return <CandidateDashboard candidates={candidatesWithDetails} jobs={jobs} />
 }

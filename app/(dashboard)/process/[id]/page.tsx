@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getProcess, updateProcess } from '@/actions/processes'
-import { ProcessBuilder } from '@/components/process/ProcessBuilder'
+import { WorkflowBuilder } from '@/components/process/WorkflowBuilder'
 import { redirect } from 'next/navigation'
 
 export default async function ProcessPage({ params }: { params: { id: string } }) {
@@ -23,7 +23,7 @@ export default async function ProcessPage({ params }: { params: { id: string } }
   const { data: userData } = await supabase
     .from('users')
     .select('organization_id')
-    .eq('id', user.id)
+    .eq('id', user?.id)
     .single()
 
   const { data: interviewers } = await supabase
@@ -38,17 +38,11 @@ export default async function ProcessPage({ params }: { params: { id: string } }
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{process.name}</h1>
-        <p className="mt-1 text-sm text-gray-600">채용 프로세스를 구성하고 관리하세요.</p>
-      </div>
-
-      <ProcessBuilder
-        initialStages={stages}
-        onSave={handleSave}
-        availableInterviewers={interviewers || []}
-      />
-    </div>
+    <WorkflowBuilder
+      initialStages={stages}
+      onSave={handleSave}
+      availableInterviewers={interviewers || []}
+      jobPostTitle={process.name}
+    />
   )
 }
