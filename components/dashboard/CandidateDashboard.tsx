@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Search, Filter, MoreVertical, CheckSquare, Square } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,9 @@ interface Candidate {
 interface Job {
   id: string
   title: string
+  processes?: {
+    stages?: Array<{ id: string; name: string }>
+  }
 }
 
 interface CandidateDashboardProps {
@@ -44,6 +47,13 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
   const [activeInterviewStage, setActiveInterviewStage] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Update selectedJob when jobs change
+  useEffect(() => {
+    if (!selectedJob && jobs.length > 0) {
+      setSelectedJob(jobs[0].id)
+    }
+  }, [jobs, selectedJob])
+
   // Calculate stage counts
   const stageCounts = useMemo(() => {
     const applicant = candidates.filter((c) => c.status === 'pending').length
@@ -54,10 +64,81 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
 
   // Get interview stages for selected job
   const interviewStages = useMemo(() => {
-    if (!selectedJob) return []
-    const job = candidates.find((c) => c.job_posts?.id === selectedJob)
-    return job?.job_posts?.processes?.stages || []
-  }, [candidates, selectedJob])
+    if (!selectedJob) {
+      return []
+    }
+    
+    // First try to get from jobs data directly
+    const selectedJobData = jobs.find((j) => j.id === selectedJob)
+    if (!selectedJobData) {
+      return []
+    }
+    
+    // Handle processes - could be array or single object
+    let processes = selectedJobData.processes
+    if (Array.isArray(processes)) {
+      processes = processes[0] // Take first process if array
+    }
+    
+    if (processes?.stages) {
+      let stages = processes.stages
+      
+      // Handle JSONB - might be string or already parsed
+      if (typeof stages === 'string') {
+        try {
+          stages = JSON.parse(stages)
+        } catch (e) {
+          console.error('Failed to parse stages:', e)
+          return []
+        }
+      }
+      
+      // Ensure stages is an array
+      if (Array.isArray(stages) && stages.length > 0) {
+        return stages
+      }
+    }
+    
+    // Fallback: try to get stages from candidates
+    const candidateWithJob = candidates.find((c) => c.job_posts?.id === selectedJob)
+    if (candidateWithJob?.job_posts?.processes) {
+      let candidateProcesses = candidateWithJob.job_posts.processes
+      if (Array.isArray(candidateProcesses)) {
+        candidateProcesses = candidateProcesses[0]
+      }
+      
+      if (candidateProcesses?.stages) {
+        let stages = candidateProcesses.stages
+        
+        // Handle JSONB - might be string or already parsed
+        if (typeof stages === 'string') {
+          try {
+            stages = JSON.parse(stages)
+          } catch (e) {
+            console.error('Failed to parse stages from candidate:', e)
+            return []
+          }
+        }
+        
+        // Ensure stages is an array
+        if (Array.isArray(stages) && stages.length > 0) {
+          return stages
+        }
+      }
+    }
+    
+    return []
+  }, [jobs, candidates, selectedJob])
+
+  // Auto-select first stage when interviewStages change or Interview tab is selected
+  useEffect(() => {
+    if (activeStage === 'Interview' && interviewStages.length > 0) {
+      // If no stage is selected or selected stage is not in current stages, select first one
+      if (!activeInterviewStage || !interviewStages.find((s) => s.id === activeInterviewStage)) {
+        setActiveInterviewStage(interviewStages[0].id)
+      }
+    }
+  }, [activeStage, interviewStages, activeInterviewStage])
 
   // Filter candidates based on active stage
   const filteredCandidates = useMemo(() => {
@@ -144,12 +225,8 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
                 key={job.id}
                 onClick={() => {
                   setSelectedJob(job.id)
-                  const firstStage = candidates
-                    .find((c) => c.job_posts?.id === job.id)
-                    ?.job_posts?.processes?.stages?.[0]
-                  if (firstStage) {
-                    setActiveInterviewStage(firstStage.id)
-                  }
+                  // Reset active interview stage - useEffect will auto-select first one
+                  setActiveInterviewStage(null)
                 }}
                 className={`text-sm p-2 rounded cursor-pointer transition-colors ${
                   selectedJob === job.id
@@ -296,13 +373,35 @@ export function CandidateDashboard({ candidates, jobs, onCandidateSelect }: Cand
         )}
 
         {/* Interview Stage Cards */}
-        {activeStage === 'Interview' && interviewStages.length > 0 && (
-          <StageCards
-            stages={interviewStages}
-            candidates={candidates.filter((c) => c.status === 'in_progress')}
-            activeStage={activeInterviewStage}
-            onStageSelect={setActiveInterviewStage}
-          />
+        {activeStage === 'Interview' && (
+          interviewStages.length > 0 ? (
+            <StageCards
+              stages={interviewStages}
+              candidates={candidates.filter((c) => c.status === 'in_progress')}
+              activeStage={activeInterviewStage}
+              onStageSelect={setActiveInterviewStage}
+            />
+          ) : selectedJob ? (
+            <div className="bg-white border-b px-6 py-4">
+              <div className="flex items-center gap-4 overflow-x-auto">
+                <div className="bg-white border border-gray-200 rounded-lg p-4 text-center min-w-[140px] flex-shrink-0 opacity-50">
+                  <div className="text-3xl mb-2 text-gray-400" style={{ fontFamily: 'Roboto, sans-serif' }}>0</div>
+                  <div className="text-sm text-gray-400" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                    단계 없음
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-2" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                선택한 채용 공고에 대한 면접 단계 정보가 없습니다. 워크플로우를 설정해주세요.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white border-b px-6 py-4">
+              <p className="text-sm text-gray-500" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                채용 공고를 선택해주세요.
+              </p>
+            </div>
+          )
         )}
 
         {/* Candidate List */}
