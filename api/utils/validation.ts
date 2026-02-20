@@ -43,11 +43,21 @@ export function validatePhone(phone: string | null | undefined): string | null {
  * UUID 형식을 검증합니다.
  */
 export function validateUUID(id: string, fieldName: string = 'ID'): string {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(id)) {
-    throw new ValidationError(`${fieldName} 형식이 올바르지 않습니다.`);
+  // 빈 값 체크
+  if (!id || typeof id !== 'string' || id.trim().length === 0) {
+    throw new ValidationError(`잘못된 ${fieldName}입니다. 올바른 링크를 사용해주세요.`);
   }
-  return id;
+
+  const trimmedId = id.trim();
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  if (!uuidRegex.test(trimmedId)) {
+    throw new ValidationError(
+      `잘못된 ${fieldName}입니다. 올바른 링크를 사용해주세요.`
+    );
+  }
+  
+  return trimmedId;
 }
 
 /**
