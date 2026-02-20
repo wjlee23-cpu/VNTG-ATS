@@ -1,23 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
-import { getJobPosts } from '@/actions/jobs'
-import { getCandidates } from '@/actions/candidates'
-import { JobsPageClient } from '@/components/jobs/JobsPageClient'
+'use client';
 
-export default async function JobsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // 개발 모드: 인증 체크 비활성화
-  const isDevelopment = process.env.NODE_ENV === 'development'
-  
-  if (!isDevelopment && !user) {
-    return null
-  }
-
-  const jobs = await getJobPosts()
-  const candidates = await getCandidates()
-
-  return <JobsPageClient jobs={jobs} allJobs={jobs} candidates={candidates} />
+export default function JobsPage() {
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-semibold mb-4">Jobs</h1>
+      <p className="text-gray-600">채용 공고 목록 페이지입니다.</p>
+    </div>
+  );
 }
