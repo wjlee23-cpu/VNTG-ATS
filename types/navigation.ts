@@ -25,7 +25,7 @@ export type AppView =
 // AppView를 경로로 변환하는 함수
 export function viewToPath(view: AppView, params?: Record<string, string>): string {
   const pathMap: Record<AppView, string> = {
-    'overview': '/',
+    'overview': '/dashboard',
     'candidates': '/candidates',
     'jobs': '/jobs',
     'calendar': '/calendar',
@@ -51,7 +51,7 @@ export function viewToPath(view: AppView, params?: Record<string, string>): stri
 
 // 경로를 AppView로 변환하는 함수
 export function pathToView(pathname: string): AppView {
-  if (pathname === '/') return 'overview';
+  if (pathname === '/dashboard' || pathname === '/') return 'overview';
   if (pathname.startsWith('/candidates/') && pathname.includes('/schedule')) return 'schedule-interview';
   if (pathname.startsWith('/candidates/')) return 'candidate-detail';
   if (pathname === '/candidates') return 'candidates';

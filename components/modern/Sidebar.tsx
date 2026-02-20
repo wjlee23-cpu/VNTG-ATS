@@ -23,7 +23,7 @@ export function Sidebar() {
   const currentView = pathToView(pathname);
 
   const menuItems = [
-    { icon: LayoutGrid, label: 'Overview', view: 'overview' as AppView, path: '/' },
+    { icon: LayoutGrid, label: 'Overview', view: 'overview' as AppView, path: '/dashboard' },
     { icon: Users, label: 'Candidates', view: 'candidates' as AppView, path: '/candidates' },
     { icon: Briefcase, label: 'Jobs', view: 'jobs' as AppView, path: '/jobs' },
     { icon: FileEdit, label: 'JD Requests', view: 'jd-requests' as AppView, path: '/jd-requests' },

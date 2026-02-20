@@ -6,6 +6,30 @@
 import { createClient } from '@/lib/supabase/server';
 
 /**
+ * 권한 레벨 타입 정의
+ */
+export type UserRole = 'admin' | 'recruiter' | 'interviewer';
+
+/**
+ * 권한 계층 정의 (높을수록 권한이 큼)
+ */
+const ROLE_HIERARCHY: Record<UserRole, number> = {
+  admin: 3,
+  recruiter: 2,
+  interviewer: 1,
+};
+
+/**
+ * 사용자 role이 필요한 role 이상인지 확인합니다.
+ * @param userRole 사용자의 role
+ * @param requiredRole 필요한 최소 role
+ * @returns 권한이 있으면 true, 없으면 false
+ */
+export function checkRole(userRole: UserRole, requiredRole: UserRole): boolean {
+  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
+}
+
+/**
  * 현재 로그인한 사용자 정보와 organization_id를 가져옵니다.
  * @returns 사용자 정보와 organization_id
  * @throws 인증되지 않은 경우 에러 발생
@@ -113,4 +137,48 @@ export async function verifyCandidateAccess(candidateId: string) {
   }
 
   return candidate;
+}
+
+/**
+ * 특정 role 이상의 권한이 필요한지 확인합니다.
+ * @param requiredRole 필요한 최소 role
+ * @returns 사용자 정보
+ * @throws 권한이 없는 경우 에러 발생
+ */
+export async function requireRole(requiredRole: UserRole) {
+  const user = await getCurrentUser();
+  
+  if (!checkRole(user.role, requiredRole)) {
+    throw new Error(`${requiredRole} 이상의 권한이 필요합니다. 현재 권한: ${user.role}`);
+  }
+
+  return user;
+}
+
+/**
+ * admin 권한이 필요한지 확인합니다.
+ * @returns 사용자 정보
+ * @throws admin 권한이 없는 경우 에러 발생
+ */
+export async function requireAdmin() {
+  return requireRole('admin');
+}
+
+/**
+ * recruiter 이상의 권한이 필요한지 확인합니다.
+ * @returns 사용자 정보
+ * @throws recruiter 이상의 권한이 없는 경우 에러 발생
+ */
+export async function requireRecruiterOrAdmin() {
+  return requireRole('recruiter');
+}
+
+/**
+ * interviewer 이상의 권한이 필요한지 확인합니다.
+ * (모든 로그인한 사용자는 최소 interviewer 권한을 가지므로 사실상 모든 사용자 통과)
+ * @returns 사용자 정보
+ * @throws interviewer 이상의 권한이 없는 경우 에러 발생
+ */
+export async function requireInterviewerOrAbove() {
+  return requireRole('interviewer');
 }

@@ -10,6 +10,8 @@ AI 기반 일정 조율, 프로세스 관리, 후보자 대시보드를 포함�
 - ✅ 후보자 Kanban 대시보드
 - ✅ 후보자 인터랙션 페이지 (모바일 최적화)
 - ✅ 타임라인 기본 기능
+- ✅ 구글 OAuth 로그인
+- ✅ 사용자 권한 시스템 (admin, recruiter, interviewer)
 
 ## 기술 스택
 
@@ -43,6 +45,8 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 # App Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
+
+**참고**: 구글 OAuth 로그인을 사용하려면 Supabase 대시보드에서 구글 프로바이더를 설정해야 합니다. 자세한 내용은 [구글 OAuth 설정 가이드](docs/setup-guide.md)를 참조하세요.
 
 ### 2. 데이터베이스 마이그레이션
 
@@ -86,6 +90,43 @@ app/
 │   ├── schedule/        # 일정 관리
 │   └── timeline/        # 타임라인
 └── actions/             # Server Actions
+```
+
+## 인증 및 권한
+
+### 로그인 방법
+
+1. **이메일/비밀번호 로그인**: 기존 이메일과 비밀번호로 로그인
+2. **구글 OAuth 로그인**: 구글 계정으로 간편 로그인
+
+### 권한 시스템
+
+시스템은 3가지 권한 레벨을 지원합니다:
+
+- **admin**: 모든 기능 접근 가능 (설정 변경, 사용자 관리 등)
+- **recruiter**: 후보자 관리, 채용 공고 관리 가능
+- **interviewer**: 평가표 작성만 가능
+
+**초대 전용 정책**: 구글 로그인을 포함한 모든 로그인은 `users` 테이블에 등록된 사용자만 가능합니다. 관리자가 먼저 사용자를 초대해야 합니다.
+
+### 권한 체크 사용법
+
+Server Actions에서 권한을 체크하려면:
+
+```typescript
+import { requireAdmin, requireRecruiterOrAdmin } from '@/api/utils/auth';
+
+// admin 권한만 허용
+export async function deleteOrganization() {
+  await requireAdmin();
+  // ... 로직
+}
+
+// recruiter 이상 권한 허용
+export async function createJobPost() {
+  await requireRecruiterOrAdmin();
+  // ... 로직
+}
 ```
 
 ## 주요 기능 사용법
