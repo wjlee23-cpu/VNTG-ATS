@@ -80,7 +80,7 @@ export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
 
     const candidateIds = candidates.map(c => c.id);
 
-    // 기간 내 면접 일정 조회
+    // 기간 내 면접 일정 조회 (면접관 정보 포함)
     const { data, error } = await supabase
       .from('schedules')
       .select(`
@@ -99,6 +99,34 @@ export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
       .gte('scheduled_at', startDate.toISOString())
       .lte('scheduled_at', endDate.toISOString())
       .order('scheduled_at', { ascending: true });
+
+    // 면접관 정보 조회
+    if (data && data.length > 0) {
+      const allInterviewerIds = new Set<string>();
+      data.forEach(schedule => {
+        if (schedule.interviewer_ids && Array.isArray(schedule.interviewer_ids)) {
+          schedule.interviewer_ids.forEach((id: string) => allInterviewerIds.add(id));
+        }
+      });
+
+      if (allInterviewerIds.size > 0) {
+        const { data: interviewers } = await supabase
+          .from('users')
+          .select('id, email')
+          .in('id', Array.from(allInterviewerIds));
+
+        const interviewerMap = new Map(
+          interviewers?.map(i => [i.id, i]) || []
+        );
+
+        // 각 일정에 면접관 정보 추가
+        data.forEach(schedule => {
+          (schedule as any).interviewers = schedule.interviewer_ids
+            ?.map((id: string) => interviewerMap.get(id))
+            .filter(Boolean) || [];
+        });
+      }
+    }
 
     if (error) {
       throw new Error(`면접 일정 조회 실패: ${error.message}`);

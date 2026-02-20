@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Briefcase, Search, Plus, Calendar, Users, MapPin } from 'lucide-react';
+import { Briefcase, Search, Plus, Calendar, Users, MapPin, Eye, TrendingUp, Clock, DollarSign } from 'lucide-react';
 
 interface Job {
   id: string;
@@ -12,6 +12,14 @@ interface Job {
   process_id: string;
   created_at: string;
   updated_at: string;
+  category?: string;
+  location?: string;
+  salary_min?: number;
+  salary_max?: number;
+  views?: number;
+  match_rate?: number;
+  employment_type?: string;
+  status?: string;
   processes?: {
     id: string;
     name: string;
@@ -21,14 +29,23 @@ interface Job {
       order: number;
     }>;
   };
+  _count?: {
+    candidates?: number;
+  };
 }
 
 interface JobsClientProps {
   initialJobs: Job[];
+  stats: {
+    activeJobs: number;
+    totalApplicants: number;
+    avgMatchRate: number;
+    totalViews: number;
+  };
   error?: string;
 }
 
-export function JobsClient({ initialJobs, error }: JobsClientProps) {
+export function JobsClient({ initialJobs, stats, error }: JobsClientProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -39,26 +56,68 @@ export function JobsClient({ initialJobs, error }: JobsClientProps) {
     return (
       job.title.toLowerCase().includes(query) ||
       job.description?.toLowerCase().includes(query) ||
-      job.processes?.name.toLowerCase().includes(query)
+      job.processes?.name.toLowerCase().includes(query) ||
+      job.category?.toLowerCase().includes(query) ||
+      job.location?.toLowerCase().includes(query)
     );
   });
 
+  // Active positions 계산
+  const activePositions = initialJobs.filter(job => job.status === 'active').length;
+
+  // 급여 포맷팅
+  const formatSalary = (min?: number, max?: number) => {
+    if (!min && !max) return '급여 협의';
+    if (min && max) return `₩${(min / 1000000).toFixed(0)}M - ₩${(max / 1000000).toFixed(0)}M`;
+    if (min) return `₩${(min / 1000000).toFixed(0)}M 이상`;
+    return `₩${(max! / 1000000).toFixed(0)}M 이하`;
+  };
+
+  // 조회수 포맷팅
+  const formatViews = (views?: number) => {
+    if (!views) return '0 views';
+    if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`;
+    return `${views} views`;
+  };
+
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto bg-[#FAFAFA]">
       <div className="px-8 py-6">
         {/* Header */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Jobs</h1>
-            <p className="text-gray-600">채용 공고를 확인하고 관리하세요.</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Job Postings</h1>
+            <p className="text-gray-600">{activePositions} active positions</p>
           </div>
           <button
             onClick={() => router.push('/jobs/create')}
-            className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors flex items-center gap-2"
+            className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
             <Plus size={18} />
-            새 채용 공고
+            Create Job
           </button>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <div className="text-3xl font-bold text-blue-600 mb-1">{stats.activeJobs}</div>
+            <div className="text-sm text-gray-600">Active Jobs</div>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <div className="text-3xl font-bold text-gray-900 mb-1">{stats.totalApplicants}</div>
+            <div className="text-sm text-gray-600">Total Applicants</div>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <div className="text-3xl font-bold text-green-600 mb-1">{stats.avgMatchRate}%</div>
+            <div className="text-sm text-gray-600">Avg. Match Rate</div>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <div className="text-3xl font-bold text-orange-600 mb-1">
+              {stats.totalViews >= 1000 ? `${(stats.totalViews / 1000).toFixed(1)}K` : stats.totalViews}
+            </div>
+            <div className="text-sm text-gray-600">Total Views</div>
+          </div>
         </div>
 
         {/* Search */}
@@ -95,51 +154,77 @@ export function JobsClient({ initialJobs, error }: JobsClientProps) {
             {!searchQuery && (
               <button
                 onClick={() => router.push('/jobs/create')}
-                className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors"
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
               >
                 첫 채용 공고 만들기
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {filteredJobs.map((job) => (
               <div
                 key={job.id}
                 onClick={() => router.push(`/jobs/${job.id}`)}
-                className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all cursor-pointer"
+                className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all cursor-pointer relative"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
-                    <Briefcase className="text-white" size={24} />
-                  </div>
-                  <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
-                    모집중
+                {/* Status Badge */}
+                <div className="absolute top-4 right-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    job.status === 'active' 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {job.status === 'active' ? 'active' : job.status || 'draft'}
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
-                  {job.title}
-                </h3>
-                <p className="text-sm text-gray-600 mb-4 line-clamp-3">
-                  {job.description || '설명이 없습니다.'}
-                </p>
-                <div className="space-y-2 pt-4 border-t border-gray-100">
-                  {job.processes && (
+
+                <h3 className="text-xl font-bold text-gray-900 mb-2 pr-20">{job.title}</h3>
+                <p className="text-sm text-gray-600 mb-4">{job.category || 'Uncategorized'}</p>
+
+                <div className="space-y-3 mb-4">
+                  {/* Location */}
+                  {job.location && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Users size={14} />
-                      <span>{job.processes.name}</span>
-                      {job.processes.stages && (
-                        <span className="text-gray-400">
-                          ({job.processes.stages.length}단계)
-                        </span>
-                      )}
+                      <MapPin size={14} className="text-gray-400" />
+                      <span>{job.location}</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Calendar size={14} />
-                    <span>
-                      {new Date(job.created_at).toLocaleDateString('ko-KR')}
-                    </span>
+
+                  {/* Salary */}
+                  {(job.salary_min || job.salary_max) && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <DollarSign size={14} className="text-gray-400" />
+                      <span>{formatSalary(job.salary_min, job.salary_max)}</span>
+                    </div>
+                  )}
+
+                  {/* Views */}
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Eye size={14} className="text-gray-400" />
+                    <span>{formatViews(job.views)}</span>
+                  </div>
+
+                  {/* Match Rate */}
+                  {job.match_rate !== null && job.match_rate !== undefined && (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <TrendingUp size={14} />
+                      <span>{job.match_rate}% match rate</span>
+                    </div>
+                  )}
+
+                  {/* Employment Type */}
+                  {job.employment_type && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Clock size={14} className="text-gray-400" />
+                      <span className="capitalize">{job.employment_type.replace('-', ' ')}</span>
+                    </div>
+                  )}
+
+                  {/* Applicants */}
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Users size={14} className="text-gray-400" />
+                    <span>{job._count?.candidates || 0} applicants</span>
                   </div>
                 </div>
               </div>
