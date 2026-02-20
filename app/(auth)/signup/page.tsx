@@ -46,7 +46,7 @@ export default function SignupPage() {
         return;
       }
 
-      router.push('/');
+      router.push('/dashboard');
       router.refresh();
     } catch (err) {
       setError('회원가입 중 오류가 발생했습니다.');
