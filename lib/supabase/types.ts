@@ -165,6 +165,9 @@ export interface Database {
           interviewer_ids: string[]
           candidate_response: 'accepted' | 'rejected' | 'pending' | null
           beverage_preference: string | null
+          google_event_id: string | null
+          interviewer_responses: Record<string, string> | null
+          workflow_status: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null
           created_at: string
           updated_at: string
         }
@@ -178,6 +181,9 @@ export interface Database {
           interviewer_ids: string[]
           candidate_response?: 'accepted' | 'rejected' | 'pending' | null
           beverage_preference?: string | null
+          google_event_id?: string | null
+          interviewer_responses?: Record<string, string> | null
+          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null
           created_at?: string
           updated_at?: string
         }
@@ -191,6 +197,9 @@ export interface Database {
           interviewer_ids?: string[]
           candidate_response?: 'accepted' | 'rejected' | 'pending' | null
           beverage_preference?: string | null
+          google_event_id?: string | null
+          interviewer_responses?: Record<string, string> | null
+          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null
           created_at?: string
           updated_at?: string
         }
@@ -201,6 +210,8 @@ export interface Database {
           schedule_id: string
           scheduled_at: string
           status: 'pending' | 'selected' | 'rejected'
+          google_event_id: string | null
+          interviewer_responses: Record<string, string> | null
           created_at: string
         }
         Insert: {
@@ -208,6 +219,8 @@ export interface Database {
           schedule_id: string
           scheduled_at: string
           status?: 'pending' | 'selected' | 'rejected'
+          google_event_id?: string | null
+          interviewer_responses?: Record<string, string> | null
           created_at?: string
         }
         Update: {
@@ -215,6 +228,8 @@ export interface Database {
           schedule_id?: string
           scheduled_at?: string
           status?: 'pending' | 'selected' | 'rejected'
+          google_event_id?: string | null
+          interviewer_responses?: Record<string, string> | null
           created_at?: string
         }
       }

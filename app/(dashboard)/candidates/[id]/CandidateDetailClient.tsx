@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ScheduleInterviewModal } from '@/components/candidates/ScheduleInterviewModal';
+import { ScheduleInterviewAutomatedModal } from '@/components/candidates/ScheduleInterviewAutomatedModal';
 import { EmailModal } from '@/components/candidates/EmailModal';
 
 interface Candidate {
@@ -508,8 +508,8 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         </div>
       </div>
 
-      {/* Schedule Interview Modal */}
-      <ScheduleInterviewModal
+      {/* Schedule Interview Automated Modal */}
+      <ScheduleInterviewAutomatedModal
         candidateId={candidate.id}
         candidateName={candidate.name}
         isOpen={isScheduleModalOpen}

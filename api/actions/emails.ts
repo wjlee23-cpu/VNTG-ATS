@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateRequired, validateEmail, validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
+import { sendEmail } from '@/lib/email/resend';
 
 /**
  * 후보자에게 이메일 발송
@@ -61,6 +62,23 @@ export async function sendEmailToCandidate(formData: FormData) {
       throw new Error(`이메일 저장 실패: ${emailError.message}`);
     }
 
+    // 실제 이메일 발송 (Resend API)
+    const emailResult = await sendEmail({
+      to: toEmail,
+      from: user.email,
+      subject,
+      html: body.replace(/\n/g, '<br>'), // 줄바꿈을 HTML로 변환
+      replyTo: user.email,
+    })
+
+    // 이메일 발송 결과 업데이트
+    if (emailResult.success && emailResult.messageId) {
+      await supabase
+        .from('emails')
+        .update({ message_id: emailResult.messageId })
+        .eq('id', emailRecord.id)
+    }
+
     // 타임라인 이벤트 생성
     await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
@@ -72,6 +90,8 @@ export async function sendEmailToCandidate(formData: FormData) {
         from_email: user.email,
         to_email: toEmail,
         email_id: emailRecord.id,
+        sent: emailResult.success,
+        error: emailResult.error,
       },
       created_by: user.userId,
     });
@@ -79,6 +99,11 @@ export async function sendEmailToCandidate(formData: FormData) {
     // 캐시 무효화
     revalidatePath(`/dashboard/candidates/${candidateId}`);
 
-    return { success: true };
+    if (!emailResult.success) {
+      console.warn('이메일 발송 실패:', emailResult.error)
+      // 이메일 발송 실패해도 DB에는 저장되었으므로 성공으로 처리
+    }
+
+    return { success: true, emailSent: emailResult.success };
   });
 }
