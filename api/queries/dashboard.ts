@@ -1,24 +1,33 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/api/utils/auth';
 import { withErrorHandling } from '@/api/utils/errors';
 
 /**
  * 대시보드 통계 조회
+ * 관리자일 경우 모든 조직의 데이터를 조회하고, 일반 사용자는 자신의 조직 데이터만 조회합니다.
  * @returns 대시보드 통계 데이터
  */
 export async function getDashboardStats() {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    // 일반 사용자는 일반 클라이언트 사용
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
-    // organization_id에 속한 job_posts 조회
-    const { data: jobPosts } = await supabase
+    // 관리자일 경우 모든 job_posts 조회, 일반 사용자는 자신의 organization_id로 필터링
+    let jobPostsQuery = supabase
       .from('job_posts')
-      .select('id')
-      .eq('organization_id', user.organizationId);
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
 
+    const { data: jobPosts } = await jobPostsQuery;
     const jobPostIds = jobPosts?.map(jp => jp.id) || [];
 
     // Total Candidates (jobPostIds가 비어있으면 0 반환)
@@ -32,10 +41,15 @@ export async function getDashboardStats() {
     }
 
     // Active Jobs
-    const { count: activeJobs } = await supabase
+    let activeJobsQuery = supabase
       .from('job_posts')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', user.organizationId);
+      .select('*', { count: 'exact', head: true });
+    
+    if (!isAdmin) {
+      activeJobsQuery = activeJobsQuery.eq('organization_id', user.organizationId);
+    }
+
+    const { count: activeJobs } = await activeJobsQuery;
 
     // Interviews Scheduled
     let interviewsScheduled = 0;
@@ -83,14 +97,21 @@ export async function getDashboardStats() {
 export async function getRecentActivity() {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
-    // organization_id에 속한 job_posts 조회
-    const { data: jobPosts } = await supabase
+    // 관리자일 경우 모든 job_posts 조회, 일반 사용자는 자신의 organization_id로 필터링
+    let jobPostsQuery = supabase
       .from('job_posts')
-      .select('id, title')
-      .eq('organization_id', user.organizationId);
+      .select('id, title');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
 
+    const { data: jobPosts } = await jobPostsQuery;
     const jobPostIds = jobPosts?.map(jp => jp.id) || [];
     if (jobPostIds.length === 0) return [];
 
@@ -141,14 +162,21 @@ export async function getRecentActivity() {
 export async function getTopCandidates(limit: number = 3) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
-    // organization_id에 속한 job_posts 조회
-    const { data: jobPosts } = await supabase
+    // 관리자일 경우 모든 job_posts 조회, 일반 사용자는 자신의 organization_id로 필터링
+    let jobPostsQuery = supabase
       .from('job_posts')
-      .select('id, title')
-      .eq('organization_id', user.organizationId);
+      .select('id, title');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
 
+    const { data: jobPosts } = await jobPostsQuery;
     const jobPostIds = jobPosts?.map(jp => jp.id) || [];
     if (jobPostIds.length === 0) return [];
 

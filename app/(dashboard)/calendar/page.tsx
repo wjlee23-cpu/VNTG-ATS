@@ -1,10 +1,20 @@
-'use client';
+import { getSchedulesByDateRange } from '@/api/queries/schedules';
+import { CalendarClient } from './CalendarClient';
 
-export default function CalendarPage() {
+export default async function CalendarPage() {
+  // 이번 달의 시작과 끝 날짜
+  const now = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+  const schedulesResult = await getSchedulesByDateRange(startDate, endDate);
+  const schedules = schedulesResult.data || [];
+  const error = schedulesResult.error;
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Calendar</h1>
-      <p className="text-gray-600">캘린더 페이지입니다.</p>
-    </div>
+    <CalendarClient 
+      initialSchedules={schedules}
+      error={error}
+    />
   );
 }

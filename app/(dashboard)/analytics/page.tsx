@@ -1,10 +1,28 @@
-'use client';
+import { getDashboardStats } from '@/api/queries/dashboard';
+import { getCandidateStats } from '@/api/queries/candidates';
+import { AnalyticsClient } from './AnalyticsClient';
 
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
+  const statsResult = await getDashboardStats();
+  const candidateStatsResult = await getCandidateStats();
+  
+  const stats = statsResult.data || {
+    totalCandidates: 0,
+    activeJobs: 0,
+    interviewsScheduled: 0,
+    offersMade: 0,
+  };
+  
+  const candidateStats = candidateStatsResult.data || {
+    total: 0,
+    byStatus: {},
+    byStage: {},
+  };
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Analytics</h1>
-      <p className="text-gray-600">분석 대시보드 페이지입니다.</p>
-    </div>
+    <AnalyticsClient 
+      stats={stats}
+      candidateStats={candidateStats}
+    />
   );
 }

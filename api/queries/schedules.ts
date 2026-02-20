@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
@@ -46,13 +46,21 @@ export async function getSchedulesByCandidate(candidateId: string) {
 export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
     // organization_id에 속한 job_posts 조회
-    const { data: jobPosts } = await supabase
+    let jobPostsQuery = supabase
       .from('job_posts')
-      .select('id')
-      .eq('organization_id', user.organizationId);
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+    
+    const { data: jobPosts } = await jobPostsQuery;
 
     if (!jobPosts || jobPosts.length === 0) {
       return [];

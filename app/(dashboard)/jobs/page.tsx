@@ -1,10 +1,15 @@
-'use client';
+import { getJobs } from '@/api/queries/jobs';
+import { JobsClient } from './JobsClient';
 
-export default function JobsPage() {
+export default async function JobsPage() {
+  const jobsResult = await getJobs();
+  const jobs = jobsResult.data || [];
+  const error = jobsResult.error;
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Jobs</h1>
-      <p className="text-gray-600">채용 공고 목록 페이지입니다.</p>
-    </div>
+    <JobsClient 
+      initialJobs={jobs}
+      error={error}
+    />
   );
 }

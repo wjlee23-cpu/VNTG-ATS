@@ -1,10 +1,25 @@
-'use client';
+import { getCurrentUser } from '@/api/utils/auth';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { TeamClient } from './TeamClient';
 
-export default function TeamPage() {
+export default async function TeamPage() {
+  const user = await getCurrentUser();
+  const isAdmin = user.role === 'admin';
+  
+  // 관리자일 경우 Service Role Client를 사용하여 모든 사용자 조회
+  const client = isAdmin ? createServiceClient() : await createClient();
+
+  const { data: users, error } = await client
+    .from('users')
+    .select('*')
+    .eq('organization_id', user.organizationId)
+    .order('created_at', { ascending: false });
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Team</h1>
-      <p className="text-gray-600">팀 관리 페이지입니다.</p>
-    </div>
+    <TeamClient 
+      users={users || []}
+      error={error?.message}
+      isAdmin={isAdmin}
+    />
   );
 }
