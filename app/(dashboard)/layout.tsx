@@ -1,53 +1,50 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient'
-import { ConditionalLayoutWrapper } from '@/components/dashboard/ConditionalLayoutWrapper'
-import { getCandidates } from '@/actions/candidates'
-import { getJobPosts } from '@/actions/jobs'
+'use client';
 
-export default async function DashboardLayout({
+import { useState, useEffect } from 'react';
+import { Sidebar } from '@/components/modern/Sidebar';
+import { TopBar } from '@/components/modern/TopBar';
+import { CommandPalette } from '@/components/modern/CommandPalette';
+
+export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const [commandOpen, setCommandOpen] = useState(false);
 
-  // 개발 모드: 인증 체크 비활성화
-  const isDevelopment = process.env.NODE_ENV === 'development'
-  
-  if (!isDevelopment && !user) {
-    redirect('/login')
-  }
-
-  // 개발 모드에서 user가 없을 때 mock user 사용
-  const displayUser = user || { email: 'dev@example.com' }
-
-  // 상단바를 위한 데이터 가져오기
-  let candidates: any[] = []
-  let jobs: any[] = []
-  
-  try {
-    candidates = await getCandidates()
-    jobs = await getJobPosts()
-  } catch (error) {
-    // 개발 모드: 에러를 조용히 처리
-    if (isDevelopment) {
-      console.warn('Development mode: Error loading data for top nav:', error)
-    }
-  }
+  // Command Palette shortcut (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
-    <ConditionalLayoutWrapper
-      userEmail={displayUser.email}
-      hasUser={!!user}
-      isDevelopment={isDevelopment}
-      candidates={candidates}
-      jobs={jobs}
-    >
-      {children}
-    </ConditionalLayoutWrapper>
-  )
+    <div className="h-screen bg-[#FAFAFA] overflow-hidden">
+      {/* Minimal Icon Sidebar */}
+      <Sidebar />
+
+      {/* Main Content */}
+      <div className="md:ml-16 ml-0 h-full flex flex-col min-w-0 transition-all duration-300">
+        {/* Top Bar */}
+        <TopBar onCommandOpen={() => setCommandOpen(true)} />
+
+        {/* Content Area */}
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
+
+      {/* Command Palette */}
+      <CommandPalette 
+        open={commandOpen} 
+        onClose={() => setCommandOpen(false)}
+      />
+    </div>
+  );
 }
