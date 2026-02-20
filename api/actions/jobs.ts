@@ -25,6 +25,42 @@ export async function createJob(formData: FormData) {
     const title = validateRequired(formData.get('title'), '제목');
     const description = (formData.get('description') as string) || null;
     const processId = validateUUID(validateRequired(formData.get('process_id'), '프로세스 ID'), '프로세스 ID');
+    const jdRequestId = (formData.get('jd_request_id') as string) || null;
+    const stageAssigneesStr = formData.get('stage_assignees') as string;
+    
+    // stage_assignees 파싱
+    let stageAssignees: Record<string, string[]> = {};
+    if (stageAssigneesStr) {
+      try {
+        stageAssignees = JSON.parse(stageAssigneesStr);
+      } catch (error) {
+        throw new Error('전형별 담당자 정보 형식이 올바르지 않습니다.');
+      }
+    }
+
+    // jd_request_id 검증 (있는 경우)
+    if (jdRequestId) {
+      validateUUID(jdRequestId, 'JD 요청 ID');
+      
+      // JD 요청이 승인된 상태인지 확인
+      const { data: jdRequest, error: jdError } = await supabase
+        .from('jd_requests')
+        .select('id, status, organization_id')
+        .eq('id', jdRequestId)
+        .single();
+
+      if (jdError || !jdRequest) {
+        throw new Error('JD 요청을 찾을 수 없습니다.');
+      }
+
+      if (jdRequest.status !== 'approved') {
+        throw new Error('승인된 JD만 사용할 수 있습니다.');
+      }
+
+      if (jdRequest.organization_id !== user.organizationId) {
+        throw new Error('이 JD 요청에 접근할 권한이 없습니다.');
+      }
+    }
 
     // process가 해당 organization에 속하는지 확인
     const { data: process, error: processError } = await supabase
@@ -42,12 +78,20 @@ export async function createJob(formData: FormData) {
     }
 
     // 채용 공고 생성
-    const jobData: JobPostInsert = {
+    const jobData: any = {
       organization_id: user.organizationId,
       title,
       description,
       process_id: processId,
     };
+
+    // jd_request_id와 stage_assignees는 타입 정의에 없을 수 있으므로 동적으로 추가
+    if (jdRequestId) {
+      jobData.jd_request_id = jdRequestId;
+    }
+    if (Object.keys(stageAssignees).length > 0) {
+      jobData.stage_assignees = stageAssignees;
+    }
 
     const { data, error } = await supabase
       .from('job_posts')

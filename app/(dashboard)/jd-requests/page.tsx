@@ -1,7 +1,11 @@
 import { getJDRequests, getJDRequestStats } from '@/api/queries/jd-requests';
+import { getCurrentUser } from '@/api/utils/auth';
 import { JDRequestsClient } from './JDRequestsClient';
 
 export default async function JDRequestsPage() {
+  const user = await getCurrentUser();
+  const isAdmin = user.role === 'admin';
+  
   const requestsResult = await getJDRequests();
   const statsResult = await getJDRequestStats();
   
@@ -27,6 +31,7 @@ export default async function JDRequestsPage() {
       initialRequests={requests}
       stats={stats}
       error={error}
+      isAdmin={isAdmin}
     />
   );
 }

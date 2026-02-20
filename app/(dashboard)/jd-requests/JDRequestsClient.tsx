@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Plus, Briefcase, User, Calendar, Clock, AlertCircle } from 'lucide-react';
+import { FileText, Plus, Briefcase, User, Calendar, Clock, AlertCircle, Check, X } from 'lucide-react';
+import { approveJDRequest, rejectJDRequest } from '@/api/actions/jd-requests';
+import { toast } from 'sonner';
 
 interface JDRequest {
   id: string;
@@ -28,13 +30,15 @@ interface JDRequestsClientProps {
     rejected: number;
   };
   error?: string;
+  isAdmin?: boolean;
 }
 
 type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected';
 
-export function JDRequestsClient({ initialRequests, stats, error }: JDRequestsClientProps) {
+export function JDRequestsClient({ initialRequests, stats, error, isAdmin = false }: JDRequestsClientProps) {
   const router = useRouter();
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('pending');
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
   // 필터링된 요청 목록
   const filteredRequests = filterStatus === 'all'
@@ -87,13 +91,74 @@ export function JDRequestsClient({ initialRequests, stats, error }: JDRequestsCl
     return 'Unknown';
   };
 
+  // JD 요청 승인
+  const handleApprove = async (id: string) => {
+    setProcessingIds(prev => new Set(prev).add(id));
+    try {
+      const result = await approveJDRequest(id);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('JD 요청이 승인되었습니다.');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('JD 요청 승인에 실패했습니다.');
+      console.error(error);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // JD 요청 거부
+  const handleReject = async (id: string) => {
+    setProcessingIds(prev => new Set(prev).add(id));
+    try {
+      const result = await rejectJDRequest(id);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('JD 요청이 거부되었습니다.');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('JD 요청 거부에 실패했습니다.');
+      console.error(error);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="h-full overflow-auto bg-[#FAFAFA]">
       <div className="px-8 py-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">JD Requests</h1>
-          <p className="text-gray-600">Review and approve job description requests from hiring managers</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">JD Requests</h1>
+            <p className="text-gray-600">
+              {isAdmin 
+                ? 'Review and approve job description requests from hiring managers'
+                : 'View your submitted JD requests'}
+            </p>
+          </div>
+          {!isAdmin && (
+            <button
+              onClick={() => router.push('/jd-requests/create')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              새 JD 요청
+            </button>
+          )}
         </div>
 
         {/* Filter Tabs */}
@@ -200,11 +265,31 @@ export function JDRequestsClient({ initialRequests, stats, error }: JDRequestsCl
                     )}
                   </div>
 
-                  <div className="ml-4">
+                  <div className="ml-4 flex flex-col items-end gap-2">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getStatusColor(request.status)}`}>
                       <Clock size={12} />
                       {getStatusText(request.status)}
                     </span>
+                    {isAdmin && request.status === 'pending' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApprove(request.id)}
+                          disabled={processingIds.has(request.id)}
+                          className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                          <Check size={14} />
+                          승인
+                        </button>
+                        <button
+                          onClick={() => handleReject(request.id)}
+                          disabled={processingIds.has(request.id)}
+                          className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                          <X size={14} />
+                          거부
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

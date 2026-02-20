@@ -183,6 +183,45 @@ export async function updateCandidateStatus(
       throw new Error(`상태 변경 실패: ${error.message}`);
     }
 
+    // 전형이 변경된 경우, 해당 전형의 담당자 자동 지정
+    if (stageId) {
+      // 후보자의 job_post 정보 가져오기
+      const { data: jobPost, error: jobPostError } = await supabase
+        .from('job_posts')
+        .select('id, stage_assignees')
+        .eq('id', candidate.job_post_id)
+        .single();
+
+      if (!jobPostError && jobPost && jobPost.stage_assignees) {
+        // stage_assignees는 JSONB 형식: { "stage_id": ["user_id1", "user_id2"], ... }
+        const assignees = jobPost.stage_assignees as Record<string, string[]>;
+        const stageAssignees = assignees[stageId] || [];
+
+        // schedules 테이블에서 해당 후보자의 현재 전형 일정 찾기 또는 생성
+        if (stageAssignees.length > 0) {
+          // 기존 일정이 있는지 확인
+          const { data: existingSchedule } = await supabase
+            .from('schedules')
+            .select('id')
+            .eq('candidate_id', id)
+            .eq('stage_id', stageId)
+            .maybeSingle();
+
+          if (existingSchedule) {
+            // 기존 일정의 interviewer_ids 업데이트
+            await supabase
+              .from('schedules')
+              .update({ interviewer_ids: stageAssignees })
+              .eq('id', existingSchedule.id);
+          } else {
+            // 새 일정 생성 (면접 일정이 필요한 경우)
+            // 실제 면접 일정은 나중에 생성되므로, 여기서는 interviewer_ids만 저장하지 않음
+            // 대신 타임라인에 담당자 정보 기록
+          }
+        }
+      }
+    }
+
     // 타임라인 이벤트 생성
     await supabase.from('timeline_events').insert({
       candidate_id: id,

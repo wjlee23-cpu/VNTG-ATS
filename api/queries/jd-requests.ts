@@ -81,11 +81,42 @@ export async function getJDRequestStats() {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'rejected');
 
-    return {
-      all: all || 0,
-      pending: pending || 0,
-      approved: approved || 0,
-      rejected: rejected || 0,
-    };
+  return {
+    all: all || 0,
+    pending: pending || 0,
+    approved: approved || 0,
+    rejected: rejected || 0,
+  };
+  });
+}
+
+/**
+ * 승인된 JD 요청 목록 조회 (Jobs Create에서 사용)
+ * @returns 승인된 JD 요청 목록
+ */
+export async function getApprovedJDRequests() {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    let query = supabase
+      .from('jd_requests')
+      .select('id, title, description, category')
+      .eq('status', 'approved')
+      .order('submitted_at', { ascending: false });
+
+    if (!isAdmin) {
+      query = query.eq('organization_id', user.organizationId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw new Error(`승인된 JD 요청 조회 실패: ${error.message}`);
+    }
+
+    return data || [];
   });
 }
