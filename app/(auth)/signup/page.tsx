@@ -1,103 +1,141 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
+'use client';
 
-export default async function SignupPage({
-  searchParams,
-}: {
-  searchParams: { email?: string }
-}) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { createClient } from '@/lib/supabase/client';
+import { Zap } from 'lucide-react';
 
-  if (user) {
-    redirect('/')
-  }
+export default function SignupPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createClient();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    if (password !== confirmPassword) {
+      setError('비밀번호가 일치하지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('비밀번호는 최소 6자 이상이어야 합니다.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      router.push('/');
+      router.refresh();
+    } catch (err) {
+      setError('회원가입 중 오류가 발생했습니다.');
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-8 shadow-md">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-            회원가입
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            RecruitOps 계정을 만들어보세요
-          </p>
+    <div className="w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
+        {/* Logo */}
+        <div className="flex items-center justify-center mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center shadow-lg shadow-brand-main/20">
+            <Zap className="text-white" size={24} />
+          </div>
         </div>
-        <SignupForm defaultEmail={searchParams.email} />
+
+        {/* Title */}
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-semibold text-gray-900">회원가입</h1>
+          <p className="text-sm text-gray-500">새 계정을 만들어 시작하세요</p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="email">이메일</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={loading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">비밀번호</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              minLength={6}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">비밀번호 확인</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              disabled={loading}
+              minLength={6}
+            />
+          </div>
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading}
+          >
+            {loading ? '가입 중...' : '회원가입'}
+          </Button>
+        </form>
+
+        {/* Login link */}
+        <div className="text-center text-sm text-gray-500">
+          이미 계정이 있으신가요?{' '}
+          <a href="/login" className="text-brand-main hover:text-brand-dark font-medium">
+            로그인
+          </a>
+        </div>
       </div>
     </div>
-  )
-}
-
-function SignupForm({ defaultEmail }: { defaultEmail?: string }) {
-  return (
-    <form action="/api/auth/signup" method="post" className="mt-8 space-y-4">
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-          이메일
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          defaultValue={defaultEmail}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-        />
-      </div>
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-          비밀번호
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          minLength={6}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-        />
-      </div>
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-          이름
-        </label>
-        <input
-          id="name"
-          name="name"
-          type="text"
-          required
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-        />
-      </div>
-      <div>
-        <label htmlFor="organization" className="block text-sm font-medium text-gray-700">
-          조직명
-        </label>
-        <input
-          id="organization"
-          name="organization"
-          type="text"
-          required
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-        />
-      </div>
-      <button
-        type="submit"
-        className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-      >
-        회원가입
-      </button>
-      <p className="text-center text-sm text-gray-600">
-        이미 계정이 있으신가요?{' '}
-        <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
-          로그인
-        </Link>
-      </p>
-    </form>
-  )
+  );
 }
