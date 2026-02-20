@@ -1,7 +1,10 @@
 'use client';
 
-import { TrendingUp, Users, Briefcase, CheckCircle2, Clock, Sparkles, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, Users, Briefcase, CheckCircle2, Clock, Sparkles, ArrowUpRight, ArrowDownRight, Database } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { getUserProfile } from '@/api/queries/auth';
+import { seedDummyData } from '@/api/actions/seed';
 
 interface OverviewClientProps {
   stats: {
@@ -29,6 +32,46 @@ interface OverviewClientProps {
 
 export function OverviewClient({ stats, recentActivity, topCandidates }: OverviewClientProps) {
   const router = useRouter();
+  const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer' | null>(null);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  // 사용자 역할 확인
+  useEffect(() => {
+    async function loadUserRole() {
+      try {
+        const result = await getUserProfile();
+        if (result.data) {
+          setUserRole(result.data.role);
+        }
+      } catch (error) {
+        console.error('사용자 역할 로드 실패:', error);
+      }
+    }
+    loadUserRole();
+  }, []);
+
+  // 더미 데이터 생성
+  const handleSeedData = async () => {
+    if (!confirm('더미 데이터를 생성하시겠습니까? (조직, 프로세스, 채용 공고 8개, 후보자 30명, 면접 일정 15개)')) {
+      return;
+    }
+
+    setIsSeeding(true);
+    try {
+      const result = await seedDummyData();
+      if (result.data) {
+        alert(`더미 데이터 생성 완료!\n- 채용 공고: ${result.data.jobPosts}개\n- 후보자: ${result.data.candidates}명\n- 면접 일정: ${result.data.schedules}개`);
+        router.refresh();
+      } else if (result.error) {
+        alert(`더미 데이터 생성 실패: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('더미 데이터 생성 중 오류:', error);
+      alert('더미 데이터 생성 중 오류가 발생했습니다.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   const statsData = [
     {
@@ -118,12 +161,24 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
               <p className="text-gray-600 mb-6">
                 더미 데이터를 생성하여 대시보드를 테스트해보세요.
               </p>
-              <button
-                onClick={() => router.push('/jobs/create')}
-                className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors"
-              >
-                첫 채용 공고 만들기
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                {userRole === 'admin' && (
+                  <button
+                    onClick={handleSeedData}
+                    disabled={isSeeding}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl font-medium hover:from-purple-700 hover:to-purple-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <Database size={18} />
+                    {isSeeding ? '생성 중...' : '더미 데이터 생성'}
+                  </button>
+                )}
+                <button
+                  onClick={() => router.push('/jobs/create')}
+                  className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors"
+                >
+                  첫 채용 공고 만들기
+                </button>
+              </div>
             </div>
           </div>
         ) : (

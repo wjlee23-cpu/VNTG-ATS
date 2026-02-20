@@ -1,10 +1,20 @@
-'use client';
+import { getCandidates, getCandidatesByStage } from '@/api/queries/candidates';
+import { CandidatesClient } from './CandidatesClient';
 
-export default function CandidatesPage() {
+export default async function CandidatesPage() {
+  const candidatesResult = await getCandidates();
+  const candidates = candidatesResult.data || [];
+  const error = candidatesResult.error;
+
+  // 단계별 후보자 수 조회
+  const stageCountsResult = await getCandidatesByStage();
+  const stageCounts = stageCountsResult.data || {};
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Candidates</h1>
-      <p className="text-gray-600">후보자 목록 페이지입니다.</p>
-    </div>
+    <CandidatesClient 
+      initialCandidates={candidates}
+      stageCounts={stageCounts}
+      error={error}
+    />
   );
 }

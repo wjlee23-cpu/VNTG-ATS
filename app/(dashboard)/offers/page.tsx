@@ -1,10 +1,17 @@
-'use client';
+import { getCandidates } from '@/api/queries/candidates';
+import { OffersClient } from './OffersClient';
 
-export default function OffersPage() {
+export default async function OffersPage() {
+  const candidatesResult = await getCandidates();
+  const candidates = candidatesResult.data || [];
+  
+  // status가 'confirmed'인 후보자만 필터링 (오퍼를 받은 후보자)
+  const offers = candidates.filter(c => c.status === 'confirmed');
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Offers</h1>
-      <p className="text-gray-600">오퍼 관리 페이지입니다.</p>
-    </div>
+    <OffersClient 
+      offers={offers}
+      error={candidatesResult.error}
+    />
   );
 }

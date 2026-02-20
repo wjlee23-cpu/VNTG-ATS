@@ -83,3 +83,19 @@ export async function ensureUserExists() {
 
   return { success: true, user: newUser };
 }
+
+/**
+ * 로그아웃 처리
+ * @returns 성공 여부
+ */
+export async function signOut() {
+  const supabase = await createClient();
+  
+  const { error } = await supabase.auth.signOut();
+  
+  if (error) {
+    return { error: error.message };
+  }
+  
+  return { success: true };
+}
