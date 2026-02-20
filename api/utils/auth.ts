@@ -289,7 +289,9 @@ export async function verifyCandidateAccess(candidateId: string) {
     throw new Error('후보자를 찾을 수 없습니다.');
   }
 
-  const jobPost = candidate.job_posts as any;
+  // job_posts는 Supabase의 관계 쿼리 결과이므로 타입 단언 필요
+  // 하지만 organization_id만 확인하면 되므로 안전하게 처리
+  const jobPost = candidate.job_posts as { organization_id: string } | null | undefined;
   // 관리자는 모든 candidate에 접근 가능
   if (!isAdmin && jobPost?.organization_id !== user.organizationId) {
     throw new Error('이 후보자에 접근할 권한이 없습니다.');

@@ -15,6 +15,11 @@ export default async function TeamPage() {
     .eq('organization_id', user.organizationId)
     .order('created_at', { ascending: false });
 
+  // 에러가 발생한 경우 콘솔에 로그 출력 (개발 환경)
+  if (error) {
+    console.error('팀원 조회 실패:', error.message);
+  }
+
   return (
     <TeamClient 
       users={users || []}

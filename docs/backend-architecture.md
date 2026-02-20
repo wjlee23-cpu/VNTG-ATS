@@ -15,7 +15,8 @@
 ### 2. 타입 안전성 (Type Safety)
 - TypeScript를 활용한 엄격한 타입 체크
 - Supabase에서 생성된 타입을 재사용
-- `any` 타입 사용 최소화
+- `any` 타입 사용 최소화 (필요시 명시적 타입 단언 사용)
+- 모든 Server Actions/Queries는 `{ data?: T; error?: string }` 형식으로 반환
 
 ### 3. 보안 (Security)
 - 모든 데이터 접근은 organization_id 기반으로 필터링
@@ -23,9 +24,11 @@
 - 인증되지 않은 요청은 즉시 차단
 
 ### 4. 에러 처리 (Error Handling)
-- 일관된 에러 응답 형식
+- 일관된 에러 응답 형식: `{ data?: T; error?: string }`
 - 사용자 친화적인 에러 메시지
-- 모든 Server Actions는 `withErrorHandling` 래퍼 사용
+- 모든 Server Actions와 Queries는 `withErrorHandling` 래퍼 사용
+- Client Components에서 Server Actions 호출 시 `result.error` 체크 후 toast 메시지 표시
+- Server Components에서 Query 결과의 `error` 필드 체크 및 로깅
 
 ## 폴더 구조
 
@@ -199,6 +202,7 @@ export async function getResources() {
 
 ## 보안 체크리스트
 
+### Server Actions & Queries
 모든 Server Action과 Query는 다음을 확인해야 합니다:
 
 - [ ] `getCurrentUser()`를 호출하여 인증 확인
@@ -208,26 +212,60 @@ export async function getResources() {
 - [ ] 에러 발생 시 사용자 친화적인 메시지 반환
 - [ ] 데이터 변경 후 `revalidatePath` 호출
 
+### Client Components
+Client Components에서 Server Actions를 호출할 때는 다음을 확인해야 합니다:
+
+- [ ] `result.error` 체크 후 toast 메시지 표시
+- [ ] 성공 시 `router.refresh()` 호출
+- [ ] 로딩 상태 관리 (`isLoading` state)
+- [ ] try-catch로 예외 처리
+
+### Server Components
+Server Components에서 Queries를 호출할 때는 다음을 확인해야 합니다:
+
+- [ ] Query 결과의 `error` 필드 체크
+- [ ] 에러 발생 시 기본값 설정 (`result.data || []`)
+- [ ] 개발 환경에서 에러 로깅 (`console.error`)
+
 ## 데이터 흐름
 
 ### 1. 조회 흐름 (Read)
 
 ```
-[Page Component]
+[Server Component (page.tsx)]
   ↓
 [Query Function] (api/queries/*.ts)
+  ↓
+[withErrorHandling] (에러 처리)
   ↓
 [getCurrentUser()] (인증 확인)
   ↓
 [Supabase Query] (organization_id 필터링)
   ↓
-[Return Data]
+[Return { data?, error? }]
+  ↓
+[Client Component] (데이터 표시)
+```
+
+**구현 예시:**
+```typescript
+// app/(dashboard)/page.tsx (Server Component)
+export default async function Page() {
+  const result = await getDashboardStats();
+  const stats = result.data || { /* 기본값 */ };
+  
+  if (result.error) {
+    console.error('조회 실패:', result.error);
+  }
+  
+  return <ClientComponent stats={stats} />;
+}
 ```
 
 ### 2. 변경 흐름 (Write)
 
 ```
-[Form Component]
+[Client Component]
   ↓
 [Server Action] (api/actions/*.ts)
   ↓
@@ -243,7 +281,39 @@ export async function getResources() {
   ↓
 [revalidatePath] (캐시 무효화)
   ↓
-[Return Result]
+[Return { data?, error? }]
+  ↓
+[Toast 메시지 표시] (성공/실패)
+  ↓
+[router.refresh()] (페이지 새로고침)
+```
+
+**구현 예시:**
+```typescript
+// Client Component
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+  
+  try {
+    const formData = new FormData();
+    formData.append('title', title);
+    
+    const result = await createJob(formData);
+    
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success('생성되었습니다.');
+      router.push(`/jobs/${result.data?.id}`);
+      router.refresh();
+    }
+  } catch (error) {
+    toast.error('오류가 발생했습니다.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 ```
 
 ## 테스트 전략
@@ -298,9 +368,13 @@ Supabase에서 생성한 인덱스를 활용:
 
 1. **Actions 추가**: `api/actions/[module].ts` 생성
 2. **Queries 추가**: `api/queries/[module].ts` 생성
-3. **타입 정의**: Supabase 타입 활용
+3. **타입 정의**: Supabase 타입 활용 (불필요한 `any` 타입 사용 지양)
 4. **보안 체크**: `getCurrentUser()` 및 권한 확인 추가
 5. **에러 처리**: `withErrorHandling` 래퍼 사용
+6. **프론트엔드 연동**: 
+   - Server Component에서 Query 호출
+   - Client Component에서 Server Action 호출
+   - 에러 처리 및 toast 메시지 추가
 
 ### 예시: Comments 모듈 추가
 

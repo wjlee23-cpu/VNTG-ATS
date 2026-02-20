@@ -97,9 +97,10 @@ export async function updateCandidate(id: string, formData: FormData) {
 
     // 선택적 필드 추가
     if (status) {
-      const validStatuses = ['pending', 'in_progress', 'confirmed', 'rejected', 'issue'];
-      if (validStatuses.includes(status)) {
-        updateData.status = status as any;
+      const validStatuses: Array<'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue'> = 
+        ['pending', 'in_progress', 'confirmed', 'rejected', 'issue'];
+      if (validStatuses.includes(status as typeof validStatuses[number])) {
+        updateData.status = status as 'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue';
       }
     }
 

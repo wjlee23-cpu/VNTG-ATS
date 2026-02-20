@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUserProfile } from '@/api/queries/auth';
 import { seedDummyData } from '@/api/actions/seed';
+import { toast } from 'sonner';
 
 interface OverviewClientProps {
   stats: {
@@ -60,14 +61,17 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
     try {
       const result = await seedDummyData();
       if (result.data) {
-        alert(`더미 데이터 생성 완료!\n- 채용 공고: ${result.data.jobPosts}개\n- 후보자: ${result.data.candidates}명\n- 면접 일정: ${result.data.schedules}개`);
+        toast.success(
+          `더미 데이터 생성 완료!\n- 채용 공고: ${result.data.jobPosts}개\n- 후보자: ${result.data.candidates}명\n- 면접 일정: ${result.data.schedules}개`,
+          { duration: 5000 }
+        );
         router.refresh();
       } else if (result.error) {
-        alert(`더미 데이터 생성 실패: ${result.error}`);
+        toast.error(`더미 데이터 생성 실패: ${result.error}`);
       }
     } catch (error) {
       console.error('더미 데이터 생성 중 오류:', error);
-      alert('더미 데이터 생성 중 오류가 발생했습니다.');
+      toast.error('더미 데이터 생성 중 오류가 발생했습니다.');
     } finally {
       setIsSeeding(false);
     }
