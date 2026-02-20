@@ -26,7 +26,8 @@ export async function getJobs() {
           id,
           name,
           stages
-        )
+        ),
+        candidates (count)
       `)
       .order('created_at', { ascending: false });
 
@@ -143,6 +144,83 @@ export async function getJobStats() {
     return {
       total: totalJobs || 0,
       jobs,
+    };
+  });
+}
+
+/**
+ * Jobs 페이지용 통계 조회 (피그마 디자인 기반)
+ * @returns Active Jobs, Total Applicants, Avg. Match Rate, Total Views
+ */
+export async function getJobsPageStats() {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // Active Jobs (status가 'active'인 공고 수)
+    let activeJobsQuery = supabase
+      .from('job_posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+    
+    if (!isAdmin) {
+      activeJobsQuery = activeJobsQuery.eq('organization_id', user.organizationId);
+    }
+
+    const { count: activeJobs } = await activeJobsQuery;
+
+    // Total Applicants (모든 후보자 수)
+    let jobPostsQuery = supabase
+      .from('job_posts')
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+
+    const { data: jobPosts } = await jobPostsQuery;
+    const jobPostIds = jobPosts?.map(jp => jp.id) || [];
+
+    let totalApplicants = 0;
+    let totalViews = 0;
+    let totalMatchRate = 0;
+    let jobsWithMatchRate = 0;
+
+    if (jobPostIds.length > 0) {
+      const { count } = await supabase
+        .from('candidates')
+        .select('*', { count: 'exact', head: true })
+        .in('job_post_id', jobPostIds);
+      totalApplicants = count || 0;
+
+      // Total Views 및 Avg. Match Rate 계산
+      const { data: jobs } = await supabase
+        .from('job_posts')
+        .select('views, match_rate')
+        .in('id', jobPostIds);
+
+      jobs?.forEach(job => {
+        if (job.views) {
+          totalViews += job.views;
+        }
+        if (job.match_rate !== null && job.match_rate !== undefined) {
+          totalMatchRate += Number(job.match_rate);
+          jobsWithMatchRate += 1;
+        }
+      });
+    }
+
+    const avgMatchRate = jobsWithMatchRate > 0 
+      ? Math.round((totalMatchRate / jobsWithMatchRate) * 100) / 100 
+      : 0;
+
+    return {
+      activeJobs: activeJobs || 0,
+      totalApplicants: totalApplicants,
+      avgMatchRate: avgMatchRate,
+      totalViews: totalViews,
     };
   });
 }

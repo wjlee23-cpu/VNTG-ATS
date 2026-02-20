@@ -1,17 +1,24 @@
-import { getCandidates } from '@/api/queries/candidates';
+import { getOffers, getOfferStats } from '@/api/queries/offers';
 import { OffersClient } from './OffersClient';
 
 export default async function OffersPage() {
-  const candidatesResult = await getCandidates();
-  const candidates = candidatesResult.data || [];
+  const offersResult = await getOffers();
+  const statsResult = await getOfferStats();
   
-  // status가 'confirmed'인 후보자만 필터링 (오퍼를 받은 후보자)
-  const offers = candidates.filter(c => c.status === 'confirmed');
+  const offers = offersResult.data || [];
+  const error = offersResult.error;
+  const stats = statsResult.data || {
+    accepted: 0,
+    pending: 0,
+    negotiating: 0,
+    acceptRate: 0,
+  };
 
   return (
     <OffersClient 
       offers={offers}
-      error={candidatesResult.error}
+      stats={stats}
+      error={error}
     />
   );
 }

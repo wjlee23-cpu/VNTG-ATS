@@ -1,28 +1,26 @@
-import { getDashboardStats } from '@/api/queries/dashboard';
-import { getCandidateStats } from '@/api/queries/candidates';
+import { getAnalyticsStats, getApplicationTrends, getHiringFunnel } from '@/api/queries/analytics';
 import { AnalyticsClient } from './AnalyticsClient';
 
 export default async function AnalyticsPage() {
-  const statsResult = await getDashboardStats();
-  const candidateStatsResult = await getCandidateStats();
+  const statsResult = await getAnalyticsStats();
+  const trendsResult = await getApplicationTrends(30);
+  const funnelResult = await getHiringFunnel();
   
   const stats = statsResult.data || {
-    totalCandidates: 0,
-    activeJobs: 0,
-    interviewsScheduled: 0,
-    offersMade: 0,
+    totalApplications: { value: 0, change: 0, isPositive: true },
+    avgTimeToHire: { value: 0, change: 0, isPositive: true },
+    offerAcceptRate: { value: 0, change: 0, isPositive: true },
+    costPerHire: { value: 0, change: 0, isPositive: true },
   };
   
-  const candidateStats = candidateStatsResult.data || {
-    total: 0,
-    byStatus: {},
-    byStage: {},
-  };
+  const trends = trendsResult.data || [];
+  const funnel = funnelResult.data || [];
 
   return (
     <AnalyticsClient 
       stats={stats}
-      candidateStats={candidateStats}
+      trends={trends}
+      funnel={funnel}
     />
   );
 }
