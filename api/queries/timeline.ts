@@ -23,7 +23,8 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
         *,
         created_by_user:users!created_by (
           id,
-          email
+          email,
+          name
         )
       `)
       .eq('candidate_id', candidateId)
