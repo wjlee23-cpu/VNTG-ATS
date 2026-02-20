@@ -43,11 +43,14 @@ BEGIN
     org_id,
     '기본 채용 프로세스',
     '[
-      {"id": "stage-1", "name": "서류 전형", "order": 1, "interviewers": []},
-      {"id": "stage-2", "name": "1차 면접", "order": 2, "interviewers": []},
-      {"id": "stage-3", "name": "2차 면접", "order": 3, "interviewers": []},
-      {"id": "stage-4", "name": "최종 면접", "order": 4, "interviewers": []},
-      {"id": "stage-5", "name": "최종 합격", "order": 5, "interviewers": []}
+      {"id": "stage-1", "name": "New Application", "order": 1, "interviewers": []},
+      {"id": "stage-2", "name": "HR Screening", "order": 2, "interviewers": []},
+      {"id": "stage-3", "name": "Application Review", "order": 3, "interviewers": []},
+      {"id": "stage-4", "name": "Competency Assessment", "order": 4, "interviewers": []},
+      {"id": "stage-5", "name": "Technical Test", "order": 5, "interviewers": []},
+      {"id": "stage-6", "name": "1st Interview", "order": 6, "interviewers": []},
+      {"id": "stage-7", "name": "Reference Check", "order": 7, "interviewers": []},
+      {"id": "stage-8", "name": "2nd Interview", "order": 8, "interviewers": []}
     ]'::jsonb
   )
   ON CONFLICT DO NOTHING
@@ -204,12 +207,15 @@ BEGIN
         WHEN 3 THEN 'rejected'
         ELSE 'issue'
       END,
-      CASE (i - 1) / 6
+      CASE (i - 1) / 4
         WHEN 0 THEN 'stage-1'
         WHEN 1 THEN 'stage-2'
         WHEN 2 THEN 'stage-3'
         WHEN 3 THEN 'stage-4'
-        ELSE 'stage-5'
+        WHEN 4 THEN 'stage-5'
+        WHEN 5 THEN 'stage-6'
+        WHEN 6 THEN 'stage-7'
+        ELSE 'stage-8'
       END,
       gen_random_uuid(),
       jsonb_build_object(
@@ -239,10 +245,11 @@ BEGIN
     )
     VALUES (
       candidate_ids[((i - 1) % 30) + 1],
-      CASE (i - 1) % 3
+      CASE (i - 1) % 4
         WHEN 0 THEN 'stage-2'
         WHEN 1 THEN 'stage-3'
-        ELSE 'stage-4'
+        WHEN 2 THEN 'stage-4'
+        ELSE 'stage-6'
       END,
       NOW() + (INTERVAL '1 day' * ((RANDOM() * 14)::INT + 1)) + (INTERVAL '1 hour' * (10 + (RANDOM() * 6)::INT)),
       CASE (i - 1) % 3

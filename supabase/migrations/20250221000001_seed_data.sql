@@ -22,11 +22,14 @@ SELECT
   (SELECT id FROM organizations WHERE name = 'VNTG Tech' LIMIT 1),
   '기본 채용 프로세스',
   '[
-    {"id": "stage-1", "name": "서류 전형", "order": 1, "interviewers": []},
-    {"id": "stage-2", "name": "1차 면접", "order": 2, "interviewers": []},
-    {"id": "stage-3", "name": "2차 면접", "order": 3, "interviewers": []},
-    {"id": "stage-4", "name": "최종 면접", "order": 4, "interviewers": []},
-    {"id": "stage-5", "name": "최종 합격", "order": 5, "interviewers": []}
+    {"id": "stage-1", "name": "New Application", "order": 1, "interviewers": []},
+    {"id": "stage-2", "name": "HR Screening", "order": 2, "interviewers": []},
+    {"id": "stage-3", "name": "Application Review", "order": 3, "interviewers": []},
+    {"id": "stage-4", "name": "Competency Assessment", "order": 4, "interviewers": []},
+    {"id": "stage-5", "name": "Technical Test", "order": 5, "interviewers": []},
+    {"id": "stage-6", "name": "1st Interview", "order": 6, "interviewers": []},
+    {"id": "stage-7", "name": "Reference Check", "order": 7, "interviewers": []},
+    {"id": "stage-8", "name": "2nd Interview", "order": 8, "interviewers": []}
   ]'::jsonb
 ON CONFLICT DO NOTHING;
 

@@ -90,13 +90,28 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
     return texts[status as keyof typeof texts] || status;
   };
 
-  // 현재 단계 찾기 (process의 stage 정보)
-  const currentStage = candidate.job_posts?.processes?.stages?.find(
-    stage => stage.id === candidate.current_stage_id
-  );
+  // 고정된 9단계 정의 (데이터베이스 stages와 무관하게 항상 동일하게 표시)
+  const ALL_STAGES = [
+    { id: 'stage-1', name: 'New Application' },
+    { id: 'stage-2', name: 'HR Screening' },
+    { id: 'stage-3', name: 'Application Review' },
+    { id: 'stage-4', name: 'Competency Assessment' },
+    { id: 'stage-5', name: 'Technical Test' },
+    { id: 'stage-6', name: '1st Interview' },
+    { id: 'stage-7', name: 'Reference Check' },
+    { id: 'stage-8', name: '2nd Interview' },
+  ];
 
-  // 매핑된 단계 이름 가져오기 (사용자가 정의한 단계 이름)
-  const mappedStageName = getStageNameByStageId(candidate.current_stage_id) || 'New Application';
+  // 현재 단계 이름 가져오기
+  // 오퍼 상태(status === 'confirmed')인 경우 "Offer"로 표시 (2nd Interview 이후 단계)
+  const mappedStageName = candidate.status === 'confirmed' 
+    ? 'Offer' 
+    : (getStageNameByStageId(candidate.current_stage_id) || 'New Application');
+  
+  // 현재 단계의 인덱스 찾기 (오퍼가 아닌 경우)
+  const currentStageIndex = candidate.status === 'confirmed'
+    ? ALL_STAGES.length // 오퍼는 마지막 단계
+    : ALL_STAGES.findIndex(stage => stage.id === candidate.current_stage_id);
 
   return (
     <div className="h-full overflow-auto">
@@ -203,52 +218,64 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
               </div>
             )}
 
-            {/* Current Stage */}
-            {(currentStage || candidate.current_stage_id) && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">현재 단계</h2>
-                <div className="space-y-2">
-                  <p className="text-xl font-semibold text-gray-900">{mappedStageName}</p>
-                  {candidate.job_posts?.processes?.stages && (
-                    <div className="flex items-center gap-2 mt-4">
-                      {candidate.job_posts.processes.stages.map((stage, index) => {
-                        // 각 stage의 매핑된 이름 가져오기
-                        const stageMappedName = getStageNameByStageId(stage.id) || stage.name;
-                        const currentStageIndex = candidate.job_posts!.processes!.stages!.findIndex(s => s.id === candidate.current_stage_id);
-                        const isCurrentStage = stage.id === candidate.current_stage_id;
-                        const isPastStage = currentStageIndex >= 0 && index < currentStageIndex;
-                        
-                        return (
-                          <div key={stage.id} className="flex items-center">
-                            <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                                isCurrentStage
-                                  ? 'bg-brand-main text-white'
-                                  : isPastStage
-                                  ? 'bg-green-500 text-white'
-                                  : 'bg-gray-200 text-gray-600'
-                              }`}
-                              title={stageMappedName}
-                            >
-                              {index + 1}
-                            </div>
-                            {index < candidate.job_posts!.processes!.stages!.length - 1 && (
-                              <div
-                                className={`h-1 w-12 ${
-                                  isPastStage || isCurrentStage
-                                    ? 'bg-green-500'
-                                    : 'bg-gray-200'
-                                }`}
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+            {/* Current Stage - 항상 9단계 표시 */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">현재 단계</h2>
+              <div className="space-y-2">
+                <p className="text-xl font-semibold text-gray-900">{mappedStageName}</p>
+                <div className="flex items-center gap-2 mt-4">
+                  {/* 8단계 표시 (stage-1 ~ stage-8) */}
+                  {ALL_STAGES.map((stage, index) => {
+                    // 오퍼 상태인 경우 모든 단계를 완료된 것으로 표시
+                    const isPastStage = candidate.status === 'confirmed' 
+                      ? true 
+                      : (currentStageIndex >= 0 && index < currentStageIndex);
+                    // 오퍼가 아닌 경우 현재 단계 표시
+                    const isCurrentStage = candidate.status !== 'confirmed' && index === currentStageIndex;
+                    
+                    return (
+                      <div key={stage.id} className="flex items-center">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                            isCurrentStage
+                              ? 'bg-brand-main text-white'
+                              : isPastStage
+                              ? 'bg-green-500 text-white'
+                              : 'bg-gray-200 text-gray-600'
+                          }`}
+                          title={stage.name}
+                        >
+                          {index + 1}
+                        </div>
+                        {index < ALL_STAGES.length - 1 && (
+                          <div
+                            className={`h-1 w-12 ${
+                              isPastStage || isCurrentStage
+                                ? 'bg-green-500'
+                                : 'bg-gray-200'
+                            }`}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* 9단계: Offer (오퍼 상태인 경우에만 활성화) */}
+                  <div className={`h-1 w-12 ${
+                    candidate.status === 'confirmed' ? 'bg-green-500' : 'bg-gray-200'
+                  }`} />
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                      candidate.status === 'confirmed'
+                        ? 'bg-brand-main text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}
+                    title="Offer"
+                  >
+                    9
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Timeline Events */}
             <div className="bg-white rounded-2xl border border-gray-200 p-6">
