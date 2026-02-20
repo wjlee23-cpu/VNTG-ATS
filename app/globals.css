@@ -1,50 +1,133 @@
 @import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
 
 :root {
   --font-size: 16px;
   --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
+  --foreground: #020817; /* Dark Navy/Black for text */
   --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  --accent-foreground: #030213;
-  --destructive: #d4183d;
+  --card-foreground: #020817;
+  --popover: #ffffff;
+  --popover-foreground: #020817;
+  
+  /* Brand Colors */
+  --primary: #5287FF; /* Main Brand Color */
+  --primary-foreground: #ffffff;
+  
+  --secondary: #0248FF; /* Deep Blue Brand Color */
+  --secondary-foreground: #ffffff;
+  
+  --muted: #F1F5F9; /* Slate 100 approx */
+  --muted-foreground: #64748B; /* Slate 500 approx */
+  
+  --accent: #FFBA22; /* Brand Accent Yellow */
+  --accent-foreground: #020817;
+  
+  --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
-  --input: transparent;
-  --input-background: #f3f3f5;
-  --switch-background: #cbced4;
+  
+  /* Custom Grays from User */
+  --gray-100: #EEEEEE;
+  --gray-200: #E0E1E3;
+  --gray-300: #D1D5D8;
+  --gray-400: #C3C8CD;
+  --gray-500: #A6ADB7;
+  
+  --border: var(--gray-300);
+  --input: var(--gray-300);
+  --input-background: var(--gray-100);
+  --switch-background: var(--gray-400);
+  
+  --ring: #5287FF;
+  
+  --radius: 0.625rem;
+  
+  --chart-1: #5287FF;
+  --chart-2: #0248FF;
+  --chart-3: #FFBA22;
+  --chart-4: #A6ADB7;
+  --chart-5: #C3C8CD;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #020817;
+  --sidebar-primary: #5287FF;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #F8FAFC;
+  --sidebar-accent-foreground: #020817;
+  --sidebar-border: #E2E8F0;
+  --sidebar-ring: #5287FF;
+  
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
   
-  /* VNTG Color Palette */
+  /* Modern VNTG Design Tokens */
   --vntg-blue: #0248FF;
+  --vntg-blue-light: #5287FF;
   --vntg-deep-blue: #08102B;
-  --vntg-light-blue: #5287FF;
-  --vntg-dimmed: #2D2D2D;
+  --vntg-gradient: linear-gradient(135deg, #0248FF 0%, #5287FF 100%);
+  --vntg-gradient-subtle: linear-gradient(135deg, rgba(2, 72, 255, 0.05) 0%, rgba(82, 135, 255, 0.05) 100%);
+  
+  /* Shadows & Elevation */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+  --shadow-blue: 0 8px 24px rgba(2, 72, 255, 0.15);
+  --shadow-blue-lg: 0 12px 32px rgba(2, 72, 255, 0.2);
+  
+  /* Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-blur: blur(10px);
+  
+  /* Brand colors for Tailwind */
+  --brand-main: #5287FF;
+  --brand-dark: #0248FF;
+  --brand-warning: #FFBA22;
+}
+
+.dark {
+  --background: #020817;
+  --foreground: #F8FAFC;
+  --card: #020817;
+  --card-foreground: #F8FAFC;
+  --popover: #020817;
+  --popover-foreground: #F8FAFC;
+  
+  --primary: #5287FF;
+  --primary-foreground: #ffffff;
+  
+  --secondary: #0248FF;
+  --secondary-foreground: #ffffff;
+  
+  --muted: #1E293B;
+  --muted-foreground: #94A3B8;
+  
+  --accent: #FFBA22;
+  --accent-foreground: #020817;
+  
+  --destructive: #991b1b;
+  --destructive-foreground: #ffffff;
+  
+  --border: #1E293B;
+  --input: #1E293B;
+  --ring: #5287FF;
+  
+  --chart-1: #5287FF;
+  --chart-2: #0248FF;
+  --chart-3: #FFBA22;
+  --chart-4: #64748B;
+  --chart-5: #94A3B8;
+  
+  --sidebar: #020817;
+  --sidebar-foreground: #F8FAFC;
+  --sidebar-primary: #5287FF;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1E293B;
+  --sidebar-accent-foreground: #F8FAFC;
+  --sidebar-border: #1E293B;
+  --sidebar-ring: #5287FF;
 }
 
 @theme inline {
@@ -86,14 +169,11 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: var(--font-roboto), var(--font-noto-sans-kr), sans-serif;
-  --font-mono: var(--font-geist-mono);
   
-  /* VNTG Colors */
-  --color-vntg-blue: var(--vntg-blue);
-  --color-vntg-deep-blue: var(--vntg-deep-blue);
-  --color-vntg-light-blue: var(--vntg-light-blue);
-  --color-vntg-dimmed: var(--vntg-dimmed);
+  /* Brand colors as utilities */
+  --color-brand-main: var(--brand-main);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-warning: var(--brand-warning);
 }
 
 @layer base {
@@ -105,7 +185,7 @@
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-family: var(--font-roboto), var(--font-noto-sans-kr), sans-serif;
+    font-family: 'Roboto', 'Noto Sans KR', sans-serif;
   }
 }
 
@@ -160,4 +240,130 @@
 
 html {
   font-size: var(--font-size);
+}
+
+/* Modern Utility Classes */
+@layer utilities {
+  .card-modern {
+    background: white;
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .card-modern:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+  
+  .card-elevated {
+    box-shadow: var(--shadow-xl);
+  }
+  
+  .gradient-blue {
+    background: var(--vntg-gradient);
+  }
+  
+  .gradient-blue-subtle {
+    background: var(--vntg-gradient-subtle);
+  }
+  
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  
+  .shadow-blue {
+    box-shadow: var(--shadow-blue);
+  }
+  
+  .shadow-blue-lg {
+    box-shadow: var(--shadow-blue-lg);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .animate-slide-in {
+    animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
 }
