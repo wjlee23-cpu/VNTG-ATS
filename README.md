@@ -50,13 +50,18 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ### 2. 데이터베이스 마이그레이션
 
-Supabase 대시보드에서 `supabase/migrations/001_initial_schema.sql` 파일의 내용을 실행하세요.
+Supabase 대시보드에서 다음 마이그레이션 파일들을 순서대로 실행하세요:
+
+1. `supabase/migrations/001_initial_schema.sql` - 기본 스키마
+2. `supabase/migrations/20250221000003_add_figma_fields.sql` - JD Requests 및 추가 기능
 
 또는 Supabase CLI를 사용하는 경우:
 
 ```bash
 supabase db push
 ```
+
+**중요**: `jd_requests` 테이블이 없다는 에러가 발생하는 경우, `scripts/apply-jd-requests-migration.sql` 파일을 Supabase 대시보드의 SQL Editor에서 실행하세요. 자세한 내용은 [JD Requests 마이그레이션 가이드](docs/jd-requests-migration-guide.md)를 참조하세요.
 
 ### 3. 의존성 설치
 

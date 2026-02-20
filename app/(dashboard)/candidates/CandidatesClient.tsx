@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal } from 'lucide-react';
 import { RECRUITMENT_STAGES, getStageNameByStageId } from '@/constants/stages';
+import { getCandidateById } from '@/api/queries/candidates';
+import { getSchedulesByCandidate } from '@/api/queries/schedules';
+import { getTimelineEvents } from '@/api/queries/timeline';
+import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
 
 interface Candidate {
   id: string;
@@ -33,8 +37,65 @@ interface CandidatesClientProps {
 
 export function CandidatesClient({ initialCandidates, stageCounts = {}, error }: CandidatesClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStage, setSelectedStage] = useState<string>('all');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [candidateDetail, setCandidateDetail] = useState<any>(null);
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [isDetailVisible, setIsDetailVisible] = useState(false);
+
+  // URL query parameter에서 selected 값 읽기
+  useEffect(() => {
+    const selected = searchParams.get('selected');
+    setSelectedCandidateId(selected);
+    
+    // selected가 있으면 해당 candidate 데이터 로드
+    if (selected) {
+      setIsDetailVisible(false); // 애니메이션을 위해 먼저 숨김
+      setTimeout(() => {
+        setIsDetailVisible(true); // 다음 프레임에서 표시
+      }, 10);
+      loadCandidateDetail(selected);
+    } else {
+      // selected가 없으면 detail 데이터 초기화
+      setIsDetailVisible(false);
+      setCandidateDetail(null);
+      setSchedules([]);
+      setTimelineEvents([]);
+    }
+  }, [searchParams]);
+
+  // Candidate detail 데이터 로드
+  const loadCandidateDetail = async (candidateId: string) => {
+    setIsLoadingDetail(true);
+    setDetailError(null);
+    
+    try {
+      const [candidateResult, schedulesResult, timelineResult] = await Promise.all([
+        getCandidateById(candidateId),
+        getSchedulesByCandidate(candidateId),
+        getTimelineEvents(candidateId),
+      ]);
+
+      if (candidateResult.error || !candidateResult.data) {
+        setDetailError(candidateResult.error || '후보자를 찾을 수 없습니다.');
+        setCandidateDetail(null);
+      } else {
+        setCandidateDetail(candidateResult.data);
+        setSchedules(schedulesResult.data || []);
+        setTimelineEvents(timelineResult.data || []);
+      }
+    } catch (err) {
+      setDetailError('후보자 정보를 불러오는 중 오류가 발생했습니다.');
+      setCandidateDetail(null);
+    } finally {
+      setIsLoadingDetail(false);
+    }
+  };
 
   // 단계별 필터링 함수
   // current_stage_id는 process의 stage ID("stage-1", "stage-2" 등)를 저장하므로
@@ -126,9 +187,21 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   // 전체 활성 후보자 수 계산 (필터링 전)
   const activeCandidatesCount = initialCandidates.length;
 
+  // Candidate 클릭 핸들러
+  const handleCandidateClick = (candidateId: string) => {
+    router.push(`/candidates?selected=${candidateId}`);
+  };
+
+  // Detail 패널 닫기
+  const handleCloseDetail = () => {
+    router.push('/candidates');
+  };
+
   return (
-    <div className="h-full overflow-auto">
-      <div className="px-8 py-6">
+    <div className="h-full flex overflow-hidden">
+      {/* 왼쪽: Candidates 리스트 */}
+      <div className={`flex-1 overflow-auto transition-all duration-300 ${selectedCandidateId ? 'md:w-1/2' : 'w-full'} min-w-0`}>
+        <div className="px-8 py-6">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Candidates</h1>
@@ -235,8 +308,10 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                     return (
                       <tr
                         key={candidate.id}
-                        onClick={() => router.push(`/candidates/${candidate.id}`)}
-                        className="hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => handleCandidateClick(candidate.id)}
+                        className={`hover:bg-gray-50 cursor-pointer transition-colors ${
+                          selectedCandidateId === candidate.id ? 'bg-blue-50' : ''
+                        }`}
                       >
                         {/* CANDIDATE */}
                         <td className="px-6 py-4">
@@ -327,7 +402,62 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             총 {filteredCandidates.length}명의 후보자
           </div>
         )}
+        </div>
       </div>
+
+      {/* 오른쪽: Candidate Detail 패널 (모바일에서는 전체 화면) */}
+      {selectedCandidateId && (
+        <>
+          {/* 모바일: 오버레이 배경 */}
+          <div 
+            className="fixed inset-0 bg-black/20 z-40 md:hidden transition-opacity duration-300"
+            onClick={handleCloseDetail}
+          />
+          
+          {/* Detail 패널 - 슬라이드 인 애니메이션 */}
+          <div className={`
+            fixed md:relative md:flex-shrink-0
+            top-0 right-0 bottom-0
+            w-full md:w-1/2 lg:w-[480px]
+            bg-white
+            z-50 md:z-auto
+            transform transition-transform duration-300 ease-in-out
+            ${isDetailVisible ? 'translate-x-0' : 'translate-x-full'}
+            overflow-auto
+            border-l border-gray-200
+            shadow-lg md:shadow-none
+          `}>
+            {isLoadingDetail ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">로딩 중...</p>
+                </div>
+              </div>
+            ) : detailError ? (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-center">
+                  <p className="text-red-600 mb-4">{detailError}</p>
+                  <button
+                    onClick={handleCloseDetail}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            ) : candidateDetail ? (
+              <CandidateDetailClient
+                candidate={candidateDetail}
+                schedules={schedules}
+                timelineEvents={timelineEvents}
+                onClose={handleCloseDetail}
+                isSidebar={true}
+              />
+            ) : null}
+          </div>
+        </>
+      )}
     </div>
   );
 }

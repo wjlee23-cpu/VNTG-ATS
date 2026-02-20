@@ -92,12 +92,23 @@ interface CandidateDetailClientProps {
   candidate: Candidate;
   schedules: Schedule[];
   timelineEvents: TimelineEvent[];
+  onClose?: () => void;
+  isSidebar?: boolean;
 }
 
-export function CandidateDetailClient({ candidate, schedules, timelineEvents }: CandidateDetailClientProps) {
+export function CandidateDetailClient({ candidate, schedules, timelineEvents, onClose, isSidebar = false }: CandidateDetailClientProps) {
   const router = useRouter();
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+
+  // 닫기 핸들러
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      router.back();
+    }
+  };
 
   // 타임라인 이벤트 타입별 아이콘 및 색상
   const getTimelineEventIcon = (type: string) => {
@@ -246,22 +257,29 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
   const skills = candidate.parsed_data?.skills || candidate.skills || [];
 
   return (
-    <div className="h-full overflow-auto bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+    <div className={`h-full overflow-auto ${isSidebar ? 'bg-white' : 'bg-gray-50'}`}>
+      <div className={`${isSidebar ? 'px-4 sm:px-6 py-4 sm:py-6' : 'max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6'}`}>
         {/* Header with Close Button */}
         <div className="flex items-start justify-between mb-4 sm:mb-6">
           <div className="flex-1 min-w-0">
             {/* Candidate Overview */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+            <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 truncate">{candidate.name}</h1>
-                  {candidate.job_posts?.title && (
-                    <p className="text-base sm:text-lg text-gray-600 truncate">{candidate.job_posts.title}</p>
-                  )}
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-lg">
+                      {candidate.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{candidate.name}</h1>
+                      {candidate.job_posts?.title && (
+                        <p className="text-sm sm:text-base text-gray-600 truncate">{candidate.job_posts.title}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <button
-                  onClick={() => router.back()}
+                  onClick={handleClose}
                   className="flex-shrink-0 p-2 hover:bg-gray-100 rounded-full transition-colors"
                   aria-label="닫기"
                 >
@@ -272,7 +290,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
                 <Button
                   onClick={() => setIsScheduleModalOpen(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
-                  size="lg"
+                  size={isSidebar ? "default" : "lg"}
                 >
                   <Calendar className="w-4 h-4 mr-2" />
                   Schedule Interview
@@ -281,7 +299,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
                   onClick={() => setIsEmailModalOpen(true)}
                   variant="outline"
                   className="border-gray-300 w-full sm:w-auto"
-                  size="lg"
+                  size={isSidebar ? "default" : "lg"}
                 >
                   <Send className="w-4 h-4 mr-2" />
                   Email
@@ -291,7 +309,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
 
             {/* Match Score */}
             {candidate.parsed_data?.match_score !== undefined && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+              <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wide">Match Score</h2>
                   <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
@@ -310,7 +328,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
             )}
 
             {/* Contact */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+            <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
               <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Contact</h2>
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
@@ -334,7 +352,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
 
             {/* Skills */}
             {skills.length > 0 && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+              <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
                 <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Skills</h2>
                 <div className="flex flex-wrap gap-2">
                   {skills.map((skill, index) => (
@@ -351,7 +369,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
 
             {/* Resume Preview */}
             {candidate.resume_file_url ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+              <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Resume</h2>
                   <a
@@ -421,7 +439,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
               </div>
             ) : (
               // resume_file_url이 없을 때 표시
-              <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+              <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Resume</h2>
                 </div>
@@ -435,7 +453,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents }: 
             )}
 
             {/* Activity Timeline */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+            <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'}`}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 mb-4">
                 <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity Timeline</h2>
                 <button className="text-sm text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap">
