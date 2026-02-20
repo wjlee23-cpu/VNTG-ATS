@@ -145,9 +145,10 @@ export async function updateSchedule(id: string, formData: FormData) {
 
     if (formData.get('status')) {
       const status = formData.get('status') as string;
-      const validStatuses = ['pending', 'confirmed', 'rejected', 'completed'];
-      if (validStatuses.includes(status)) {
-        updateData.status = status as any;
+      const validStatuses: Array<'pending' | 'confirmed' | 'rejected' | 'completed'> = 
+        ['pending', 'confirmed', 'rejected', 'completed'];
+      if (validStatuses.includes(status as typeof validStatuses[number])) {
+        updateData.status = status as 'pending' | 'confirmed' | 'rejected' | 'completed';
       }
     }
 
@@ -179,9 +180,10 @@ export async function updateSchedule(id: string, formData: FormData) {
 
     if (formData.get('candidate_response')) {
       const response = formData.get('candidate_response') as string;
-      const validResponses = ['accepted', 'rejected', 'pending'];
-      if (validResponses.includes(response)) {
-        updateData.candidate_response = response as any;
+      const validResponses: Array<'accepted' | 'rejected' | 'pending'> = 
+        ['accepted', 'rejected', 'pending'];
+      if (validResponses.includes(response as typeof validResponses[number])) {
+        updateData.candidate_response = response as 'accepted' | 'rejected' | 'pending';
       }
     }
 
@@ -291,8 +293,8 @@ export async function respondToSchedule(
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    const candidate = (schedule as any).candidates;
-    if (candidate.token !== token) {
+    const candidate = schedule.candidates as { token: string } | null | undefined;
+    if (!candidate || candidate.token !== token) {
       throw new Error('인증 토큰이 올바르지 않습니다.');
     }
 

@@ -138,7 +138,7 @@ export async function getRecentActivity() {
     const candidateMap = new Map(candidates?.map(c => [c.id, c]) || []);
     const jobPostMap = new Map(jobPosts?.map(jp => [jp.id, jp]) || []);
 
-    return timelineEvents.map((event: any) => {
+    return timelineEvents.map((event) => {
       const candidate = candidateMap.get(event.candidate_id);
       const jobPost = candidate ? jobPostMap.get(candidate.job_post_id) : null;
       
@@ -193,15 +193,16 @@ export async function getTopCandidates(limit: number = 3) {
     if (!candidates) return [];
 
     // 매치 스코어 기준으로 정렬
-    const candidatesWithScore = candidates
-      .map((candidate: any) => ({
+    type CandidateWithScore = typeof candidates[0] & { matchScore: number };
+    const candidatesWithScore: CandidateWithScore[] = candidates
+      .map((candidate) => ({
         ...candidate,
-        matchScore: candidate.parsed_data?.match_score || 0,
+        matchScore: (candidate.parsed_data as { match_score?: number } | null)?.match_score || 0,
       }))
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, limit);
 
-    return candidatesWithScore.map((candidate: any) => {
+    return candidatesWithScore.map((candidate) => {
       const jobPost = jobPostMap.get(candidate.job_post_id);
       return {
         id: candidate.id,

@@ -1,10 +1,21 @@
-'use client';
+import { getProcesses } from '@/api/queries/processes';
+import { JobCreateClient } from './JobCreateClient';
 
-export default function JobCreatePage() {
+export default async function JobCreatePage() {
+  // 프로세스 목록 조회
+  const processesResult = await getProcesses();
+  const processes = processesResult.data || [];
+  const error = processesResult.error;
+
+  // 에러가 발생한 경우 콘솔에 로그 출력 (개발 환경)
+  if (processesResult.error) {
+    console.error('프로세스 목록 조회 실패:', processesResult.error);
+  }
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Create Job</h1>
-      <p className="text-gray-600">채용 공고 생성 페이지입니다.</p>
-    </div>
+    <JobCreateClient 
+      processes={processes}
+      error={error}
+    />
   );
 }

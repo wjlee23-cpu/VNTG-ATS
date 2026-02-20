@@ -121,9 +121,11 @@ export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
 
         // 각 일정에 면접관 정보 추가
         data.forEach(schedule => {
-          (schedule as any).interviewers = schedule.interviewer_ids
-            ?.map((id: string) => interviewerMap.get(id))
-            .filter(Boolean) || [];
+          // 타입 안전성을 위해 인터뷰어 정보를 별도 속성으로 추가
+          (schedule as typeof schedule & { interviewers: Array<{ id: string; email: string }> }).interviewers = 
+            schedule.interviewer_ids
+              ?.map((id: string) => interviewerMap.get(id))
+              .filter((i): i is { id: string; email: string } => i !== undefined) || [];
         });
       }
     }
@@ -169,7 +171,7 @@ export async function getScheduleById(id: string) {
     }
 
     // 접근 권한 확인
-    const candidate = (data as any).candidates;
+    const candidate = data.candidates as { job_posts?: { organization_id: string } } | null | undefined;
     const jobPost = candidate?.job_posts;
     if (jobPost?.organization_id) {
       const user = await getCurrentUser();

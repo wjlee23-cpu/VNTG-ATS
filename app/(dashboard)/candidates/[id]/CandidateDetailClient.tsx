@@ -64,7 +64,22 @@ interface Schedule {
 interface TimelineEvent {
   id: string;
   type: string;
-  content: any;
+  content: {
+    message?: string;
+    subject?: string;
+    body?: string;
+    from_email?: string;
+    to_email?: string;
+    overall_rating?: number;
+    rating?: number;
+    notes?: string;
+    from_stage?: string;
+    to_stage?: string;
+    previous_status?: string;
+    new_status?: string;
+    stage_id?: string;
+    [key: string]: unknown; // 기타 필드 허용
+  };
   created_at: string;
   created_by_user?: {
     id: string;

@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getUserProfile } from '@/api/queries/auth';
 import { signOut } from '@/api/actions/auth';
+import { toast } from 'sonner';
 
 interface TopBarProps {
   onCommandOpen: () => void;
@@ -55,12 +56,15 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
     try {
       const result = await signOut();
       if (result.success) {
+        toast.success('로그아웃되었습니다.');
         router.push('/');
         router.refresh();
       } else {
+        toast.error(result.error || '로그아웃에 실패했습니다.');
         console.error('로그아웃 실패:', result.error);
       }
     } catch (error) {
+      toast.error('로그아웃 중 오류가 발생했습니다.');
       console.error('로그아웃 중 오류:', error);
     }
   };
