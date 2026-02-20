@@ -1,40 +1,39 @@
-import { createClient } from '@/lib/supabase/server'
-import { getCandidates } from '@/actions/candidates'
-import { getJobPosts } from '@/actions/jobs'
-import { CandidateDashboard } from '@/components/dashboard/CandidateDashboard'
-import { redirect } from 'next/navigation'
+import { getDashboardStats, getRecentActivity, getTopCandidates } from '@/api/queries/dashboard';
+import { OverviewClient } from './OverviewClient';
 
-export default async function DashboardPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default async function OverviewPage() {
+  // 데이터 조회 (에러 처리 포함)
+  const statsResult = await getDashboardStats();
+  const recentActivityResult = await getRecentActivity();
+  const topCandidatesResult = await getTopCandidates();
 
-  // 개발 모드: 인증 체크 비활성화
-  const isDevelopment = process.env.NODE_ENV === 'development'
-  
-  if (!isDevelopment && !user) {
-    redirect('/login')
+  // 기본값 설정 (에러 발생 시 빈 데이터 사용)
+  const stats = statsResult.data || {
+    totalCandidates: 0,
+    activeJobs: 0,
+    interviewsScheduled: 0,
+    offersMade: 0,
+  };
+
+  const recentActivity = recentActivityResult.data || [];
+  const topCandidates = topCandidatesResult.data || [];
+
+  // 에러가 발생한 경우 콘솔에 로그 출력 (개발 환경)
+  if (statsResult.error) {
+    console.error('대시보드 통계 조회 실패:', statsResult.error);
+  }
+  if (recentActivityResult.error) {
+    console.error('최근 활동 조회 실패:', recentActivityResult.error);
+  }
+  if (topCandidatesResult.error) {
+    console.error('상위 후보자 조회 실패:', topCandidatesResult.error);
   }
 
-  const candidates = await getCandidates()
-  const jobs = await getJobPosts()
-
-  // Fetch full candidate data with job post and process info
-  const candidatesWithDetails = await Promise.all(
-    candidates.map(async (candidate: any) => {
-      const { data: jobPost } = await supabase
-        .from('job_posts')
-        .select('*, processes(*)')
-        .eq('id', candidate.job_post_id)
-        .single()
-
-      return {
-        ...candidate,
-        job_posts: jobPost,
-      }
-    })
-  )
-
-  return <CandidateDashboard candidates={candidatesWithDetails} jobs={jobs} />
+  return (
+    <OverviewClient 
+      stats={stats}
+      recentActivity={recentActivity}
+      topCandidates={topCandidates}
+    />
+  );
 }
