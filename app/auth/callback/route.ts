@@ -91,15 +91,74 @@ export async function GET(request: Request) {
         .select('id, email, organization_id, role')
         .single();
 
-      if (createError || !newUser) {
-        console.error('사용자 생성 실패:', createError);
+      if (createError) {
+        // 중복 키 에러인 경우 (이미 다른 경로에서 생성되었을 수 있음) 재시도
+        if (createError.code === '23505' || createError.message?.includes('duplicate')) {
+          // 재시도: users 테이블에서 다시 조회
+          const { data: retryUserData, error: retryError } = await serviceClient
+            .from('users')
+            .select('id, email, organization_id, role')
+            .eq('id', data.session.user.id)
+            .single();
+
+          if (!retryError && retryUserData) {
+            // 재조회 성공 시 정상 진행
+            userData = retryUserData;
+          } else {
+            // 더 자세한 에러 정보 로깅 (개발 환경)
+            if (process.env.NODE_ENV === 'development') {
+              console.error('사용자 생성 실패 상세 (재시도 후):', {
+                error: createError,
+                retryError,
+                userId: data.session.user.id,
+                email: userEmail,
+                organizationId: organization.id,
+                role: userRole,
+              });
+            }
+            await supabase.auth.signOut();
+            return NextResponse.redirect(
+              new URL(`/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
+            );
+          }
+        } else {
+          // 다른 종류의 에러
+          // 더 자세한 에러 정보 로깅 (개발 환경)
+          if (process.env.NODE_ENV === 'development') {
+            console.error('사용자 생성 실패 상세:', {
+              error: createError,
+              errorCode: createError.code,
+              errorMessage: createError.message,
+              errorDetails: createError.details,
+              userId: data.session.user.id,
+              email: userEmail,
+              organizationId: organization.id,
+              role: userRole,
+            });
+          }
+          await supabase.auth.signOut();
+          return NextResponse.redirect(
+            new URL(`/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
+          );
+        }
+      } else if (!newUser) {
+        // 응답 데이터가 없는 경우
+        if (process.env.NODE_ENV === 'development') {
+          console.error('사용자 생성 실패: 응답 데이터가 없습니다.', {
+            userId: data.session.user.id,
+            email: userEmail,
+            organizationId: organization.id,
+            role: userRole,
+          });
+        }
         await supabase.auth.signOut();
         return NextResponse.redirect(
           new URL(`/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
         );
+      } else {
+        // 성공 시 사용자 데이터 설정
+        userData = newUser;
       }
-
-      userData = newUser;
     }
 
     // 성공 시 대시보드로 리다이렉트
