@@ -40,6 +40,7 @@ export async function getCandidates(jobPostId?: string) {
       : jobPosts.map(jp => jp.id);
 
     // job_post_id 필터링 및 후보자 조회 (process 정보 포함)
+    // 기본적으로 아카이브되지 않은 후보자만 조회
     const { data, error } = await supabase
       .from('candidates')
       .select(`
@@ -57,6 +58,7 @@ export async function getCandidates(jobPostId?: string) {
         )
       `)
       .in('job_post_id', jobPostIds)
+      .eq('archived', false) // 아카이브되지 않은 후보자만 조회
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -293,5 +295,66 @@ export async function getCandidateStats(jobPostId?: string) {
       byStatus,
       byStage,
     };
+  });
+}
+
+/**
+ * 아카이브된 후보자 조회
+ * @param jobPostId 특정 채용 공고의 후보자만 조회 (선택)
+ * @returns 아카이브된 후보자 목록
+ */
+export async function getArchivedCandidates(jobPostId?: string) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // 관리자일 경우 모든 job_posts 조회, 일반 사용자는 자신의 organization_id로 필터링
+    let jobPostsQuery = supabase
+      .from('job_posts')
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+
+    const { data: jobPosts } = await jobPostsQuery;
+
+    if (!jobPosts || jobPosts.length === 0) {
+      return [];
+    }
+
+    const jobPostIds = jobPostId
+      ? [validateUUID(jobPostId, '채용 공고 ID')]
+      : jobPosts.map(jp => jp.id);
+
+    // 아카이브된 후보자만 조회
+    const { data, error } = await supabase
+      .from('candidates')
+      .select(`
+        *,
+        job_posts (
+          id,
+          title,
+          organization_id,
+          process_id,
+          processes (
+            id,
+            name,
+            stages
+          )
+        )
+      `)
+      .in('job_post_id', jobPostIds)
+      .eq('archived', true) // 아카이브된 후보자만 조회
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`아카이브된 후보자 조회 실패: ${error.message}`);
+    }
+
+    return data || [];
   });
 }

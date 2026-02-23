@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal } from 'lucide-react';
+import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal, Archive } from 'lucide-react';
 import { RECRUITMENT_STAGES, getStageNameByStageId } from '@/constants/stages';
-import { getCandidateById } from '@/api/queries/candidates';
+import { getCandidateById, getArchivedCandidates } from '@/api/queries/candidates';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { getTimelineEvents } from '@/api/queries/timeline';
 import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
+import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
+import { AddCandidateModal } from '@/components/candidates/AddCandidateModal';
+import { Button } from '@/components/ui/button';
 
 interface Candidate {
   id: string;
@@ -47,6 +50,41 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
+  const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [selectedCandidateForArchive, setSelectedCandidateForArchive] = useState<{ id: string; name: string } | null>(null);
+  const [addCandidateModalOpen, setAddCandidateModalOpen] = useState(false);
+  const [archivedCandidates, setArchivedCandidates] = useState<Candidate[]>([]);
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 클라이언트 마운트 확인 (Hydration 에러 방지)
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // 아카이브 필터 변경 시 아카이브된 후보자 로드
+  useEffect(() => {
+    if (archiveFilter === 'archived' && isMounted) {
+      loadArchivedCandidates();
+    }
+  }, [archiveFilter, isMounted]);
+
+  const loadArchivedCandidates = async () => {
+    setIsLoadingArchived(true);
+    try {
+      const result = await getArchivedCandidates();
+      if (result.error) {
+        console.error('Failed to load archived candidates:', result.error);
+      } else {
+        setArchivedCandidates(result.data || []);
+      }
+    } catch (error) {
+      console.error('Load archived candidates error:', error);
+    } finally {
+      setIsLoadingArchived(false);
+    }
+  };
 
   // URL query parameter에서 selected 값 읽기
   useEffect(() => {
@@ -165,8 +203,11 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     return stage?.name || '';
   };
 
+  // 아카이브 필터에 따라 후보자 목록 선택
+  const candidatesToFilter = archiveFilter === 'archived' ? archivedCandidates : initialCandidates;
+
   // 검색 및 단계 필터링
-  const filteredCandidates = initialCandidates.filter(candidate => {
+  const filteredCandidates = candidatesToFilter.filter(candidate => {
     // 단계 필터링
     if (selectedStage !== 'all') {
       const candidateStage = getStageName(candidate.current_stage_id);
@@ -212,7 +253,10 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   };
 
   // 전체 활성 후보자 수 계산 (필터링 전)
-  const activeCandidatesCount = initialCandidates.length;
+  // Hydration 에러 방지를 위해 초기 렌더링에서는 항상 initialCandidates 사용
+  const activeCandidatesCount = isMounted && archiveFilter === 'archived'
+    ? archivedCandidates.length 
+    : initialCandidates.length;
 
   // Candidate 클릭 핸들러
   const handleCandidateClick = (candidateId: string) => {
@@ -227,12 +271,47 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   return (
     <div className="h-full flex overflow-hidden">
       {/* 왼쪽: Candidates 리스트 */}
-      <div className={`flex-1 overflow-auto transition-all duration-300 ${selectedCandidateId ? 'md:w-1/2' : 'w-full'} min-w-0`}>
+      <div className={`flex-1 overflow-auto transition-all duration-300 ${selectedCandidateId ? 'md:w-1/3' : 'w-full'} min-w-0`}>
         <div className="px-8 py-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Candidates</h1>
-          <p className="text-gray-600">{activeCandidatesCount} active candidates</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Candidates</h1>
+            <p className="text-gray-600">{activeCandidatesCount} active candidates</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* 아카이브 필터 */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setArchiveFilter('active')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  archiveFilter === 'active'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => setArchiveFilter('archived')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  archiveFilter === 'archived'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Archived
+              </button>
+            </div>
+            {/* 후보자 추가 버튼 */}
+            <Button
+              onClick={() => setAddCandidateModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Users className="w-4 h-4 mr-2" />
+              Add Candidate
+            </Button>
+          </div>
         </div>
 
         {/* Stage Filters */}
@@ -294,7 +373,12 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         )}
 
         {/* Candidates List */}
-        {filteredCandidates.length === 0 ? (
+        {isLoadingArchived && archiveFilter === 'archived' ? (
+          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">아카이브된 후보자를 불러오는 중...</p>
+          </div>
+        ) : filteredCandidates.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
               <Users className="text-gray-400" size={32} />
@@ -407,11 +491,13 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              // TODO: 메뉴 열기 기능 구현
+                              setSelectedCandidateForArchive({ id: candidate.id, name: candidate.name });
+                              setArchiveModalOpen(true);
                             }}
                             className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            title="아카이브"
                           >
-                            <MoreHorizontal size={16} className="text-gray-400" />
+                            <Archive size={16} className="text-gray-400" />
                           </button>
                         </td>
                       </tr>
@@ -445,7 +531,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           <div className={`
             fixed md:relative md:flex-shrink-0
             top-0 right-0 bottom-0
-            w-full md:w-1/2 lg:w-[480px]
+            w-full md:w-2/3 lg:w-[800px] xl:w-[1000px]
             bg-white
             z-50 md:z-auto
             transform transition-transform duration-300 ease-in-out
@@ -485,6 +571,29 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           </div>
         </>
       )}
+
+      {/* 아카이브 모달 */}
+      {selectedCandidateForArchive && (
+        <ArchiveCandidateModal
+          candidateId={selectedCandidateForArchive.id}
+          candidateName={selectedCandidateForArchive.name}
+          isOpen={archiveModalOpen}
+          onClose={() => {
+            setArchiveModalOpen(false);
+            setSelectedCandidateForArchive(null);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* 후보자 추가 모달 */}
+      <AddCandidateModal
+        isOpen={addCandidateModalOpen}
+        onClose={() => {
+          setAddCandidateModalOpen(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

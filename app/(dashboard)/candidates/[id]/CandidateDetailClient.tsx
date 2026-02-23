@@ -1,16 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   X, Mail, Phone, MapPin, Star, FileText, Download, Calendar, 
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
-  MessageSquare, ArrowRightCircle
+  MessageSquare, ArrowRightCircle, Archive
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScheduleInterviewAutomatedModal } from '@/components/candidates/ScheduleInterviewAutomatedModal';
 import { EmailModal } from '@/components/candidates/EmailModal';
+import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
+import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
+import { StageActionButtons } from '@/components/candidates/StageActionButtons';
+import { getStageEvaluations } from '@/api/queries/evaluations';
+import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
+import { getUserProfile } from '@/api/queries/auth';
 
 interface Candidate {
   id: string;
@@ -100,6 +106,49 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const router = useRouter();
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
+  const [evaluations, setEvaluations] = useState<any[]>([]);
+  const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer'>('recruiter');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
+
+  // 평가 데이터 로드
+  useEffect(() => {
+    if (candidate.id) {
+      loadEvaluations();
+      loadUserRole();
+    }
+  }, [candidate.id]);
+
+  const loadEvaluations = async () => {
+    setIsLoadingEvaluations(true);
+    try {
+      const result = await getStageEvaluations(candidate.id);
+      if (result.error) {
+        console.error('Failed to load evaluations:', result.error);
+      } else {
+        setEvaluations(result.data || []);
+      }
+    } catch (error) {
+      console.error('Load evaluations error:', error);
+    } finally {
+      setIsLoadingEvaluations(false);
+    }
+  };
+
+  const loadUserRole = async () => {
+    try {
+      const profile = await getUserProfile();
+      if (profile.data) {
+        setUserRole(profile.data.role as 'admin' | 'recruiter' | 'interviewer');
+        setUserId(profile.data.id);
+      }
+    } catch (error) {
+      console.error('Load user role error:', error);
+      setUserRole('recruiter'); // 기본값
+    }
+  };
 
   // 닫기 핸들러
   const handleClose = () => {
@@ -124,6 +173,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       case 'schedule_created':
       case 'schedule_confirmed':
         return <Calendar className="w-5 h-5 text-blue-600" />;
+      case 'archive':
+        return <Archive className="w-5 h-5 text-orange-600" />;
+      case 'stage_evaluation':
+        return <StarIcon className="w-5 h-5 text-purple-600" />;
       default:
         return <FileText className="w-5 h-5 text-gray-600" />;
     }
@@ -139,6 +192,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         return 'text-green-600';
       case 'stage_changed':
         return 'text-orange-600';
+      case 'archive':
+        return 'text-orange-600';
+      case 'stage_evaluation':
+        return 'text-purple-600';
       default:
         return 'text-gray-600';
     }
@@ -243,6 +300,30 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             {event.content?.from_stage || '이전 단계'} → {event.content?.to_stage || event.content?.message || '다음 단계'}
           </p>
         );
+      case 'archive':
+        return (
+          <div className="space-y-1">
+            <p className="text-sm text-gray-900">{event.content?.message || '후보자가 아카이브되었습니다.'}</p>
+            {event.content?.archive_reason && (
+              <p className="text-xs text-gray-500">사유: {event.content.archive_reason}</p>
+            )}
+          </div>
+        );
+      case 'stage_evaluation':
+        return (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-900">{event.content?.message || '전형 평가가 완료되었습니다.'}</p>
+            {event.content?.result && (
+              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
+                event.content.result === 'pass' ? 'bg-green-100 text-green-800' :
+                event.content.result === 'fail' ? 'bg-red-100 text-red-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {event.content.result === 'pass' ? '합격' : event.content.result === 'fail' ? '불합격' : '대기중'}
+              </span>
+            )}
+          </div>
+        );
       default:
         return (
           <p className="text-sm text-gray-900">{event.content?.message || event.type}</p>
@@ -303,6 +384,15 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 >
                   <Send className="w-4 h-4 mr-2" />
                   Email
+                </Button>
+                <Button
+                  onClick={() => setIsArchiveModalOpen(true)}
+                  variant="outline"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50 w-full sm:w-auto"
+                  size={isSidebar ? "default" : "lg"}
+                >
+                  <Archive className="w-4 h-4 mr-2" />
+                  Archive
                 </Button>
               </div>
             </div>
@@ -395,7 +485,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
 
                 {/* PDF Preview - 개선된 버전 */}
                 <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                  <div className="aspect-[8.5/11] w-full relative min-h-[400px]">
+                  <div className="aspect-[8.5/11] w-full relative min-h-[600px]">
                     {/* object 태그로 PDF 표시 (iframe보다 더 안정적) */}
                     <object
                       data={`${candidate.resume_file_url}#toolbar=0&navpanes=0&scrollbar=0`}
@@ -452,13 +542,96 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
               </div>
             )}
 
+            {/* Portfolio Section */}
+            {candidate.parsed_data && (
+              <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
+                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Portfolio</h2>
+                <div className="space-y-4">
+                  {candidate.parsed_data.experience && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">경력</h3>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{candidate.parsed_data.experience}</p>
+                    </div>
+                  )}
+                  {candidate.parsed_data.education && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">학력</h3>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{candidate.parsed_data.education}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Stage Evaluation Section */}
+            {candidate.current_stage_id && (
+              <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 mb-4">
+                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                    {STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id} 평가
+                  </h2>
+                  <Button
+                    onClick={() => setIsEvaluationModalOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  >
+                    <Star className="w-4 h-4 mr-2" />
+                    평가하기
+                  </Button>
+                </div>
+                
+                {isLoadingEvaluations ? (
+                  <p className="text-sm text-gray-500 py-4 text-center">평가 정보를 불러오는 중...</p>
+                ) : evaluations.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-4 text-center">아직 평가가 없습니다.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {evaluations
+                      .filter(e => e.stage_id === candidate.current_stage_id)
+                      .map((evaluation) => (
+                        <div key={evaluation.id} className="border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-900">
+                              {evaluation.evaluator?.name || evaluation.evaluator?.email || 'Unknown'}
+                            </span>
+                            <span className={`px-2 py-1 rounded-md text-xs font-medium ${
+                              evaluation.result === 'pass' ? 'bg-green-100 text-green-800' :
+                              evaluation.result === 'fail' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {evaluation.result === 'pass' ? '합격' : evaluation.result === 'fail' ? '불합격' : '대기중'}
+                            </span>
+                          </div>
+                          {evaluation.notes && (
+                            <p className="text-sm text-gray-700 mt-2">{evaluation.notes}</p>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
+
+                {/* 전형 이동 버튼 (관리자 또는 평가 완료 시) */}
+                {evaluations.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <StageActionButtons
+                      candidateId={candidate.id}
+                      currentStageId={candidate.current_stage_id}
+                      currentStageName={STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id}
+                      userRole={userRole}
+                      hasPassedEvaluations={evaluations
+                        .filter(e => e.stage_id === candidate.current_stage_id)
+                        .every(e => e.result === 'pass')}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Activity Timeline */}
             <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'}`}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 mb-4">
                 <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity Timeline</h2>
-                <button className="text-sm text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap">
-                  + Add Evaluation
-                </button>
               </div>
               {timelineEvents.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">타임라인 이벤트가 없습니다.</p>
@@ -488,7 +661,9 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                               {event.type === 'schedule_created' && 'Interview Scheduled'}
                               {event.type === 'schedule_confirmed' && 'Interview Confirmed'}
                               {event.type === 'system_log' && 'Application Received'}
-                              {!['scorecard', 'email', 'comment', 'stage_changed', 'schedule_created', 'schedule_confirmed', 'system_log'].includes(event.type) && event.type}
+                              {event.type === 'archive' && 'Archived'}
+                              {event.type === 'stage_evaluation' && 'Stage Evaluation'}
+                              {!['scorecard', 'email', 'comment', 'stage_changed', 'schedule_created', 'schedule_confirmed', 'system_log', 'archive', 'stage_evaluation'].includes(event.type) && event.type}
                             </span>
                           </div>
                           <p className="text-xs text-gray-500 mb-2 break-words">
@@ -524,6 +699,36 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         isOpen={isEmailModalOpen}
         onClose={() => setIsEmailModalOpen(false)}
       />
+
+      {/* Archive Modal */}
+      <ArchiveCandidateModal
+        candidateId={candidate.id}
+        candidateName={candidate.name}
+        isOpen={isArchiveModalOpen}
+        onClose={() => {
+          setIsArchiveModalOpen(false);
+          router.refresh();
+        }}
+      />
+
+      {/* Evaluation Modal */}
+      {candidate.current_stage_id && (
+        <StageEvaluationModal
+          candidateId={candidate.id}
+          candidateName={candidate.name}
+          stageId={candidate.current_stage_id}
+          stageName={STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id}
+          existingEvaluation={userId ? evaluations
+            .filter(e => e.stage_id === candidate.current_stage_id)
+            .find(e => e.evaluator_id === userId) : undefined}
+          isOpen={isEvaluationModalOpen}
+          onClose={() => {
+            setIsEvaluationModalOpen(false);
+            loadEvaluations();
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
