@@ -161,6 +161,23 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
           } else {
             toast.success(result.data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.');
           }
+        } else if (result.data.allDeclined) {
+          // 모든 일정 옵션이 거절된 경우
+          if (result.data.regenerated) {
+            // 새로운 일정이 자동으로 생성된 경우
+            toast.success(
+              result.data.message || 
+              '모든 일정 옵션이 거절되어 새로운 일정 옵션이 자동으로 생성되었습니다. 날짜 범위를 확장하여 검색했습니다.',
+              { duration: 5000 }
+            );
+          } else {
+            // 새로운 일정 생성 실패한 경우
+            toast.error(
+              result.data.message || 
+              '모든 일정 옵션이 거절되었지만, 새로운 일정을 찾을 수 없습니다. 면접 일정이 취소되었습니다.',
+              { duration: 8000 }
+            );
+          }
         } else {
           toast.info(result.data.message || '아직 모든 면접관이 수락하지 않았습니다.');
         }

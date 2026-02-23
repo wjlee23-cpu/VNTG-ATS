@@ -12,6 +12,7 @@ import { findAvailableTimeSlots } from '@/lib/ai/schedule';
 import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gmail';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
+import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -281,12 +282,13 @@ export async function respondToSchedule(
   return withErrorHandling(async () => {
     const supabase = await createClient();
 
-    // 면접 일정과 후보자 조회
+    // 면접 일정과 후보자 조회 (workflow_status 포함)
     const { data: schedule, error: scheduleError } = await supabase
       .from('schedules')
       .select(`
         id,
         candidate_id,
+        workflow_status,
         candidates!inner (
           id,
           token
@@ -299,7 +301,7 @@ export async function respondToSchedule(
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    const candidate = schedule.candidates as { token: string } | null | undefined;
+    const candidate = schedule.candidates as { id: string; token: string } | null | undefined;
     if (!candidate || candidate.token !== token) {
       throw new Error('인증 토큰이 올바르지 않습니다.');
     }
@@ -335,6 +337,33 @@ export async function respondToSchedule(
       },
       created_by: null, // 후보자가 직접 생성
     });
+
+    // 후보자가 거절했고, workflow_status가 'pending_candidate'인 경우 새로운 일정 옵션 자동 생성
+    if (response === 'rejected' && schedule.workflow_status === 'pending_candidate') {
+      console.log(`후보자가 거절함. 새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
+      try {
+        const regenerateResult = await regenerateScheduleOptions(scheduleId);
+        console.log('새로운 일정 옵션 생성 완료:', regenerateResult);
+        
+        // 캐시 무효화
+        revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+        revalidatePath('/dashboard/schedules');
+        
+        return {
+          ...data,
+          regenerated: true,
+          message: regenerateResult.message,
+        };
+      } catch (regenerateError) {
+        console.error('새로운 일정 옵션 생성 실패:', regenerateError);
+        // 재생성 실패해도 후보자 응답은 저장되었으므로 경고만 반환
+        return {
+          ...data,
+          regenerated: false,
+          error: regenerateError instanceof Error ? regenerateError.message : '알 수 없는 오류',
+        };
+      }
+    }
 
     return data;
   });
@@ -427,54 +456,90 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       );
     }
 
-    // 면접관들의 바쁜 시간 조회
-    const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+    // 원본 날짜 범위 저장 (재시도 시 기준점)
+    const originalStartDate = new Date(startDate);
+    const originalEndDate = new Date(endDate);
     
-    for (const interviewer of interviewersWithCalendar) {
-      try {
-        const token = await refreshAccessTokenIfNeeded(
-          interviewer.calendar_access_token!,
-          interviewer.calendar_refresh_token!
-        );
-        
-        const busyTimes = await getBusyTimes(
-          token,
-          ['primary'],
-          startDate,
-          endDate
-        );
+    // 일정 검색 및 날짜 범위 확장 재시도 로직
+    let retryCount = 0;
+    let currentStartDate = new Date(startDate);
+    let currentEndDate = new Date(endDate);
+    let selectedSlots: Array<{ scheduledAt: Date; duration: number; availableInterviewers: string[] }> = [];
+    let lastError: Error | null = null;
 
-        allBusyTimes.push(...busyTimes.map(bt => ({
+    while (retryCount <= 5) {
+      // 면접관들의 바쁜 시간 조회
+      const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+      
+      for (const interviewer of interviewersWithCalendar) {
+        try {
+          const token = await refreshAccessTokenIfNeeded(
+            interviewer.calendar_access_token!,
+            interviewer.calendar_refresh_token!
+          );
+          
+          const busyTimes = await getBusyTimes(
+            token,
+            ['primary'],
+            currentStartDate,
+            currentEndDate
+          );
+
+          allBusyTimes.push(...busyTimes.map(bt => ({
+            start: bt.start,
+            end: bt.end,
+          })));
+        } catch (error) {
+          console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
+          throw new Error(`면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다.`);
+        }
+      }
+
+      // 공통 가능 일정 찾기 (AI 사용)
+      const availableSlots = await findAvailableTimeSlots({
+        candidateName: candidate.name,
+        stageName: stageId,
+        interviewerIds: interviewerIds,
+        busyTimes: allBusyTimes.map(bt => ({
+          id: '',
+          summary: '',
           start: bt.start,
           end: bt.end,
-        })));
-      } catch (error) {
-        console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
-        throw new Error(`면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다.`);
+        })),
+        startDate: currentStartDate,
+        endDate: currentEndDate,
+        durationMinutes,
+      });
+
+      // 상위 2개 일정 선택
+      selectedSlots = availableSlots.slice(0, 2);
+      
+      if (selectedSlots.length > 0) {
+        // 일정을 찾았으면 반복문 종료
+        console.log(`일정 검색 성공: retryCount=${retryCount}, 날짜 범위=${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}`);
+        break;
+      }
+
+      // 일정을 찾지 못했고, 재시도 가능한 경우 날짜 범위 확장
+      if (shouldExtendDateRange(retryCount)) {
+        retryCount++;
+        const extended = extendDateRangeByWeek(currentStartDate, currentEndDate);
+        currentStartDate = extended.newStartDate;
+        currentEndDate = extended.newEndDate;
+        console.log(`일정 없음. 날짜 범위 확장 시도 ${retryCount}: ${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}`);
+      } else {
+        // 최대 재시도 횟수 초과
+        lastError = new Error(
+          `면접관들의 공통 가능 일정을 찾을 수 없습니다. ` +
+          `원본 날짜 범위(${format(originalStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(originalEndDate, 'yyyy-MM-dd', { locale: ko })})부터 ` +
+          `총 ${retryCount + 1}회 시도했지만 가능한 일정이 없습니다. 다른 날짜 범위를 선택하거나 면접관을 변경해주세요.`
+        );
+        break;
       }
     }
 
-    // 공통 가능 일정 찾기 (AI 사용)
-    const availableSlots = await findAvailableTimeSlots({
-      candidateName: candidate.name,
-      stageName: stageId,
-      interviewerIds: interviewerIds,
-      busyTimes: allBusyTimes.map(bt => ({
-        id: '',
-        summary: '',
-        start: bt.start,
-        end: bt.end,
-      })),
-      startDate,
-      endDate,
-      durationMinutes,
-    });
-
-    // 상위 2개 일정 선택
-    const selectedSlots = availableSlots.slice(0, 2);
-    
     if (selectedSlots.length === 0) {
-      throw new Error('면접관들의 공통 가능 일정을 찾을 수 없습니다.');
+      throw lastError || new Error('면접관들의 공통 가능 일정을 찾을 수 없습니다.');
     }
 
     // 메인 스케줄 생성 (워크플로우 상태: pending_interviewers)
@@ -487,6 +552,9 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       interviewer_ids: interviewerIds,
       candidate_response: 'pending',
       workflow_status: 'pending_interviewers',
+      original_start_date: originalStartDate.toISOString(), // 원본 시작 날짜 저장
+      original_end_date: originalEndDate.toISOString(), // 원본 종료 날짜 저장
+      retry_count: retryCount, // 재시도 횟수 저장
     };
 
     const { data: schedule, error: scheduleError } = await supabase
@@ -671,17 +739,26 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     }
 
     // 타임라인 이벤트 생성
+    const timelineMessage = retryCount > 0
+      ? `면접 일정 자동화가 시작되었습니다. 원본 날짜 범위에 일정이 없어 ${retryCount}회 날짜 범위를 확장하여 검색했습니다. 면접관들의 수락을 기다리는 중입니다.`
+      : '면접 일정 자동화가 시작되었습니다. 면접관들의 수락을 기다리는 중입니다.';
+    
     await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
       type: 'schedule_created',
       content: {
-        message: '면접 일정 자동화가 시작되었습니다. 면접관들의 수락을 기다리는 중입니다.',
+        message: timelineMessage,
         schedule_id: schedule.id,
         schedule_options: scheduleOptions.map(opt => ({
           id: opt.id,
           scheduled_at: opt.scheduled_at,
         })),
         interviewers: interviewerIds,
+        retry_count: retryCount,
+        original_date_range: {
+          start: originalStartDate.toISOString(),
+          end: originalEndDate.toISOString(),
+        },
       },
       created_by: user.userId,
     });
@@ -696,6 +773,413 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       message: `${selectedSlots.length}개의 일정 옵션이 생성되었고, 면접관들에게 초대가 전송되었습니다.`,
     };
   });
+}
+
+/**
+ * 기존 스케줄에 대해 새로운 일정 옵션을 자동 생성
+ * 모든 일정 옵션이 거절되었을 때 호출되어 새로운 일정을 찾아서 생성
+ */
+async function regenerateScheduleOptions(scheduleId: string) {
+  const user = await getCurrentUser();
+  const isAdmin = user.role === 'admin';
+  const supabase = isAdmin ? createServiceClient() : await createClient();
+
+  // 기존 스케줄 정보 조회
+  const { data: schedule, error: scheduleError } = await supabase
+    .from('schedules')
+    .select(`
+      *,
+      candidates!inner (
+        id,
+        name,
+        email,
+        job_posts (
+          id,
+          title
+        )
+      )
+    `)
+    .eq('id', scheduleId)
+    .single();
+
+  if (scheduleError || !schedule) {
+    throw new Error('면접 일정을 찾을 수 없습니다.');
+  }
+
+  await verifyCandidateAccess(schedule.candidate_id);
+
+  const candidate = schedule.candidates as any;
+  const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
+  const positionName = jobPost?.title || '포지션 미지정';
+
+  // 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
+  const { data: interviewers, error: interviewersError } = await supabase
+    .from('users')
+    .select('id, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
+    .in('id', schedule.interviewer_ids);
+
+  if (interviewersError || !interviewers || interviewers.length !== schedule.interviewer_ids.length) {
+    throw new Error('일부 면접관을 찾을 수 없습니다.');
+  }
+
+  // 구글 캘린더 연동 확인
+  const interviewersWithCalendar = interviewers.filter(
+    inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
+  );
+
+  if (interviewersWithCalendar.length !== schedule.interviewer_ids.length) {
+    const interviewersWithoutCalendar = interviewers.filter(
+      inv => !(inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token)
+    );
+    const missingEmails = interviewersWithoutCalendar.map(inv => inv.email).join(', ');
+    throw new Error(
+      `모든 면접관이 구글 캘린더에 연동되어 있어야 합니다. 연동되지 않은 면접관: ${missingEmails}`
+    );
+  }
+
+  // 기존 거절된 일정 옵션 조회 (새로운 일정을 찾을 때 제외하기 위해)
+  const { data: existingOptions } = await supabase
+    .from('schedule_options')
+    .select('scheduled_at')
+    .eq('schedule_id', scheduleId)
+    .in('status', ['rejected', 'pending']); // 거절된 옵션과 대기 중인 옵션 모두 제외
+
+  // 원본 날짜 범위 확인 (없으면 현재 날짜 기준으로 설정)
+  const originalStartDate = schedule.original_start_date 
+    ? new Date(schedule.original_start_date) 
+    : new Date();
+  const originalEndDate = schedule.original_end_date 
+    ? new Date(schedule.original_end_date) 
+    : (() => {
+        const end = new Date();
+        end.setDate(end.getDate() + 5); // 기본값: 5일 후
+        return end;
+      })();
+  
+  // 현재 재시도 횟수 확인
+  const currentRetryCount = schedule.retry_count || 0;
+  
+  // 일정 검색 및 날짜 범위 확장 재시도 로직
+  let retryCount = currentRetryCount;
+  let currentStartDate: Date;
+  let currentEndDate: Date;
+  let selectedSlots: Array<{ scheduledAt: Date; duration: number; availableInterviewers: string[] }> = [];
+  let lastError: Error | null = null;
+
+  // 재시도 횟수에 따라 날짜 범위 계산
+  const dateRange = getDateRangeForRetry(originalStartDate, originalEndDate, retryCount);
+  currentStartDate = dateRange.startDate;
+  currentEndDate = dateRange.endDate;
+
+  while (retryCount <= 5) {
+    // 면접관들의 바쁜 시간 조회
+    const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+    
+    for (const interviewer of interviewersWithCalendar) {
+      try {
+        const token = await refreshAccessTokenIfNeeded(
+          interviewer.calendar_access_token!,
+          interviewer.calendar_refresh_token!
+        );
+        
+        const busyTimes = await getBusyTimes(
+          token,
+          ['primary'],
+          currentStartDate,
+          currentEndDate
+        );
+
+        allBusyTimes.push(...busyTimes.map(bt => ({
+          start: bt.start,
+          end: bt.end,
+        })));
+      } catch (error) {
+        console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
+        throw new Error(`면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다.`);
+      }
+    }
+
+    // 기존 거절된 일정 시간대도 바쁜 시간에 추가 (중복 방지)
+    if (existingOptions && existingOptions.length > 0) {
+      for (const option of existingOptions) {
+        const optionStart = new Date(option.scheduled_at);
+        const optionEnd = new Date(optionStart);
+        optionEnd.setMinutes(optionEnd.getMinutes() + schedule.duration_minutes);
+        
+        allBusyTimes.push({
+          start: { dateTime: optionStart.toISOString(), timeZone: 'Asia/Seoul' },
+          end: { dateTime: optionEnd.toISOString(), timeZone: 'Asia/Seoul' },
+        });
+      }
+    }
+
+    // 공통 가능 일정 찾기 (AI 사용)
+    const availableSlots = await findAvailableTimeSlots({
+      candidateName: candidate.name,
+      stageName: schedule.stage_id,
+      interviewerIds: schedule.interviewer_ids,
+      busyTimes: allBusyTimes.map(bt => ({
+        id: '',
+        summary: '',
+        start: bt.start,
+        end: bt.end,
+      })),
+      startDate: currentStartDate,
+      endDate: currentEndDate,
+      durationMinutes: schedule.duration_minutes,
+    });
+
+    // 상위 2개 일정 선택
+    selectedSlots = availableSlots.slice(0, 2);
+    
+    if (selectedSlots.length > 0) {
+      // 일정을 찾았으면 반복문 종료
+      console.log(`일정 검색 성공: retryCount=${retryCount}, 날짜 범위=${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}`);
+      break;
+    }
+
+    // 일정을 찾지 못했고, 재시도 가능한 경우 날짜 범위 확장
+    if (shouldExtendDateRange(retryCount)) {
+      retryCount++;
+      const extended = extendDateRangeByWeek(currentStartDate, currentEndDate);
+      currentStartDate = extended.newStartDate;
+      currentEndDate = extended.newEndDate;
+      console.log(`일정 없음. 날짜 범위 확장 시도 ${retryCount}: ${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}`);
+    } else {
+      // 최대 재시도 횟수 초과
+      lastError = new Error(
+        `면접관들의 공통 가능 일정을 찾을 수 없습니다. ` +
+        `원본 날짜 범위(${format(originalStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(originalEndDate, 'yyyy-MM-dd', { locale: ko })})부터 ` +
+        `총 ${retryCount + 1}회 시도했지만 가능한 일정이 없습니다. 다른 날짜 범위를 선택하거나 면접관을 변경해주세요.`
+      );
+      break;
+    }
+  }
+
+  if (selectedSlots.length === 0) {
+    throw lastError || new Error('면접관들의 공통 가능 일정을 찾을 수 없습니다. 날짜 범위를 늘리거나 다른 면접관을 선택해주세요.');
+  }
+
+  // 각 일정 옵션에 대해 구글 캘린더 block 일정 생성
+  const scheduleOptions = [];
+  
+  for (const slot of selectedSlots) {
+    const endTime = new Date(slot.scheduledAt);
+    endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+
+    // 첫 번째 면접관의 토큰을 사용하여 이벤트 생성 (주최자)
+    const organizer = interviewersWithCalendar[0];
+    const organizerToken = await refreshAccessTokenIfNeeded(
+      organizer.calendar_access_token!,
+      organizer.calendar_refresh_token!
+    );
+
+    // 구글 캘린더에 block 일정 생성
+    const eventId = await createCalendarEvent(
+      organizerToken,
+      organizer.calendar_refresh_token!,
+      {
+        summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
+        description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+        start: {
+          dateTime: slot.scheduledAt.toISOString(),
+          timeZone: 'Asia/Seoul',
+        },
+        end: {
+          dateTime: endTime.toISOString(),
+          timeZone: 'Asia/Seoul',
+        },
+        attendees: interviewersWithCalendar.map(inv => ({ email: inv.email })),
+        transparency: 'opaque',
+      }
+    );
+
+    // schedule_options에 저장
+    const { data: option, error: optionError } = await supabase
+      .from('schedule_options')
+      .insert({
+        schedule_id: scheduleId,
+        scheduled_at: slot.scheduledAt.toISOString(),
+        status: 'pending',
+        google_event_id: eventId,
+        interviewer_responses: {},
+      })
+      .select()
+      .single();
+
+    if (optionError || !option) {
+      // 이벤트는 생성되었지만 DB 저장 실패 시 이벤트 삭제 시도
+      try {
+        await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId);
+      } catch (deleteError) {
+        console.error('이벤트 삭제 실패:', deleteError);
+      }
+      throw new Error(`일정 옵션 저장 실패: ${optionError?.message || '알 수 없는 오류'}`);
+    }
+
+    scheduleOptions.push(option);
+  }
+
+  // 스케줄의 workflow_status를 다시 'pending_interviewers'로 변경 및 재시도 횟수 업데이트
+  const { error: updateScheduleError } = await supabase
+    .from('schedules')
+    .update({ 
+      workflow_status: 'pending_interviewers',
+      scheduled_at: selectedSlots[0].scheduledAt.toISOString(), // 첫 번째 옵션으로 업데이트
+      retry_count: retryCount, // 재시도 횟수 업데이트
+      // 원본 날짜 범위가 없으면 저장
+      original_start_date: schedule.original_start_date || originalStartDate.toISOString(),
+      original_end_date: schedule.original_end_date || originalEndDate.toISOString(),
+    })
+    .eq('id', scheduleId);
+
+  if (updateScheduleError) {
+    console.error('스케줄 workflow_status 업데이트 실패:', updateScheduleError);
+    throw new Error(`스케줄 상태 업데이트 실패: ${updateScheduleError.message}`);
+  }
+
+  // 면접관들에게 새로운 일정 확인 안내 메일 발송
+  const organizer = interviewersWithCalendar[0];
+  if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
+    const optionsListHtml = scheduleOptions.map((opt, index) => {
+      const date = new Date(opt.scheduled_at);
+      const endTime = new Date(date);
+      endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+      
+      return `
+        <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
+          <p style="margin: 0; font-weight: bold; color: #333;">
+            옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+          </p>
+        </div>
+      `;
+    }).join('');
+
+    const notificationMessage = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.6; color: #333; }
+        </style>
+      </head>
+      <body>
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+            새로운 면접 일정 확인 요청
+          </h2>
+          
+          <p style="font-size: 16px; margin-top: 20px;">
+            안녕하세요,
+          </p>
+          
+          <p style="font-size: 14px; margin-top: 15px;">
+            이전 일정 옵션이 모두 거절되어 <strong>${candidate.name}</strong>님의 새로운 면접 일정 옵션이 생성되었습니다. 
+            구글 캘린더에 초대가 전송되었으니 확인 후 수락 또는 거절해주시기 바랍니다.
+          </p>
+          
+          <div style="margin: 25px 0; padding: 20px; background-color: #f0f9ff; border-left: 4px solid #2563eb; border-radius: 5px;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; color: #1e40af;">
+              면접 정보
+            </p>
+            <p style="margin: 5px 0; font-size: 14px;">
+              <strong>포지션:</strong> ${positionName}
+            </p>
+            <p style="margin: 5px 0; font-size: 14px;">
+              <strong>후보자:</strong> ${candidate.name}
+            </p>
+            <p style="margin: 5px 0; font-size: 14px;">
+              <strong>면접 단계:</strong> ${schedule.stage_id}
+            </p>
+            <p style="margin: 5px 0; font-size: 14px;">
+              <strong>면접 시간:</strong> ${schedule.duration_minutes}분
+            </p>
+          </div>
+          
+          <div style="margin: 25px 0;">
+            <p style="font-weight: bold; color: #333; margin-bottom: 10px;">
+              새로 생성된 일정 옵션:
+            </p>
+            ${optionsListHtml}
+          </div>
+          
+          <div style="margin: 30px 0; padding: 15px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 5px;">
+            <p style="margin: 0; font-size: 14px; color: #92400e;">
+              <strong>⚠️ 중요:</strong> 구글 캘린더에서 각 일정 초대에 대해 수락 또는 거절을 선택해주세요. 
+              모든 면접관이 수락한 일정이 후보자에게 전송됩니다.
+            </p>
+          </div>
+          
+          <p style="margin-top: 30px; font-size: 14px; color: #666;">
+            구글 캘린더에서 일정을 확인하고 응답해주시기 바랍니다.
+          </p>
+          
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+          <p style="font-size: 12px; color: #999; text-align: center;">
+            이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
+          </p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // 모든 면접관에게 안내 메일 발송
+    for (const interviewer of interviewersWithCalendar) {
+      if (interviewer.email) {
+        try {
+          await sendEmailViaGmail(
+            organizer.calendar_access_token,
+            organizer.calendar_refresh_token,
+            {
+              to: interviewer.email,
+              from: organizer.email,
+              subject: `[새로운 면접 일정 확인 요청] ${candidate.name}님의 면접 일정이 재생성되었습니다`,
+              html: notificationMessage,
+              replyTo: organizer.email,
+            }
+          );
+          console.log(`면접관 ${interviewer.email}에게 새로운 일정 안내 메일 발송 완료`);
+        } catch (error) {
+          console.error(`면접관 ${interviewer.email}에게 안내 메일 발송 실패:`, error);
+          // 메일 발송 실패해도 일정 생성은 성공한 것으로 처리
+        }
+      }
+    }
+  }
+
+  // 타임라인 이벤트 생성
+  const timelineMessage = retryCount > currentRetryCount
+    ? `이전 일정 옵션이 모두 거절되어 새로운 면접 일정 옵션이 자동으로 생성되었습니다. 날짜 범위를 ${retryCount - currentRetryCount}회 확장하여 검색했습니다.`
+    : '이전 일정 옵션이 모두 거절되어 새로운 면접 일정 옵션이 자동으로 생성되었습니다.';
+  
+  await supabase.from('timeline_events').insert({
+    candidate_id: schedule.candidate_id,
+    type: 'schedule_created',
+    content: {
+      message: timelineMessage,
+      schedule_id: scheduleId,
+      schedule_options: scheduleOptions.map(opt => ({
+        id: opt.id,
+        scheduled_at: opt.scheduled_at,
+      })),
+      interviewers: schedule.interviewer_ids,
+      retry_count: retryCount,
+      previous_retry_count: currentRetryCount,
+    },
+    created_by: user.userId,
+  });
+
+  // 캐시 무효화
+  revalidatePath('/dashboard/calendar');
+  revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+  revalidatePath('/dashboard/schedules');
+
+  return {
+    scheduleId,
+    options: scheduleOptions,
+    message: `${selectedSlots.length}개의 새로운 일정 옵션이 생성되었고, 면접관들에게 초대가 전송되었습니다.`,
+  };
 }
 
 /**
@@ -760,13 +1244,18 @@ export async function checkInterviewerResponses(scheduleId: string) {
 
     // 각 옵션의 면접관 응답 확인
     let allAcceptedOption: typeof options[0] | null = null;
+    const updatedOptions: Array<{ id: string; allDeclined: boolean; hasResponse: boolean }> = [];
 
     for (const option of options) {
-      if (!option.google_event_id) continue;
+      if (!option.google_event_id) {
+        updatedOptions.push({ id: option.id, allDeclined: false, hasResponse: false });
+        continue;
+      }
 
       // 첫 번째 면접관의 토큰 사용
       const organizer = interviewers.find(inv => inv.calendar_access_token);
       if (!organizer || !organizer.calendar_access_token || !organizer.calendar_refresh_token) {
+        updatedOptions.push({ id: option.id, allDeclined: false, hasResponse: false });
         continue;
       }
 
@@ -780,6 +1269,8 @@ export async function checkInterviewerResponses(scheduleId: string) {
         // 면접관별 응답 상태 업데이트
         const interviewerResponses: Record<string, string> = {};
         let allAccepted = true;
+        let allDeclined = true;
+        let hasResponse = false;
 
         for (const interviewer of interviewers) {
           const response = responses[interviewer.email] || 'needsAction';
@@ -787,6 +1278,16 @@ export async function checkInterviewerResponses(scheduleId: string) {
           
           if (response !== 'accepted') {
             allAccepted = false;
+          }
+          
+          // needsAction이 아니면 응답이 있는 것으로 간주
+          if (response !== 'needsAction') {
+            hasResponse = true;
+          }
+          
+          // declined가 아니면 모두 거절된 것은 아님
+          if (response !== 'declined') {
+            allDeclined = false;
           }
         }
 
@@ -807,9 +1308,13 @@ export async function checkInterviewerResponses(scheduleId: string) {
           console.log(`모든 면접관이 수락한 일정 옵션 발견: ${option.id} (${option.scheduled_at})`);
           allAcceptedOption = option;
         }
+
+        // 옵션 상태 업데이트 정보 저장
+        updatedOptions.push({ id: option.id, allDeclined, hasResponse });
       } catch (error) {
         console.error(`옵션 ${option.id}의 응답 확인 실패:`, error);
         // 에러가 발생해도 다른 옵션은 계속 확인
+        updatedOptions.push({ id: option.id, allDeclined: false, hasResponse: false });
       }
     }
 
@@ -856,10 +1361,75 @@ export async function checkInterviewerResponses(scheduleId: string) {
           error: error instanceof Error ? error.message : '알 수 없는 오류',
         };
       }
-    } else {
-      console.log(`모든 면접관이 수락한 일정이 없음: scheduleId=${scheduleId}`);
     }
 
+    // 모든 일정 옵션이 거절되었는지 확인
+    // 응답이 있고 모두 거절된 옵션만 확인 (아직 응답이 없는 옵션은 제외)
+    const respondedOptions = updatedOptions.filter(opt => opt.hasResponse);
+    const allDeclinedOptions = respondedOptions.filter(opt => opt.allDeclined);
+    
+    // 모든 응답이 있는 옵션이 거절되었고, 응답이 있는 옵션이 하나 이상 있는 경우
+    if (respondedOptions.length > 0 && respondedOptions.length === allDeclinedOptions.length) {
+      console.log(`모든 일정 옵션이 거절됨: scheduleId=${scheduleId}, 거절된 옵션 수=${allDeclinedOptions.length}`);
+      
+      // 모든 거절된 옵션의 status를 'rejected'로 업데이트
+      const declinedOptionIds = allDeclinedOptions.map(opt => opt.id);
+      const { error: updateStatusError } = await supabase
+        .from('schedule_options')
+        .update({ status: 'rejected' })
+        .in('id', declinedOptionIds);
+      
+      if (updateStatusError) {
+        console.error('거절된 옵션 status 업데이트 실패:', updateStatusError);
+      } else {
+        console.log(`거절된 옵션 ${declinedOptionIds.length}개의 status를 'rejected'로 업데이트 완료`);
+      }
+      
+      // 새로운 일정 옵션 자동 생성 시도
+      try {
+        console.log(`새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
+        const regenerateResult = await regenerateScheduleOptions(scheduleId);
+        
+        // 캐시 무효화하여 최신 상태 반영
+        revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+        revalidatePath('/dashboard/schedules');
+        
+        return {
+          message: regenerateResult.message || '모든 일정 옵션이 거절되어 새로운 일정 옵션이 자동으로 생성되었습니다.',
+          allAccepted: false,
+          allDeclined: true,
+          regenerated: true,
+        };
+      } catch (regenerateError) {
+        console.error('새로운 일정 옵션 생성 실패:', regenerateError);
+        
+        // 새로운 일정 생성 실패 시 스케줄을 취소 상태로 변경
+        const { error: updateScheduleError } = await supabase
+          .from('schedules')
+          .update({ workflow_status: 'cancelled' })
+          .eq('id', scheduleId);
+        
+        if (updateScheduleError) {
+          console.error('스케줄 workflow_status 업데이트 실패:', updateScheduleError);
+        }
+        
+        // 캐시 무효화하여 최신 상태 반영
+        revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+        revalidatePath('/dashboard/schedules');
+        
+        return {
+          message: `모든 일정 옵션이 거절되었지만, 새로운 일정을 찾을 수 없습니다: ${regenerateError instanceof Error ? regenerateError.message : '알 수 없는 오류'}. 면접 일정이 취소되었습니다.`,
+          allAccepted: false,
+          allDeclined: true,
+          regenerated: false,
+          error: regenerateError instanceof Error ? regenerateError.message : '알 수 없는 오류',
+        };
+      }
+    }
+
+    // 아직 일부 옵션은 대기 중이거나 일부는 거절된 상태
+    console.log(`모든 면접관이 수락한 일정이 없음: scheduleId=${scheduleId}`);
+    
     // 캐시 무효화하여 최신 상태 반영
     revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
     revalidatePath('/dashboard/schedules');
@@ -867,6 +1437,7 @@ export async function checkInterviewerResponses(scheduleId: string) {
     return {
       message: '아직 모든 면접관이 수락하지 않았습니다. 계속 대기 중입니다.',
       allAccepted: false,
+      allDeclined: false,
     };
   });
 }
