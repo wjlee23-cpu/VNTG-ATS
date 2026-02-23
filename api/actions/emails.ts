@@ -18,6 +18,21 @@ export async function sendEmailToCandidate(formData: FormData) {
     const user = await getCurrentUser();
     const supabase = await createClient();
 
+    // 현재 사용자의 Google Workspace 토큰 조회 (Gmail API 사용을 위해)
+    const { data: currentUserData, error: userTokenError } = await supabase
+      .from('users')
+      .select('calendar_access_token, calendar_refresh_token, email')
+      .eq('id', user.userId)
+      .single();
+
+    if (userTokenError || !currentUserData) {
+      throw new Error('사용자 정보를 찾을 수 없습니다.');
+    }
+
+    if (!currentUserData.calendar_access_token || !currentUserData.calendar_refresh_token) {
+      throw new Error('Google Workspace 계정이 연동되지 않았습니다. 구글 캘린더를 먼저 연동해주세요.');
+    }
+
     // 입력값 검증
     const candidateId = validateUUID(validateRequired(formData.get('candidate_id'), '후보자 ID'), '후보자 ID');
     const toEmail = validateEmail(validateRequired(formData.get('to_email'), '수신자 이메일'));
@@ -62,14 +77,18 @@ export async function sendEmailToCandidate(formData: FormData) {
       throw new Error(`이메일 저장 실패: ${emailError.message}`);
     }
 
-    // 실제 이메일 발송 (Resend API)
-    const emailResult = await sendEmail({
-      to: toEmail,
-      from: user.email,
-      subject,
-      html: body.replace(/\n/g, '<br>'), // 줄바꿈을 HTML로 변환
-      replyTo: user.email,
-    })
+    // Gmail API를 사용하여 이메일 발송
+    const emailResult = await sendEmailViaGmail(
+      currentUserData.calendar_access_token,
+      currentUserData.calendar_refresh_token,
+      {
+        to: toEmail,
+        from: currentUserData.email || user.email,
+        subject,
+        html: body.replace(/\n/g, '<br>'), // 줄바꿈을 HTML로 변환
+        replyTo: currentUserData.email || user.email,
+      }
+    )
 
     // 이메일 발송 결과 업데이트
     if (emailResult.success && emailResult.messageId) {

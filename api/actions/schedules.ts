@@ -9,7 +9,7 @@ import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
 import { getBusyTimes, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, getEventAttendeesStatus, refreshAccessTokenIfNeeded } from '@/lib/calendar/google';
 import { findAvailableTimeSlots } from '@/lib/ai/schedule';
-import { sendEmail, generateScheduleSelectionUrl } from '@/lib/email/resend';
+import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gmail';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 
@@ -582,7 +582,10 @@ export async function scheduleInterviewAutomated(formData: FormData) {
 export async function checkInterviewerResponses(scheduleId: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
     // 스케줄 및 옵션 조회
     const { data: schedule, error: scheduleError } = await supabase
@@ -664,35 +667,189 @@ export async function checkInterviewerResponses(scheduleId: string) {
         }
 
         // DB에 응답 상태 저장
-        await supabase
+        const { error: updateError } = await supabase
           .from('schedule_options')
           .update({ interviewer_responses: interviewerResponses })
           .eq('id', option.id);
 
+        if (updateError) {
+          console.error(`옵션 ${option.id}의 응답 상태 업데이트 실패:`, updateError);
+        } else {
+          console.log(`옵션 ${option.id}의 응답 상태 업데이트 완료:`, interviewerResponses);
+        }
+
         // 모든 면접관이 수락한 경우
         if (allAccepted && !allAcceptedOption) {
+          console.log(`모든 면접관이 수락한 일정 옵션 발견: ${option.id} (${option.scheduled_at})`);
           allAcceptedOption = option;
         }
       } catch (error) {
         console.error(`옵션 ${option.id}의 응답 확인 실패:`, error);
+        // 에러가 발생해도 다른 옵션은 계속 확인
       }
     }
 
     // 모든 면접관이 수락한 일정이 있으면 후보자에게 전송
     if (allAcceptedOption) {
-      // 후보자에게 일정 옵션 전송
-      await sendScheduleOptionsToCandidate(scheduleId);
-      
-      return {
-        message: '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.',
-        allAccepted: true,
-        acceptedOptionId: allAcceptedOption.id,
-      };
+      console.log(`모든 면접관이 수락한 일정이 있어 후보자에게 전송 시작: scheduleId=${scheduleId}, optionId=${allAcceptedOption.id}`);
+      try {
+        // 후보자에게 일정 옵션 전송
+        const sendResult = await sendScheduleOptionsToCandidate(scheduleId);
+        console.log('후보자에게 일정 옵션 전송 완료:', sendResult);
+        
+        // 캐시 무효화하여 최신 상태 반영
+        revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+        revalidatePath('/dashboard/schedules');
+        
+        // 이메일 발송 실패 시 경고 메시지 포함
+        if (sendResult.data && !sendResult.data.emailSent) {
+          return {
+            message: '모든 면접관이 수락한 일정이 있습니다. 하지만 이메일 발송에 실패했습니다. 메일 재전송 버튼을 사용해주세요.',
+            allAccepted: true,
+            acceptedOptionId: allAcceptedOption.id,
+            emailSent: false,
+            error: sendResult.data.error,
+          };
+        }
+        
+        return {
+          message: '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.',
+          allAccepted: true,
+          acceptedOptionId: allAcceptedOption.id,
+          emailSent: true,
+        };
+      } catch (error) {
+        console.error('후보자에게 일정 옵션 전송 실패:', error);
+        // 메일 전송 실패해도 응답 상태는 업데이트되었으므로 경고만 반환
+        revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+        revalidatePath('/dashboard/schedules');
+        
+        return {
+          message: '모든 면접관이 수락한 일정이 있습니다. 하지만 이메일 발송에 실패했습니다. 메일 재전송 버튼을 사용해주세요.',
+          allAccepted: true,
+          acceptedOptionId: allAcceptedOption.id,
+          emailSent: false,
+          error: error instanceof Error ? error.message : '알 수 없는 오류',
+        };
+      }
+    } else {
+      console.log(`모든 면접관이 수락한 일정이 없음: scheduleId=${scheduleId}`);
     }
+
+    // 캐시 무효화하여 최신 상태 반영
+    revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+    revalidatePath('/dashboard/schedules');
 
     return {
       message: '아직 모든 면접관이 수락하지 않았습니다. 계속 대기 중입니다.',
       allAccepted: false,
+    };
+  });
+}
+
+/**
+ * 모든 대기 중인 면접 일정의 응답을 일괄 확인
+ * workflow_status가 pending_interviewers인 모든 일정의 응답을 확인
+ */
+export async function checkAllPendingSchedules() {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // organization_id에 속한 job_posts 조회
+    let jobPostsQuery = supabase
+      .from('job_posts')
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+    
+    const { data: jobPosts } = await jobPostsQuery;
+
+    if (!jobPosts || jobPosts.length === 0) {
+      return {
+        checked: 0,
+        allAccepted: 0,
+        stillPending: 0,
+        errors: [],
+      };
+    }
+
+    const jobPostIds = jobPosts.map(jp => jp.id);
+
+    // 해당 job_posts의 후보자들 조회
+    const { data: candidates } = await supabase
+      .from('candidates')
+      .select('id')
+      .in('job_post_id', jobPostIds);
+
+    if (!candidates || candidates.length === 0) {
+      return {
+        checked: 0,
+        allAccepted: 0,
+        stillPending: 0,
+        errors: [],
+      };
+    }
+
+    const candidateIds = candidates.map(c => c.id);
+
+    // pending_interviewers 상태인 모든 일정 조회
+    const { data: pendingSchedules, error } = await supabase
+      .from('schedules')
+      .select('id, candidate_id')
+      .in('candidate_id', candidateIds)
+      .eq('workflow_status', 'pending_interviewers');
+
+    if (error) {
+      throw new Error(`대기 중인 일정 조회 실패: ${error.message}`);
+    }
+
+    if (!pendingSchedules || pendingSchedules.length === 0) {
+      return {
+        checked: 0,
+        allAccepted: 0,
+        stillPending: 0,
+        errors: [],
+      };
+    }
+
+    // 각 일정의 응답 확인
+    let allAcceptedCount = 0;
+    let stillPendingCount = 0;
+    const errors: Array<{ scheduleId: string; error: string }> = [];
+
+    for (const schedule of pendingSchedules) {
+      try {
+        const result = await checkInterviewerResponses(schedule.id);
+        if (result.data?.allAccepted) {
+          allAcceptedCount++;
+        } else {
+          stillPendingCount++;
+        }
+      } catch (error) {
+        errors.push({
+          scheduleId: schedule.id,
+          error: error instanceof Error ? error.message : '알 수 없는 오류',
+        });
+      }
+    }
+
+    // 캐시 무효화
+    revalidatePath('/dashboard/schedules');
+    pendingSchedules.forEach(schedule => {
+      revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+    });
+
+    return {
+      checked: pendingSchedules.length,
+      allAccepted: allAcceptedCount,
+      stillPending: stillPendingCount,
+      errors,
     };
   });
 }
@@ -704,7 +861,25 @@ export async function checkInterviewerResponses(scheduleId: string) {
 export async function sendScheduleOptionsToCandidate(scheduleId: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // 현재 사용자의 Google Workspace 토큰 조회 (Gmail API 사용을 위해)
+    const { data: currentUserData, error: userTokenError } = await supabase
+      .from('users')
+      .select('calendar_access_token, calendar_refresh_token, email')
+      .eq('id', user.userId)
+      .single();
+
+    if (userTokenError || !currentUserData) {
+      throw new Error('사용자 정보를 찾을 수 없습니다.');
+    }
+
+    if (!currentUserData.calendar_access_token || !currentUserData.calendar_refresh_token) {
+      throw new Error('Google Workspace 계정이 연동되지 않았습니다. 구글 캘린더를 먼저 연동해주세요.');
+    }
 
     // 스케줄 및 후보자 정보 조회
     const { data: schedule, error: scheduleError } = await supabase
@@ -732,12 +907,12 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       throw new Error('후보자 정보를 찾을 수 없습니다.');
     }
 
-    // 모든 면접관이 수락한 일정 옵션 조회
+    // 모든 면접관이 수락한 일정 옵션 조회 (pending 또는 accepted 상태 모두 포함)
     const { data: options, error: optionsError } = await supabase
       .from('schedule_options')
       .select('*')
       .eq('schedule_id', scheduleId)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'accepted'])
       .order('scheduled_at', { ascending: true });
 
     if (optionsError || !options || options.length === 0) {
@@ -763,6 +938,17 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
 
     if (acceptedOptions.length === 0) {
       throw new Error('모든 면접관이 수락한 일정 옵션이 없습니다.');
+    }
+
+    // 모든 면접관이 수락한 옵션의 status를 'accepted'로 업데이트 (후보자에게 전송할 옵션임을 표시)
+    const acceptedOptionIds = acceptedOptions.map(opt => opt.id);
+    const { error: updateStatusError } = await supabase
+      .from('schedule_options')
+      .update({ status: 'accepted' })
+      .in('id', acceptedOptionIds);
+
+    if (updateStatusError) {
+      console.error('옵션 status 업데이트 실패:', updateStatusError);
     }
 
     // 이메일 본문 생성
@@ -816,17 +1002,29 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       </html>
     `;
 
-    // 이메일 발송
-    const emailResult = await sendEmail({
-      to: candidate.email,
-      from: user.email,
-      subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
-      html: emailHtml,
-      replyTo: user.email,
-    });
+    // Gmail API를 사용하여 이메일 발송
+    console.log(`후보자에게 이메일 발송 시작: ${candidate.email}, 옵션 수: ${acceptedOptions.length}`);
+    const emailResult = await sendEmailViaGmail(
+      currentUserData.calendar_access_token,
+      currentUserData.calendar_refresh_token,
+      {
+        to: candidate.email,
+        from: currentUserData.email || user.email,
+        subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
+        html: emailHtml,
+        replyTo: currentUserData.email || user.email,
+      }
+    );
+
+    console.log('이메일 발송 결과:', emailResult);
+
+    if (!emailResult.success) {
+      console.error('이메일 발송 실패:', emailResult.error);
+      // 이메일 발송 실패해도 DB에는 기록하고 계속 진행
+    }
 
     // 이메일 기록 저장
-    await supabase.from('emails').insert({
+    const { error: emailInsertError } = await supabase.from('emails').insert({
       candidate_id: candidate.id,
       message_id: emailResult.messageId || `email-${Date.now()}`,
       subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
@@ -836,6 +1034,10 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       direction: 'outbound',
       sent_at: new Date().toISOString(),
     });
+
+    if (emailInsertError) {
+      console.error('이메일 기록 저장 실패:', emailInsertError);
+    }
 
     // 워크플로우 상태 업데이트
     await supabase
@@ -858,6 +1060,19 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
 
     // 캐시 무효화
     revalidatePath(`/dashboard/candidates/${candidate.id}`);
+    revalidatePath('/dashboard/schedules');
+
+    // 이메일 발송 실패 시 경고만 표시 (에러는 던지지 않음 - 이미 workflow_status는 업데이트되었으므로)
+    if (!emailResult.success) {
+      console.error('이메일 발송 실패:', emailResult.error);
+      // 이메일 발송 실패해도 workflow_status는 업데이트되었으므로 경고만 반환
+      return {
+        success: false,
+        emailSent: false,
+        optionsCount: acceptedOptions.length,
+        error: `이메일 발송 실패: ${emailResult.error || '알 수 없는 오류'}. 워크플로우 상태는 업데이트되었습니다.`,
+      };
+    }
 
     return {
       success: true,
@@ -1052,22 +1267,45 @@ export async function confirmCandidateSchedule(
       </html>
     `;
 
-    // 후보자에게 확정 안내
-    await sendEmail({
-      to: candidate.email,
-      subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
-      html: confirmationMessage,
-    });
+    // 현재 사용자의 Google Workspace 토큰 조회 (Gmail API 사용을 위해)
+    const { data: currentUserData, error: userTokenError } = await supabase
+      .from('users')
+      .select('calendar_access_token, calendar_refresh_token, email')
+      .eq('id', user.userId)
+      .single();
 
-    // 면접관들에게 확정 안내
-    for (const interviewer of interviewers) {
-      if (interviewer.email) {
-        await sendEmail({
-          to: interviewer.email,
+    if (!userTokenError && currentUserData?.calendar_access_token && currentUserData?.calendar_refresh_token) {
+      // 후보자에게 확정 안내
+      await sendEmailViaGmail(
+        currentUserData.calendar_access_token,
+        currentUserData.calendar_refresh_token,
+        {
+          to: candidate.email,
+          from: currentUserData.email || user.email,
           subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
           html: confirmationMessage,
-        });
+          replyTo: currentUserData.email || user.email,
+        }
+      );
+
+      // 면접관들에게 확정 안내
+      for (const interviewer of interviewers) {
+        if (interviewer.email) {
+          await sendEmailViaGmail(
+            currentUserData.calendar_access_token,
+            currentUserData.calendar_refresh_token,
+            {
+              to: interviewer.email,
+              from: currentUserData.email || user.email,
+              subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
+              html: confirmationMessage,
+              replyTo: currentUserData.email || user.email,
+            }
+          );
+        }
       }
+    } else {
+      console.warn('Google Workspace 계정이 연동되지 않아 이메일을 발송할 수 없습니다.');
     }
 
     // 타임라인 이벤트 생성

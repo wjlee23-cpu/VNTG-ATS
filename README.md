@@ -38,15 +38,14 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 OPENAI_API_KEY=your_openai_api_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
 
-# Google Calendar API
+# Google Calendar API & Gmail API
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-
-# App Configuration
-NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-**참고**: 구글 OAuth 로그인을 사용하려면 Supabase 대시보드에서 구글 프로바이더를 설정해야 합니다. 자세한 내용은 [구글 OAuth 설정 가이드](docs/setup-guide.md)를 참조하세요.
+**참고**: 
+- 구글 OAuth 로그인을 사용하려면 Supabase 대시보드에서 구글 프로바이더를 설정해야 합니다. 자세한 내용은 [구글 OAuth 설정 가이드](docs/setup-guide.md)를 참조하세요.
+- 이메일 발송 기능은 Google Workspace의 Gmail API를 사용합니다. Google Cloud Console에서 Gmail API를 활성화하고, 구글 캘린더 연동 시 Gmail 발송 권한도 함께 승인해야 합니다. 자세한 내용은 [Gmail API 설정 가이드](docs/gmail-api-setup.md)를 참조하세요.
 
 ### 2. 데이터베이스 마이그레이션
 
