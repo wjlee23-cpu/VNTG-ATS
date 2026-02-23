@@ -74,6 +74,16 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     setIsLoadingDetail(true);
     setDetailError(null);
     
+    // initialCandidates에서 기본 정보 먼저 찾기
+    const initialCandidate = initialCandidates.find(c => c.id === candidateId);
+    if (initialCandidate) {
+      // 기본 정보로 먼저 표시 (로딩 중에도 기본 정보는 보이도록)
+      setCandidateDetail({
+        ...initialCandidate,
+        // 기본 정보만 있는 상태로 표시
+      });
+    }
+    
     try {
       const [candidateResult, schedulesResult, timelineResult] = await Promise.all([
         getCandidateById(candidateId),
@@ -82,16 +92,33 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
       ]);
 
       if (candidateResult.error || !candidateResult.data) {
-        setDetailError(candidateResult.error || '후보자를 찾을 수 없습니다.');
-        setCandidateDetail(null);
+        // 에러가 발생해도 initialCandidates의 기본 정보가 있으면 계속 표시
+        if (!initialCandidate) {
+          setDetailError(candidateResult.error || '후보자를 찾을 수 없습니다.');
+          setCandidateDetail(null);
+        } else {
+          // 기본 정보는 유지하고, 스케줄과 타임라인만 로드 시도
+          setDetailError(null);
+        }
       } else {
+        // 성공적으로 로드된 경우 상세 정보로 업데이트
         setCandidateDetail(candidateResult.data);
         setSchedules(schedulesResult.data || []);
         setTimelineEvents(timelineResult.data || []);
+        setDetailError(null);
       }
     } catch (err) {
-      setDetailError('후보자 정보를 불러오는 중 오류가 발생했습니다.');
-      setCandidateDetail(null);
+      // 에러가 발생해도 initialCandidates의 기본 정보가 있으면 계속 표시
+      if (!initialCandidate) {
+        setDetailError('후보자 정보를 불러오는 중 오류가 발생했습니다.');
+        setCandidateDetail(null);
+      } else {
+        // 기본 정보는 유지
+        setDetailError(null);
+        // 스케줄과 타임라인은 빈 배열로 설정
+        setSchedules([]);
+        setTimelineEvents([]);
+      }
     } finally {
       setIsLoadingDetail(false);
     }

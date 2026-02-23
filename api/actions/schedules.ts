@@ -1,8 +1,9 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
+import { getCandidateById } from '@/api/queries/candidates';
 import { validateRequired, validateUUID, validateFutureDate, validateNumberRange, validateNonEmptyArray } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
@@ -349,7 +350,10 @@ export async function respondToSchedule(
 export async function scheduleInterviewAutomated(formData: FormData) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
     // 입력값 검증
     const candidateId = validateUUID(validateRequired(formData.get('candidate_id'), '후보자 ID'), '후보자 ID');
@@ -373,19 +377,15 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       '면접 시간'
     );
 
-    // 후보자 접근 권한 확인
-    await verifyCandidateAccess(candidateId);
-
-    // 후보자 정보 조회
-    const { data: candidate, error: candidateError } = await supabase
-      .from('candidates')
-      .select('id, name, email')
-      .eq('id', candidateId)
-      .single();
-
-    if (candidateError || !candidate) {
-      throw new Error('후보자를 찾을 수 없습니다.');
+    // 후보자 정보 조회 (권한 확인 포함, 관리자일 경우 Service Role Client 사용)
+    const candidateResult = await getCandidateById(candidateId);
+    
+    if (candidateResult.error || !candidateResult.data) {
+      console.error('후보자 조회 실패:', candidateResult.error);
+      throw new Error(candidateResult.error || '후보자를 찾을 수 없습니다.');
     }
+    
+    const candidate = candidateResult.data;
 
     // 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
     const { data: interviewers, error: interviewersError } = await supabase
@@ -403,7 +403,15 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     );
 
     if (interviewersWithCalendar.length !== interviewerIds.length) {
-      throw new Error('모든 면접관이 구글 캘린더에 연동되어 있어야 합니다.');
+      // 연동되지 않은 면접관 목록 생성
+      const interviewersWithoutCalendar = interviewers.filter(
+        inv => !(inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token)
+      );
+      
+      const missingEmails = interviewersWithoutCalendar.map(inv => inv.email).join(', ');
+      throw new Error(
+        `모든 면접관이 구글 캘린더에 연동되어 있어야 합니다. 연동되지 않은 면접관: ${missingEmails}`
+      );
     }
 
     // 면접관들의 바쁜 시간 조회

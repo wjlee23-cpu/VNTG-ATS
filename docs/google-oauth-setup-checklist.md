@@ -15,8 +15,19 @@
 ### 2단계: 승인된 리디렉션 URI 확인 및 추가
 **승인된 리디렉션 URI** 섹션에 다음이 **정확히** 포함되어 있는지 확인:
 
+**Supabase OAuth용:**
 ```
 https://pmfzabgoiqnmlvdrlgpp.supabase.co/auth/v1/callback
+```
+
+**구글 캘린더 연동용 (로컬 개발 환경):**
+```
+http://localhost:3000/api/auth/callback/google
+```
+
+**구글 캘린더 연동용 (프로덕션 환경 - 배포 후 추가):**
+```
+https://yourdomain.com/api/auth/callback/google
 ```
 
 **중요 체크사항:**

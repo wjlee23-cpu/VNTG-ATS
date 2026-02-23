@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Bell, ChevronDown, Command, LogOut, User, Shield } from 'lucide-react';
+import { Search, Bell, ChevronDown, Command, LogOut, User, Shield, Calendar } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
@@ -33,6 +33,7 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isCalendarConnected, setIsCalendarConnected] = useState(false);
 
   // 사용자 프로필 정보 가져오기
   useEffect(() => {
@@ -41,6 +42,23 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
         const result = await getUserProfile();
         if (result.data) {
           setUserProfile(result.data);
+          
+          // 구글 캘린더 연동 상태 확인
+          const { createClient } = await import('@/lib/supabase/client');
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          
+          if (user) {
+            const { data: userData } = await supabase
+              .from('users')
+              .select('calendar_provider, calendar_access_token')
+              .eq('id', user.id)
+              .single();
+            
+            setIsCalendarConnected(
+              userData?.calendar_provider === 'google' && !!userData?.calendar_access_token
+            );
+          }
         }
       } catch (error) {
         console.error('사용자 프로필 로드 실패:', error);
@@ -140,6 +158,16 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
               <DropdownMenuItem className="cursor-pointer">
                 <User className="mr-2 h-4 w-4" />
                 <span>프로필</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="cursor-pointer"
+                onClick={() => router.push('/dashboard/connect-calendar')}
+                onSelect={(e) => e.preventDefault()}
+              >
+                <Calendar className={`mr-2 h-4 w-4 ${isCalendarConnected ? 'text-green-600' : 'text-orange-600'}`} />
+                <span>
+                  {isCalendarConnected ? '구글 캘린더 연동됨' : '구글 캘린더 연동'}
+                </span>
               </DropdownMenuItem>
               {userProfile.role === 'admin' && (
                 <DropdownMenuItem className="cursor-pointer">

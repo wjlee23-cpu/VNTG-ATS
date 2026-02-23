@@ -8,7 +8,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 /**
  * 권한 레벨 타입 정의
  */
-export type UserRole = 'admin' | 'recruiter' | 'interviewer';
+export type UserRole = 'admin' | 'recruiter' | 'interviewer' | 'hiring_manager';
 
 /**
  * 권한 계층 정의 (높을수록 권한이 큼)
@@ -16,6 +16,7 @@ export type UserRole = 'admin' | 'recruiter' | 'interviewer';
 const ROLE_HIERARCHY: Record<UserRole, number> = {
   admin: 3,
   recruiter: 2,
+  hiring_manager: 2,
   interviewer: 1,
 };
 
@@ -270,18 +271,21 @@ export async function verifyCandidateAccess(candidateId: string) {
 
   if (error) {
     // RLS 정책 위반인 경우 권한 문제로 처리
-    if (error.code === 'PGRST116' || error.message?.includes('row-level security')) {
+    if (error.code === 'PGRST116' || error.message?.includes('row-level security') || error.message?.includes('RLS')) {
       throw new Error('이 후보자에 접근할 권한이 없습니다.');
     }
     // 데이터가 없는 경우
-    if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
+    if (error.code === 'PGRST116' || error.message?.includes('No rows') || error.message?.includes('0 rows')) {
       throw new Error('후보자를 찾을 수 없습니다.');
     }
-    // job_post가 없는 경우 (inner join 실패)
-    if (error.message?.includes('foreign key') || error.message?.includes('job_posts')) {
+    // job_post가 없는 경우 (inner join 실패) - 이 경우에도 후보자는 존재할 수 있으므로 더 자세한 메시지 제공
+    if (error.message?.includes('foreign key') || error.message?.includes('job_posts') || error.message?.includes('relation')) {
+      // job_post가 없는 경우에도 후보자 자체는 존재할 수 있으므로, 더 구체적인 에러 메시지 제공
+      console.error('후보자 접근 확인 중 오류:', error);
       throw new Error('후보자와 연결된 채용 공고를 찾을 수 없습니다.');
     }
-    // 기타 에러
+    // 기타 에러 - 더 자세한 로깅
+    console.error('후보자 접근 확인 중 예상치 못한 오류:', error);
     throw new Error(`후보자 조회 중 오류가 발생했습니다: ${error.message}`);
   }
 

@@ -46,8 +46,8 @@ export default function SignupPage() {
         return;
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      // 가입 성공 시 구글 캘린더 연동 페이지로 리다이렉트
+      router.push('/dashboard/connect-calendar?from=signup');
     } catch (err) {
       setError('회원가입 중 오류가 발생했습니다.');
       setLoading(false);
