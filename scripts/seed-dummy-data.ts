@@ -235,7 +235,7 @@ async function seedDummyData() {
         .insert({
           job_post_id: jobPost.id,
           name: dummyNames[i % dummyNames.length],
-          email: `candidate${i + 1}@example.com`,
+          email: 'blee6291@gmail.com',
           phone: generatePhone(),
           status: status,
           current_stage_id: stageId,

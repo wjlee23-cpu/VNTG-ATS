@@ -378,14 +378,27 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     );
 
     // 후보자 정보 조회 (권한 확인 포함, 관리자일 경우 Service Role Client 사용)
-    const candidateResult = await getCandidateById(candidateId);
-    
-    if (candidateResult.error || !candidateResult.data) {
-      console.error('후보자 조회 실패:', candidateResult.error);
-      throw new Error(candidateResult.error || '후보자를 찾을 수 없습니다.');
+    // job_post 정보도 함께 조회하여 포지션명 가져오기
+    const { data: candidateWithJob, error: candidateError } = await supabase
+      .from('candidates')
+      .select(`
+        *,
+        job_posts (
+          id,
+          title
+        )
+      `)
+      .eq('id', candidateId)
+      .single();
+
+    if (candidateError || !candidateWithJob) {
+      console.error('후보자 조회 실패:', candidateError);
+      throw new Error(candidateError?.message || '후보자를 찾을 수 없습니다.');
     }
-    
-    const candidate = candidateResult.data;
+
+    const candidate = candidateWithJob as any;
+    const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
+    const positionName = jobPost?.title || '포지션 미지정';
 
     // 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
     const { data: interviewers, error: interviewersError } = await supabase
@@ -505,8 +518,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         organizerToken,
         organizer.calendar_refresh_token!,
         {
-          summary: `[Block] ${candidate.name} 면접 일정 (확정 대기)`,
-          description: `후보자: ${candidate.name}\n면접 단계: ${stageId}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+          summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageId}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
           start: {
             dateTime: slot.scheduledAt.toISOString(),
             timeZone: 'Asia/Seoul',
@@ -544,6 +557,117 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       }
 
       scheduleOptions.push(option);
+    }
+
+    // 면접관들에게 일정 확인 안내 메일 발송
+    const organizer = interviewersWithCalendar[0];
+    if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
+      // 일정 옵션 목록을 HTML로 포맷팅
+      const optionsListHtml = scheduleOptions.map((opt, index) => {
+        const date = new Date(opt.scheduled_at);
+        const endTime = new Date(date);
+        endTime.setMinutes(endTime.getMinutes() + durationMinutes);
+        
+        return `
+          <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
+            <p style="margin: 0; font-weight: bold; color: #333;">
+              옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+            </p>
+          </div>
+        `;
+      }).join('');
+
+      const notificationMessage = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.6; color: #333; }
+          </style>
+        </head>
+        <body>
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+              면접 일정 확인 요청
+            </h2>
+            
+            <p style="font-size: 16px; margin-top: 20px;">
+              안녕하세요,
+            </p>
+            
+            <p style="font-size: 14px; margin-top: 15px;">
+              <strong>${candidate.name}</strong>님의 면접 일정이 생성되었습니다. 
+              구글 캘린더에 초대가 전송되었으니 확인 후 수락 또는 거절해주시기 바랍니다.
+            </p>
+            
+            <div style="margin: 25px 0; padding: 20px; background-color: #f0f9ff; border-left: 4px solid #2563eb; border-radius: 5px;">
+              <p style="margin: 0 0 10px 0; font-weight: bold; color: #1e40af;">
+                면접 정보
+              </p>
+              <p style="margin: 5px 0; font-size: 14px;">
+                <strong>포지션:</strong> ${positionName}
+              </p>
+              <p style="margin: 5px 0; font-size: 14px;">
+                <strong>후보자:</strong> ${candidate.name}
+              </p>
+              <p style="margin: 5px 0; font-size: 14px;">
+                <strong>면접 단계:</strong> ${stageId}
+              </p>
+              <p style="margin: 5px 0; font-size: 14px;">
+                <strong>면접 시간:</strong> ${durationMinutes}분
+              </p>
+            </div>
+            
+            <div style="margin: 25px 0;">
+              <p style="font-weight: bold; color: #333; margin-bottom: 10px;">
+                생성된 일정 옵션:
+              </p>
+              ${optionsListHtml}
+            </div>
+            
+            <div style="margin: 30px 0; padding: 15px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 5px;">
+              <p style="margin: 0; font-size: 14px; color: #92400e;">
+                <strong>⚠️ 중요:</strong> 구글 캘린더에서 각 일정 초대에 대해 수락 또는 거절을 선택해주세요. 
+                모든 면접관이 수락한 일정이 후보자에게 전송됩니다.
+              </p>
+            </div>
+            
+            <p style="margin-top: 30px; font-size: 14px; color: #666;">
+              구글 캘린더에서 일정을 확인하고 응답해주시기 바랍니다.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+            <p style="font-size: 12px; color: #999; text-align: center;">
+              이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
+            </p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // 모든 면접관에게 안내 메일 발송
+      for (const interviewer of interviewersWithCalendar) {
+        if (interviewer.email) {
+          try {
+            await sendEmailViaGmail(
+              organizer.calendar_access_token,
+              organizer.calendar_refresh_token,
+              {
+                to: interviewer.email,
+                from: organizer.email,
+                subject: `[면접 일정 확인 요청] ${candidate.name}님의 면접 일정이 생성되었습니다`,
+                html: notificationMessage,
+                replyTo: organizer.email,
+              }
+            );
+            console.log(`면접관 ${interviewer.email}에게 안내 메일 발송 완료`);
+          } catch (error) {
+            console.error(`면접관 ${interviewer.email}에게 안내 메일 발송 실패:`, error);
+            // 메일 발송 실패해도 일정 생성은 성공한 것으로 처리
+          }
+        }
+      }
     }
 
     // 타임라인 이벤트 생성
@@ -1335,6 +1459,219 @@ export async function confirmCandidateSchedule(
         scheduled_at: selectedOption.scheduled_at,
         status: 'confirmed',
       },
+    };
+  });
+}
+
+/**
+ * 면접관 응답 미확인 시 데일리 리마인드 메일 발송
+ * pending_interviewers 상태인 스케줄의 면접관 중 응답하지 않은 사람에게만 발송
+ */
+export async function sendReminderEmailsToInterviewers() {
+  return withErrorHandling(async () => {
+    // Service Role Client를 사용하여 RLS 정책 우회 (cron job이므로)
+    const supabase = createServiceClient();
+
+    // pending_interviewers 상태인 모든 스케줄 조회
+    const { data: schedules, error: schedulesError } = await supabase
+      .from('schedules')
+      .select(`
+        *,
+        candidates!inner (
+          id,
+          name,
+          email
+        )
+      `)
+      .eq('workflow_status', 'pending_interviewers');
+
+    if (schedulesError || !schedules || schedules.length === 0) {
+      return {
+        success: true,
+        message: '리마인드 메일을 보낼 스케줄이 없습니다.',
+        sentCount: 0,
+      };
+    }
+
+    let totalSentCount = 0;
+    const errors: string[] = [];
+
+    // 각 스케줄에 대해 처리
+    for (const schedule of schedules) {
+      try {
+        const candidate = schedule.candidates as { id: string; name: string; email: string } | null | undefined;
+        if (!candidate) continue;
+
+        // 일정 옵션 조회
+        const { data: options, error: optionsError } = await supabase
+          .from('schedule_options')
+          .select('*')
+          .eq('schedule_id', schedule.id)
+          .eq('status', 'pending');
+
+        if (optionsError || !options || options.length === 0) continue;
+
+        // 면접관 정보 조회
+        const { data: interviewers } = await supabase
+          .from('users')
+          .select('id, email, calendar_access_token, calendar_refresh_token')
+          .in('id', schedule.interviewer_ids);
+
+        if (!interviewers || interviewers.length === 0) continue;
+
+        // 첫 번째 면접관의 토큰을 사용 (organizer)
+        const organizer = interviewers.find(inv => inv.calendar_access_token);
+        if (!organizer || !organizer.calendar_access_token || !organizer.calendar_refresh_token) continue;
+
+        // 각 옵션의 면접관 응답 확인
+        const interviewersNeedingReminder = new Set<string>();
+
+        for (const option of options) {
+          if (!option.google_event_id) continue;
+
+          try {
+            const responses = await getEventAttendeesStatus(
+              organizer.calendar_access_token,
+              organizer.calendar_refresh_token,
+              option.google_event_id
+            );
+
+            // 응답하지 않은 면접관 찾기 (needsAction 상태)
+            for (const interviewer of interviewers) {
+              if (interviewer.email) {
+                const response = responses[interviewer.email] || 'needsAction';
+                if (response === 'needsAction') {
+                  interviewersNeedingReminder.add(interviewer.id);
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`옵션 ${option.id}의 응답 상태 확인 실패:`, error);
+            // 에러가 나도 계속 진행
+          }
+        }
+
+        // 응답하지 않은 면접관들에게 리마인드 메일 발송
+        if (interviewersNeedingReminder.size > 0) {
+          // 일정 옵션 목록을 HTML로 포맷팅
+          const optionsListHtml = options.map((opt, index) => {
+            const date = new Date(opt.scheduled_at);
+            const endTime = new Date(date);
+            endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+            
+            return `
+              <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
+                <p style="margin: 0; font-weight: bold; color: #333;">
+                  옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+                </p>
+              </div>
+            `;
+          }).join('');
+
+          const reminderMessage = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.6; color: #333; }
+              </style>
+            </head>
+            <body>
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #dc2626; border-bottom: 2px solid #dc2626; padding-bottom: 10px;">
+                  ⏰ 면접 일정 확인 리마인드
+                </h2>
+                
+                <p style="font-size: 16px; margin-top: 20px;">
+                  안녕하세요,
+                </p>
+                
+                <p style="font-size: 14px; margin-top: 15px;">
+                  <strong>${candidate.name}</strong>님의 면접 일정에 대한 응답을 아직 받지 못했습니다. 
+                  구글 캘린더에서 일정 초대를 확인하고 수락 또는 거절해주시기 바랍니다.
+                </p>
+                
+                <div style="margin: 25px 0; padding: 20px; background-color: #f0f9ff; border-left: 4px solid #2563eb; border-radius: 5px;">
+                  <p style="margin: 0 0 10px 0; font-weight: bold; color: #1e40af;">
+                    면접 정보
+                  </p>
+                  <p style="margin: 5px 0; font-size: 14px;">
+                    <strong>후보자:</strong> ${candidate.name}
+                  </p>
+                  <p style="margin: 5px 0; font-size: 14px;">
+                    <strong>면접 단계:</strong> ${schedule.stage_id}
+                  </p>
+                  <p style="margin: 5px 0; font-size: 14px;">
+                    <strong>면접 시간:</strong> ${schedule.duration_minutes}분
+                  </p>
+                </div>
+                
+                <div style="margin: 25px 0;">
+                  <p style="font-weight: bold; color: #333; margin-bottom: 10px;">
+                    일정 옵션:
+                  </p>
+                  ${optionsListHtml}
+                </div>
+                
+                <div style="margin: 30px 0; padding: 15px; background-color: #fee2e2; border-left: 4px solid #dc2626; border-radius: 5px;">
+                  <p style="margin: 0; font-size: 14px; color: #991b1b;">
+                    <strong>⚠️ 긴급:</strong> 구글 캘린더에서 각 일정 초대에 대해 수락 또는 거절을 선택해주세요. 
+                    모든 면접관이 수락한 일정이 후보자에게 전송됩니다.
+                  </p>
+                </div>
+                
+                <p style="margin-top: 30px; font-size: 14px; color: #666;">
+                  구글 캘린더에서 일정을 확인하고 응답해주시기 바랍니다.
+                </p>
+                
+                <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+                <p style="font-size: 12px; color: #999; text-align: center;">
+                  이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
+                </p>
+              </div>
+            </body>
+            </html>
+          `;
+
+          // 응답하지 않은 면접관들에게만 메일 발송
+          for (const interviewerId of interviewersNeedingReminder) {
+            const interviewer = interviewers.find(inv => inv.id === interviewerId);
+            if (interviewer && interviewer.email) {
+              try {
+                await sendEmailViaGmail(
+                  organizer.calendar_access_token,
+                  organizer.calendar_refresh_token,
+                  {
+                    to: interviewer.email,
+                    from: organizer.email,
+                    subject: `[리마인드] ${candidate.name}님의 면접 일정 확인 요청`,
+                    html: reminderMessage,
+                    replyTo: organizer.email,
+                  }
+                );
+                totalSentCount++;
+                console.log(`면접관 ${interviewer.email}에게 리마인드 메일 발송 완료`);
+              } catch (error) {
+                const errorMsg = `면접관 ${interviewer.email}에게 리마인드 메일 발송 실패: ${error}`;
+                console.error(errorMsg);
+                errors.push(errorMsg);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        const errorMsg = `스케줄 ${schedule.id} 처리 중 오류: ${error}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
+      }
+    }
+
+    return {
+      success: true,
+      message: `총 ${totalSentCount}개의 리마인드 메일이 발송되었습니다.`,
+      sentCount: totalSentCount,
+      errors: errors.length > 0 ? errors : undefined,
     };
   });
 }

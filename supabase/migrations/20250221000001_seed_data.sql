@@ -78,7 +78,7 @@ BEGIN
         WHEN 15 THEN 'Chris Lee' WHEN 16 THEN 'Maria Kim' WHEN 17 THEN 'John Park'
         WHEN 18 THEN 'Emily Choi' ELSE 'Alex Lee'
       END,
-      'candidate' || i || '@example.com',
+      'blee6291@gmail.com',
       '010-' || LPAD((RANDOM() * 10000)::INT::TEXT, 4, '0') || '-' || LPAD((RANDOM() * 10000)::INT::TEXT, 4, '0'),
       CASE (i - 1) % 5
         WHEN 0 THEN 'pending' WHEN 1 THEN 'in_progress' WHEN 2 THEN 'confirmed'

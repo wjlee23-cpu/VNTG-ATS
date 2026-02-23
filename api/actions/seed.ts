@@ -131,7 +131,7 @@ export async function seedDummyData() {
         .insert({
           job_post_id: jobPost.id,
           name: dummyNames[i % dummyNames.length],
-          email: `candidate${i + 1}@example.com`,
+          email: 'blee6291@gmail.com',
           phone: `010-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
           status: status,
           current_stage_id: stageId,

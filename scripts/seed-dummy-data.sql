@@ -198,7 +198,7 @@ BEGIN
         WHEN 18 THEN 'Emily Choi'
         ELSE 'Alex Lee'
       END,
-      'candidate' || i || '@example.com',
+      'blee6291@gmail.com',
       '010-' || LPAD((RANDOM() * 10000)::INT::TEXT, 4, '0') || '-' || LPAD((RANDOM() * 10000)::INT::TEXT, 4, '0'),
       CASE (i - 1) % 5
         WHEN 0 THEN 'pending'

@@ -1,6 +1,7 @@
 import { getAIClient, generateText, AIProvider } from './client'
 import { CalendarEvent } from '../calendar/google'
 import { addDays, startOfDay, endOfDay, addMinutes, isWithinInterval, format } from 'date-fns'
+import { isWeekday } from '../utils/korean-holidays'
 
 export interface ScheduleOption {
   scheduledAt: Date
@@ -24,22 +25,37 @@ export async function findAvailableTimeSlots(
 ): Promise<ScheduleOption[]> {
   const { busyTimes, interviewerIds, startDate, endDate, durationMinutes = 60 } = request
 
-  // Generate time slots (every 30 minutes during business hours 9-18)
-  const slots: Date[] = []
+  // Generate time slots (every 30 minutes during business hours 10-17)
+  const slots: Array<{ date: Date; score: number }> = []
   let current = startOfDay(startDate)
 
   while (current <= endDate) {
-    const dayStart = startOfDay(current)
-    const dayEnd = endOfDay(current)
+    // 공휴일이 아닌 평일만 체크
+    if (!isWeekday(current)) {
+      current = addDays(current, 1)
+      continue
+    }
 
-    // Business hours: 9 AM to 6 PM
-    for (let hour = 9; hour < 18; hour++) {
+    const dayStart = startOfDay(current)
+
+    // Business hours: 오전 10시(10)부터 오후 5시(17)까지
+    for (let hour = 10; hour < 17; hour++) {
       for (let minute = 0; minute < 60; minute += 30) {
         const slot = new Date(dayStart)
         slot.setHours(hour, minute, 0, 0)
 
         if (slot >= startDate && slot <= endDate) {
-          slots.push(slot)
+          // 오후 시간대 선호 점수 계산 (12시 이후가 더 높은 점수)
+          let score = 0
+          if (hour >= 12) {
+            // 오후 시간대: 12시~16시 (점수 10~14)
+            score = hour
+          } else {
+            // 오전 시간대: 10시~11시 (점수 5~6)
+            score = hour - 5
+          }
+          
+          slots.push({ date: slot, score })
         }
       }
     }
@@ -48,7 +64,8 @@ export async function findAvailableTimeSlots(
   }
 
   // Filter out busy times
-  const availableSlots = slots.filter((slot) => {
+  const availableSlots = slots.filter((slotData) => {
+    const slot = slotData.date
     const slotEnd = addMinutes(slot, durationMinutes)
 
     return !busyTimes.some((busy) => {
@@ -61,10 +78,69 @@ export async function findAvailableTimeSlots(
         (slot <= busyStart && slotEnd >= busyEnd)
       )
     })
+  }).map(slotData => slotData.date)
+
+  // 일정 겹침 방지를 위한 점수 계산 및 정렬
+  // 오후 시간대를 선호하고, 선택된 일정과 겹치지 않도록 필터링
+  const scoredSlots = availableSlots.map((slot) => {
+    const hour = slot.getHours()
+    let score = 0
+    
+    // 오후 시간대 선호 (12시 이후가 더 높은 점수)
+    if (hour >= 12) {
+      score = hour * 10 // 오후: 120점 이상
+    } else {
+      score = hour * 5 // 오전: 50점 이하
+    }
+    
+    return { slot, score }
   })
 
-  // Use AI to select best options
-  const prompt = `다음 면접 일정 조율 요청을 분석하여 최적의 시간대 5개를 추천해주세요.
+  // 점수 순으로 정렬 (높은 점수 = 오후 시간대 우선)
+  scoredSlots.sort((a, b) => b.score - a.score)
+
+  // 겹치지 않는 일정 선택 (최소 30분 간격)
+  const selectedSlots: Date[] = []
+  const minIntervalMinutes = 30
+
+  for (const { slot } of scoredSlots) {
+    const slotEnd = addMinutes(slot, durationMinutes)
+    
+    // 이미 선택된 일정과 겹치는지 확인
+    const isOverlapping = selectedSlots.some((selectedSlot) => {
+      const selectedEnd = addMinutes(selectedSlot, durationMinutes)
+      
+      // 겹침 조건 체크:
+      // 1. 새 일정의 시작 시간이 기존 일정의 시간 범위 내에 있는 경우
+      // 2. 새 일정의 종료 시간이 기존 일정의 시간 범위 내에 있는 경우
+      // 3. 새 일정이 기존 일정을 완전히 포함하는 경우
+      // 4. 새 일정의 시작 시간이 기존 일정의 종료 시간과 너무 가까운 경우 (최소 간격)
+      const overlaps = (
+        (slot >= selectedSlot && slot < selectedEnd) ||
+        (slotEnd > selectedSlot && slotEnd <= selectedEnd) ||
+        (slot <= selectedSlot && slotEnd >= selectedEnd)
+      )
+      
+      // 최소 간격 체크: 시작 시간이 기존 일정의 종료 시간으로부터 최소 간격 이내면 제외
+      const timeDiff = Math.abs(slot.getTime() - selectedSlot.getTime())
+      const endTimeDiff = Math.abs(slot.getTime() - selectedEnd.getTime())
+      const tooClose = timeDiff < minIntervalMinutes * 60 * 1000 || endTimeDiff < minIntervalMinutes * 60 * 1000
+      
+      return overlaps || tooClose
+    })
+    
+    if (!isOverlapping && selectedSlots.length < 5) {
+      selectedSlots.push(slot)
+    }
+    
+    if (selectedSlots.length >= 5) {
+      break
+    }
+  }
+
+  // Use AI to select best options (선택된 일정이 5개 미만인 경우에만 AI 사용)
+  if (selectedSlots.length < 5) {
+    const prompt = `다음 면접 일정 조율 요청을 분석하여 최적의 시간대 5개를 추천해주세요.
 
 후보자: ${request.candidateName}
 면접 단계: ${request.stageName}
@@ -76,37 +152,57 @@ ${availableSlots.slice(0, 50).map((slot, i) => `${i + 1}. ${format(slot, 'yyyy-M
 
 요구사항:
 1. 면접관들의 일정이 모두 가능한 시간대 우선
-2. 평일 오전 시간대 우선 (9-12시)
-3. 시간대를 고르게 분산
+2. 오후 시간대 우선 (12시 이후, 오전보다 오후 선호)
+3. 시간대를 고르게 분산 (최소 30분 간격)
 4. 한국 시간 기준
+5. 공휴일 제외 (이미 필터링됨)
 
 응답 형식: JSON 배열로 시간대 5개를 반환하세요. 각 항목은 {"dateTime": "YYYY-MM-DDTHH:mm:ss", "reason": "선택 이유"} 형식입니다.`
 
-  try {
-    const aiResponse = await generateText(provider, prompt, {
-      maxTokens: 1000,
-      temperature: 0.7,
-    })
+    try {
+      const aiResponse = await generateText(provider, prompt, {
+        maxTokens: 1000,
+        temperature: 0.7,
+      })
 
-    // Parse AI response
-    const jsonMatch = aiResponse.match(/\[[\s\S]*\]/)
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0])
-      return parsed
-        .slice(0, 5)
-        .map((item: any) => ({
-          scheduledAt: new Date(item.dateTime),
-          duration: durationMinutes,
-          availableInterviewers: interviewerIds,
-        }))
-        .filter((opt: ScheduleOption) => opt.scheduledAt >= startDate && opt.scheduledAt <= endDate)
+      // Parse AI response
+      const jsonMatch = aiResponse.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        const aiSelectedSlots = parsed
+          .slice(0, 5 - selectedSlots.length)
+          .map((item: any) => new Date(item.dateTime))
+          .filter((slot: Date) => slot >= startDate && slot <= endDate)
+        
+        // AI가 선택한 일정도 겹침 체크 후 추가
+        for (const aiSlot of aiSelectedSlots) {
+          const slotEnd = addMinutes(aiSlot, durationMinutes)
+          const isOverlapping = selectedSlots.some((selectedSlot) => {
+            const selectedEnd = addMinutes(selectedSlot, durationMinutes)
+            return (
+              (aiSlot >= selectedSlot && aiSlot < selectedEnd) ||
+              (slotEnd > selectedSlot && slotEnd <= selectedEnd) ||
+              (aiSlot <= selectedSlot && slotEnd >= selectedEnd) ||
+              (Math.abs(aiSlot.getTime() - selectedSlot.getTime()) < minIntervalMinutes * 60 * 1000)
+            )
+          })
+          
+          if (!isOverlapping && selectedSlots.length < 5) {
+            selectedSlots.push(aiSlot)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('AI schedule recommendation failed, using fallback:', error)
     }
-  } catch (error) {
-    console.error('AI schedule recommendation failed, using fallback:', error)
   }
 
-  // Fallback: return first 5 available slots
-  return availableSlots.slice(0, 5).map((slot) => ({
+  // 최종 결과 반환 (선택된 일정이 있으면 사용, 없으면 fallback)
+  const finalSlots = selectedSlots.length > 0 
+    ? selectedSlots 
+    : availableSlots.slice(0, 5)
+
+  return finalSlots.map((slot) => ({
     scheduledAt: slot,
     duration: durationMinutes,
     availableInterviewers: interviewerIds,
