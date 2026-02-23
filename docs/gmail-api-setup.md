@@ -22,15 +22,32 @@ VNTG ATS는 Google Workspace의 Gmail API를 사용하여 이메일을 발송합
 4. 검색창에 "Gmail API"를 입력합니다.
 5. **Gmail API**를 선택하고 **사용 설정** 버튼을 클릭합니다.
 
-### 2단계: OAuth 동의 화면 확인
+### 2단계: OAuth 동의 화면 확인 및 범위 추가
 
 1. **API 및 서비스 > OAuth 동의 화면**으로 이동합니다.
+   - 직접 링크: https://console.cloud.google.com/apis/credentials/consent
+   - 또는 왼쪽 메뉴에서 "API 및 서비스" > "OAuth 동의 화면" 클릭
+
 2. OAuth 동의 화면이 이미 설정되어 있는지 확인합니다.
-3. **범위(Scopes)** 섹션에서 다음 스코프가 포함되어 있는지 확인합니다:
+   - 설정되지 않았다면 "사용자 유형" 선택 후 기본 정보를 입력하세요.
+
+3. **범위(Scopes)** 섹션 찾기:
+   - OAuth 동의 화면 페이지에서 아래로 스크롤하여 **"범위"** 또는 **"Scopes"** 섹션을 찾습니다.
+   - 또는 **"범위 추가"** 또는 **"Add or remove scopes"** 버튼을 클릭합니다.
+
+4. **gmail.send 스코프 추가**:
+   - "범위 추가" 또는 "Add or remove scopes" 버튼 클릭
+   - 검색창에 `gmail.send` 또는 `gmail` 입력
+   - `https://www.googleapis.com/auth/gmail.send` (Gmail API v1 - 이메일 보내기) 선택
+   - "업데이트" 또는 "Update" 버튼 클릭
+
+5. 다음 스코프가 모두 포함되어 있는지 확인:
    - `https://www.googleapis.com/auth/calendar` (캘린더 읽기/쓰기)
    - `https://www.googleapis.com/auth/gmail.send` (Gmail 발송) ← **새로 추가 필요**
    - `https://www.googleapis.com/auth/userinfo.email`
    - `https://www.googleapis.com/auth/userinfo.profile`
+
+**참고**: 범위 섹션이 보이지 않으면 OAuth 동의 화면 설정이 완료되지 않았을 수 있습니다. 먼저 기본 정보(앱 이름, 사용자 지원 이메일 등)를 입력하고 저장한 후 다시 확인하세요.
 
 ### 3단계: OAuth 클라이언트 ID 확인
 

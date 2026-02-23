@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { 
   LayoutGrid, 
   Users, 
@@ -11,16 +12,37 @@ import {
   Gift,
   Settings,
   FileEdit,
-  Zap
+  Zap,
+  Clock
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { pathToView, type AppView } from '@/types/navigation';
 import { cn } from '@/components/ui/utils';
+import { getUserProfile } from '@/api/queries/auth';
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const currentView = pathToView(pathname);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 사용자 역할 확인
+  useEffect(() => {
+    async function checkUserRole() {
+      try {
+        const result = await getUserProfile();
+        if (result.data) {
+          setIsAdmin(result.data.role === 'admin');
+        }
+      } catch (error) {
+        console.error('사용자 역할 확인 실패:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    checkUserRole();
+  }, []);
 
   const menuItems = [
     { icon: LayoutGrid, label: 'Overview', view: 'overview' as AppView, path: '/dashboard' },
@@ -32,6 +54,8 @@ export function Sidebar() {
     { icon: Gift, label: 'Offers', view: 'offers' as AppView, path: '/offers' },
     { icon: UserCircle, label: 'Team', view: 'team' as AppView, path: '/team' },
     { icon: FileText, label: 'Templates', view: 'templates' as AppView, path: '/templates' },
+    // 관리자만 표시되는 메뉴
+    ...(isAdmin ? [{ icon: Clock, label: 'Schedule Management', view: 'schedules' as AppView, path: '/schedules' }] : []),
   ];
 
   const bottomNavItems = [

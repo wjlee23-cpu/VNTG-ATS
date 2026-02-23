@@ -10,6 +10,31 @@ export interface EmailOptions {
 }
 
 /**
+ * 토큰의 스코프 확인
+ * @param accessToken Google OAuth access token
+ * @returns 토큰에 포함된 스코프 목록
+ */
+async function getTokenScopes(accessToken: string): Promise<string[]> {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+    )
+
+    oauth2Client.setCredentials({
+      access_token: accessToken,
+    })
+
+    const tokenInfo = await oauth2Client.getTokenInfo(accessToken)
+    return tokenInfo.scopes || []
+  } catch (error) {
+    console.error('토큰 스코프 확인 실패:', error)
+    return []
+  }
+}
+
+/**
  * Gmail API 클라이언트 생성
  * @param accessToken Google OAuth access token
  * @param refreshToken Google OAuth refresh token (토큰 갱신용)
@@ -18,6 +43,16 @@ export interface EmailOptions {
 export async function getGmailClient(accessToken: string, refreshToken: string) {
   // 토큰이 만료되었을 수 있으므로 먼저 갱신 확인
   const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
+  
+  // 토큰 스코프 확인
+  const scopes = await getTokenScopes(token)
+  const hasGmailScope = scopes.some(scope => 
+    scope.includes('gmail.send') || scope === 'https://www.googleapis.com/auth/gmail.send'
+  )
+
+  if (!hasGmailScope) {
+    throw new Error('GMAIL_SCOPE_MISSING: 토큰에 Gmail 발송 권한이 없습니다. 구글 캘린더를 재연동해주세요.')
+  }
   
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -33,18 +68,38 @@ export async function getGmailClient(accessToken: string, refreshToken: string) 
 }
 
 /**
+ * RFC 2047 형식으로 이메일 제목 인코딩 (한글 깨짐 방지)
+ * @param text 인코딩할 텍스트
+ * @returns RFC 2047 형식으로 인코딩된 제목
+ */
+function encodeSubject(text: string): string {
+  // ASCII 문자만 포함된 경우 인코딩 불필요
+  if (/^[\x00-\x7F]*$/.test(text)) {
+    return text
+  }
+  
+  // UTF-8 Base64 인코딩
+  const encoded = Buffer.from(text, 'utf-8').toString('base64')
+  // RFC 2047 형식: =?charset?encoding?encoded-text?=
+  return `=?UTF-8?B?${encoded}?=`
+}
+
+/**
  * MIME 메시지 생성 (RFC 2822 형식)
  */
 function createMimeMessage(options: EmailOptions): string {
   const from = options.from || 'noreply@example.com'
   const replyTo = options.replyTo || from
   
+  // 제목을 RFC 2047 형식으로 인코딩 (한글 깨짐 방지)
+  const encodedSubject = encodeSubject(options.subject)
+  
   // MIME 메시지 구성
   const message = [
     `From: ${from}`,
     `To: ${options.to}`,
     `Reply-To: ${replyTo}`,
-    `Subject: ${options.subject}`,
+    `Subject: ${encodedSubject}`,
     `MIME-Version: 1.0`,
     `Content-Type: text/html; charset=UTF-8`,
     ``,
@@ -102,12 +157,34 @@ export async function sendEmailViaGmail(
   } catch (error: any) {
     console.error('Gmail API 이메일 발송 중 에러:', error)
     
+    // 토큰 스코프 부족 에러 확인
+    if (error.message && error.message.includes('GMAIL_SCOPE_MISSING')) {
+      return {
+        success: false,
+        error: `이메일 발송 실패: Gmail API 권한이 부족합니다. 기존 토큰에 Gmail 스코프가 없어 재연동이 필요합니다. 다음을 확인해주세요:\n1. Google Cloud Console에서 Gmail API 활성화 확인\n2. OAuth 동의 화면에 gmail.send 스코프 추가 확인\n3. 구글 캘린더 재연동 시 모든 권한 승인`,
+      }
+    }
+    
     // 에러 메시지 추출
     let errorMessage = '알 수 없는 에러가 발생했습니다.'
     if (error.response?.data?.error?.message) {
       errorMessage = error.response.data.error.message
     } else if (error.message) {
       errorMessage = error.message
+    }
+
+    // Gmail API 스코프 부족 에러인지 확인
+    const isScopeError = errorMessage.includes('insufficient authentication scopes') ||
+                        errorMessage.includes('insufficient') ||
+                        errorMessage.toLowerCase().includes('scope') ||
+                        (error.response?.data?.error?.status === 'PERMISSION_DENIED' && 
+                         errorMessage.toLowerCase().includes('gmail'))
+
+    if (isScopeError) {
+      return {
+        success: false,
+        error: `이메일 발송 실패: Request had insufficient authentication scopes. Gmail API 권한이 필요합니다. 다음을 확인해주세요:\n1. Google Cloud Console에서 Gmail API 활성화 확인\n2. OAuth 동의 화면에 gmail.send 스코프 추가 확인\n3. 구글 캘린더 재연동 시 모든 권한 승인`,
+      }
     }
 
     return {

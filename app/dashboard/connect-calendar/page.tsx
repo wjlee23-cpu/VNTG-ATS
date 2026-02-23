@@ -104,16 +104,51 @@ export default function ConnectCalendarPage() {
           </p>
         </div>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-blue-800">
               <p className="font-medium mb-1">연동 시 다음 권한이 필요합니다:</p>
               <ul className="list-disc list-inside space-y-1 text-blue-700">
-                <li>구글 캘린더 읽기 권한</li>
-                <li>구글 캘린더 쓰기 권한 (일정 생성 및 수정)</li>
+                <li>구글 캘린더 읽기/쓰기 권한</li>
+                <li>Gmail 이메일 발송 권한 (gmail.send)</li>
                 <li>이메일 주소 확인</li>
               </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-yellow-800">
+              <p className="font-medium mb-2">⚠️ Gmail API 설정 확인 필요</p>
+              <p className="mb-2">이메일 발송 기능을 사용하려면 다음을 확인해주세요:</p>
+              <ol className="list-decimal list-inside space-y-1 text-yellow-700 mb-3">
+                <li>
+                  <a 
+                    href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="underline hover:text-yellow-900"
+                  >
+                    Google Cloud Console에서 Gmail API 활성화
+                  </a>
+                </li>
+                <li>
+                  <a 
+                    href="https://console.cloud.google.com/apis/credentials/consent" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="underline hover:text-yellow-900"
+                  >
+                    OAuth 동의 화면에 gmail.send 스코프 추가
+                  </a>
+                </li>
+              </ol>
+              <p className="text-xs text-yellow-600 mt-2">
+                설정 후 재연동 시 모든 권한을 승인해주세요.
+              </p>
             </div>
           </div>
         </div>

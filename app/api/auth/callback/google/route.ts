@@ -59,6 +59,24 @@ export async function GET(request: Request) {
       throw new Error('토큰을 받지 못했습니다.');
     }
 
+    // 토큰 스코프 확인 및 로깅
+    try {
+      const tokenInfo = await oauth2Client.getTokenInfo(tokens.access_token);
+      const scopes = tokenInfo.scopes || [];
+      const hasGmailScope = scopes.some(scope => 
+        scope.includes('gmail.send') || scope === 'https://www.googleapis.com/auth/gmail.send'
+      );
+      
+      console.log('토큰 스코프:', scopes);
+      console.log('Gmail 스코프 포함 여부:', hasGmailScope);
+      
+      if (!hasGmailScope) {
+        console.warn('경고: 토큰에 Gmail 스코프가 포함되지 않았습니다. Google Cloud Console에서 Gmail API 활성화 및 OAuth 동의 화면에 gmail.send 스코프 추가가 필요합니다.');
+      }
+    } catch (scopeError) {
+      console.error('토큰 스코프 확인 실패:', scopeError);
+    }
+
     // 사용자 정보에 구글 캘린더 토큰 저장
     const { error: updateError } = await serviceClient
       .from('users')

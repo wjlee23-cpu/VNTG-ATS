@@ -1,5 +1,5 @@
 import { CandidateScheduleClient } from './CandidateScheduleClient';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 export default async function CandidateSchedulePage({
   params,
@@ -25,9 +25,9 @@ export default async function CandidateSchedulePage({
     );
   }
 
+  // 후보자는 로그인하지 않았으므로 Service Role Client를 사용하여 RLS 우회
+  // 먼저 일반 클라이언트로 토큰 검증만 수행
   const supabase = await createClient();
-
-  // 후보자 정보 조회 (토큰 검증)
   const { data: candidate, error: candidateError } = await supabase
     .from('candidates')
     .select('id, name, email, token')
@@ -46,8 +46,11 @@ export default async function CandidateSchedulePage({
     );
   }
 
-  // 스케줄 및 옵션 조회
-  const { data: schedule } = await supabase
+  // 토큰 검증 완료 후 Service Role Client로 전환하여 RLS 우회
+  const serviceClient = createServiceClient();
+
+  // 스케줄 및 옵션 조회 (Service Role Client 사용)
+  const { data: schedule } = await serviceClient
     .from('schedules')
     .select(`
       *,
@@ -63,6 +66,18 @@ export default async function CandidateSchedulePage({
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
+
+  // 스케줄 조회 실패 시 에러 처리
+  if (!schedule) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">일정 옵션 없음</h1>
+          <p className="text-gray-600">선택 가능한 일정 옵션이 없습니다.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!schedule || !schedule.schedule_options || schedule.schedule_options.length === 0) {
     return (

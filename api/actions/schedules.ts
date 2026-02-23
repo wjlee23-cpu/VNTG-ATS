@@ -1066,11 +1066,18 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
     if (!emailResult.success) {
       console.error('이메일 발송 실패:', emailResult.error);
       // 이메일 발송 실패해도 workflow_status는 업데이트되었으므로 경고만 반환
+      // lib/email/gmail.ts에서 이미 개선된 에러 메시지를 반환하므로 그대로 전달
+      const errorMessage = emailResult.error || '알 수 없는 오류';
+      // 이미 에러 메시지에 해결 방법이 포함되어 있으면 그대로 사용, 아니면 추가 안내
+      const finalErrorMessage = errorMessage.includes('재연동') || errorMessage.includes('권한')
+        ? errorMessage
+        : `${errorMessage}. 워크플로우 상태는 업데이트되었습니다.`;
+      
       return {
         success: false,
         emailSent: false,
         optionsCount: acceptedOptions.length,
-        error: `이메일 발송 실패: ${emailResult.error || '알 수 없는 오류'}. 워크플로우 상태는 업데이트되었습니다.`,
+        error: finalErrorMessage,
       };
     }
 
@@ -1093,7 +1100,8 @@ export async function confirmCandidateSchedule(
   token: string
 ) {
   return withErrorHandling(async () => {
-    const supabase = await createClient();
+    // 후보자가 직접 선택하는 경우이므로 Service Role Client를 사용하여 RLS 우회
+    const supabase = createServiceClient();
 
     // 스케줄 및 후보자 정보 조회
     const { data: schedule, error: scheduleError } = await supabase
@@ -1162,7 +1170,7 @@ export async function confirmCandidateSchedule(
         organizer.calendar_refresh_token,
         selectedOption.google_event_id,
         {
-          summary: `${candidate.name} 면접`,
+          summary: `[확정] ${candidate.name} 면접`,
           description: `후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n면접 일정이 확정되었습니다.`,
           start: {
             dateTime: selectedOption.scheduled_at,
@@ -1267,45 +1275,40 @@ export async function confirmCandidateSchedule(
       </html>
     `;
 
-    // 현재 사용자의 Google Workspace 토큰 조회 (Gmail API 사용을 위해)
-    const { data: currentUserData, error: userTokenError } = await supabase
-      .from('users')
-      .select('calendar_access_token, calendar_refresh_token, email')
-      .eq('id', user.userId)
-      .single();
-
-    if (!userTokenError && currentUserData?.calendar_access_token && currentUserData?.calendar_refresh_token) {
+    // 면접관(organizer)의 Google Workspace 토큰을 사용하여 이메일 발송
+    // organizer는 이미 위에서 찾았고, calendar_access_token과 calendar_refresh_token이 있음
+    if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
       // 후보자에게 확정 안내
       await sendEmailViaGmail(
-        currentUserData.calendar_access_token,
-        currentUserData.calendar_refresh_token,
+        organizer.calendar_access_token,
+        organizer.calendar_refresh_token,
         {
           to: candidate.email,
-          from: currentUserData.email || user.email,
+          from: organizer.email,
           subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
           html: confirmationMessage,
-          replyTo: currentUserData.email || user.email,
+          replyTo: organizer.email,
         }
       );
 
       // 면접관들에게 확정 안내
       for (const interviewer of interviewers) {
-        if (interviewer.email) {
+        if (interviewer.email && interviewer.id !== organizer.id) {
           await sendEmailViaGmail(
-            currentUserData.calendar_access_token,
-            currentUserData.calendar_refresh_token,
+            organizer.calendar_access_token,
+            organizer.calendar_refresh_token,
             {
               to: interviewer.email,
-              from: currentUserData.email || user.email,
+              from: organizer.email,
               subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
               html: confirmationMessage,
-              replyTo: currentUserData.email || user.email,
+              replyTo: organizer.email,
             }
           );
         }
       }
     } else {
-      console.warn('Google Workspace 계정이 연동되지 않아 이메일을 발송할 수 없습니다.');
+      console.warn('면접관의 Google Workspace 계정이 연동되지 않아 이메일을 발송할 수 없습니다.');
     }
 
     // 타임라인 이벤트 생성

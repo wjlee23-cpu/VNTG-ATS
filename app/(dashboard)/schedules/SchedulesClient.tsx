@@ -197,7 +197,24 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
         toast.error(result.error);
       } else if (result.data) {
         if (result.data.emailSent === false) {
-          toast.error(`이메일 발송에 실패했습니다: ${result.data.error || '알 수 없는 오류'}. RESEND_API_KEY 환경 변수를 확인해주세요.`);
+          // Gmail API 스코프 부족 에러인지 확인
+          const errorMessage = result.data.error || '알 수 없는 오류';
+          const isScopeError = errorMessage.includes('insufficient authentication scopes') || 
+                              errorMessage.includes('insufficient') ||
+                              errorMessage.includes('authentication scopes') ||
+                              errorMessage.includes('GMAIL_SCOPE_MISSING') ||
+                              errorMessage.includes('Gmail API 권한');
+          
+          if (isScopeError) {
+            toast.error(
+              `이메일 발송 실패: Gmail API 권한 부족. Google Cloud Console에서 Gmail API 활성화 및 OAuth 동의 화면에 gmail.send 스코프 추가 후, 우측 상단 프로필 메뉴에서 구글 캘린더를 재연동해주세요.`,
+              { 
+                duration: 12000,
+              }
+            );
+          } else {
+            toast.error(`이메일 발송에 실패했습니다: ${errorMessage}. 워크플로우 상태는 업데이트되었습니다.`);
+          }
         } else {
           toast.success(`후보자에게 이메일이 재전송되었습니다. (${result.data.optionsCount}개 옵션)`);
         }

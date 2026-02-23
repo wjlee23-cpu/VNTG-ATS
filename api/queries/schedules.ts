@@ -247,3 +247,111 @@ export async function getScheduleStats() {
     return stats;
   });
 }
+
+/**
+ * 모든 면접 일정의 진행상황 조회 (관리자용)
+ * @returns 면접 일정 목록 및 진행상황
+ */
+export async function getAllScheduleProgress() {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // organization_id에 속한 job_posts 조회
+    let jobPostsQuery = supabase
+      .from('job_posts')
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+    
+    const { data: jobPosts } = await jobPostsQuery;
+
+    if (!jobPosts || jobPosts.length === 0) {
+      return [];
+    }
+
+    const jobPostIds = jobPosts.map(jp => jp.id);
+
+    // 해당 job_posts의 후보자들 조회
+    const { data: candidates } = await supabase
+      .from('candidates')
+      .select('id')
+      .in('job_post_id', jobPostIds);
+
+    if (!candidates || candidates.length === 0) {
+      return [];
+    }
+
+    const candidateIds = candidates.map(c => c.id);
+
+    // 모든 면접 일정 조회 (schedule_options 포함)
+    const { data: schedules, error } = await supabase
+      .from('schedules')
+      .select(`
+        *,
+        candidates (
+          id,
+          name,
+          email,
+          job_posts (
+            id,
+            title
+          )
+        ),
+        schedule_options (
+          id,
+          scheduled_at,
+          status,
+          interviewer_responses,
+          google_event_id
+        )
+      `)
+      .in('candidate_id', candidateIds)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`면접 일정 조회 실패: ${error.message}`);
+    }
+
+    if (!schedules || schedules.length === 0) {
+      return [];
+    }
+
+    // 면접관 정보 조회
+    const allInterviewerIds = new Set<string>();
+    schedules.forEach(schedule => {
+      if (schedule.interviewer_ids && Array.isArray(schedule.interviewer_ids)) {
+        schedule.interviewer_ids.forEach((id: string) => allInterviewerIds.add(id));
+      }
+    });
+
+    let interviewers: Array<{ id: string; email: string }> = [];
+    if (allInterviewerIds.size > 0) {
+      const { data: interviewerData } = await supabase
+        .from('users')
+        .select('id, email')
+        .in('id', Array.from(allInterviewerIds));
+      
+      interviewers = interviewerData || [];
+    }
+
+    const interviewerMap = new Map(
+      interviewers.map(i => [i.id, i])
+    );
+
+    // 각 일정에 면접관 정보 추가
+    const schedulesWithInterviewers = schedules.map(schedule => ({
+      ...schedule,
+      interviewers: schedule.interviewer_ids
+        ?.map((id: string) => interviewerMap.get(id))
+        .filter((i): i is { id: string; email: string } => i !== undefined) || [],
+    }));
+
+    return schedulesWithInterviewers;
+  });
+}

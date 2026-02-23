@@ -1,8 +1,13 @@
 'use client';
 
-import { CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
+import { Button } from '@/components/ui/button';
+import { checkInterviewerResponses } from '@/api/actions/schedules';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 interface ScheduleStatusProps {
   schedule: {
@@ -24,6 +29,8 @@ interface ScheduleStatusProps {
 }
 
 export function ScheduleStatus({ schedule, options = [], interviewers = [] }: ScheduleStatusProps) {
+  const router = useRouter();
+  const [isChecking, setIsChecking] = useState(false);
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'accepted':
@@ -62,6 +69,31 @@ export function ScheduleStatus({ schedule, options = [], interviewers = [] }: Sc
         return '취소됨';
       default:
         return '상태 불명';
+    }
+  };
+
+  // 면접관 응답 확인 핸들러
+  const handleCheckResponses = async () => {
+    setIsChecking(true);
+    try {
+      const result = await checkInterviewerResponses(schedule.id);
+      
+      if (result.error) {
+        toast.error(result.error);
+      } else if (result.data) {
+        if (result.data.allAccepted) {
+          toast.success(result.data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.');
+        } else {
+          toast.info(result.data.message || '아직 모든 면접관이 수락하지 않았습니다.');
+        }
+        // 페이지 새로고침하여 최신 상태 반영
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('응답 확인 실패:', error);
+      toast.error('응답 확인 중 오류가 발생했습니다.');
+    } finally {
+      setIsChecking(false);
     }
   };
 
@@ -115,9 +147,30 @@ export function ScheduleStatus({ schedule, options = [], interviewers = [] }: Sc
 
       {schedule.workflow_status === 'pending_interviewers' && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">
-            면접관들이 구글 캘린더에서 일정 초대에 응답할 때까지 대기 중입니다.
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm text-yellow-800 flex-1">
+              면접관들이 구글 캘린더에서 일정 초대에 응답할 때까지 대기 중입니다.
+            </p>
+            <Button
+              onClick={handleCheckResponses}
+              disabled={isChecking}
+              size="sm"
+              variant="outline"
+              className="flex-shrink-0"
+            >
+              {isChecking ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  확인 중...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  응답 확인
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       )}
 
