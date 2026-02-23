@@ -20,7 +20,7 @@ export async function getJDRequests(status?: 'pending' | 'approved' | 'rejected'
       .from('jd_requests')
       .select(`
         *,
-        requested_by_user:users!jd_requests_requested_by_fkey (
+        requested_by_user:users!requested_by (
           id,
           email
         )

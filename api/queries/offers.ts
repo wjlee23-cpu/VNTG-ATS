@@ -20,7 +20,7 @@ export async function getOffers(status?: 'pending' | 'accepted' | 'rejected' | '
       .from('offers')
       .select(`
         *,
-        candidates (
+        candidates!candidate_id (
           id,
           name,
           email,

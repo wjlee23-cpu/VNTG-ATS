@@ -593,7 +593,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                         <div key={evaluation.id} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-medium text-gray-900">
-                              {evaluation.evaluator?.name || evaluation.evaluator?.email || 'Unknown'}
+                              {evaluation.evaluator?.email || 'Unknown'}
                             </span>
                             <span className={`px-2 py-1 rounded-md text-xs font-medium ${
                               evaluation.result === 'pass' ? 'bg-green-100 text-green-800' :

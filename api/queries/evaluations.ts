@@ -24,8 +24,7 @@ export async function getStageEvaluations(candidateId: string) {
         *,
         evaluator:users!stage_evaluations_evaluator_id_fkey (
           id,
-          email,
-          name
+          email
         )
       `)
       .eq('candidate_id', candidateId)
@@ -59,8 +58,7 @@ export async function getEvaluationsByStage(candidateId: string, stageId: string
         *,
         evaluator:users!stage_evaluations_evaluator_id_fkey (
           id,
-          email,
-          name
+          email
         )
       `)
       .eq('candidate_id', candidateId)
