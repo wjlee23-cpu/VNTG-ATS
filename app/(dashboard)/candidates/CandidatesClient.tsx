@@ -11,7 +11,7 @@ import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/Candida
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { AddCandidateModal } from '@/components/candidates/AddCandidateModal';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 interface Candidate {
   id: string;
@@ -511,24 +511,21 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         )}
       </div>
 
-      {/* 전체 화면 모달: Candidate Detail */}
-      <Dialog open={!!selectedCandidateId} onOpenChange={(open) => {
+      {/* 오른쪽 사이드 패널: Candidate Detail */}
+      <Sheet open={!!selectedCandidateId} onOpenChange={(open) => {
         if (!open) {
           handleCloseDetail();
         }
       }}>
-        <DialogContent 
-          className="max-w-none w-full h-full m-0 p-0 rounded-none border-0 bg-white [&>button]:hidden"
-          onInteractOutside={(e) => {
-            // 배경 클릭 시 모달 닫기 방지 (선택적)
-            // e.preventDefault();
-          }}
+        <SheetContent 
+          side="right"
+          className="!w-full md:!w-[1000px] lg:!w-[1200px] !h-full p-0 overflow-y-auto !max-w-none sm:!max-w-none md:!max-w-none lg:!max-w-none [&>button]:hidden"
         >
           {/* 접근성을 위한 숨겨진 제목 */}
-          <DialogTitle className="sr-only">
+          <SheetTitle className="sr-only">
             {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
-          </DialogTitle>
-          <div className="h-full overflow-auto">
+          </SheetTitle>
+          <div className="h-full">
             {isLoadingDetail ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -554,12 +551,12 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 schedules={schedules}
                 timelineEvents={timelineEvents}
                 onClose={handleCloseDetail}
-                isSidebar={false}
+                isSidebar={true}
               />
             ) : null}
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       {/* 아카이브 모달 */}
       {selectedCandidateForArchive && (
