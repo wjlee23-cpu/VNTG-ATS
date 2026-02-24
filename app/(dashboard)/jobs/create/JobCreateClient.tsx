@@ -1,24 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Briefcase, ArrowLeft, Save, User } from 'lucide-react';
+import { Briefcase, ArrowLeft, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createJob } from '@/api/actions/jobs';
 import { toast } from 'sonner';
-
-interface Process {
-  id: string;
-  name: string;
-  organization_id: string;
-  stages: Array<{
-    id: string;
-    name: string;
-    order: number;
-  }>;
-  created_at: string;
-  updated_at: string;
-}
+import { ProcessStageBuilder } from '@/components/jobs/ProcessStageBuilder';
+import { CustomStage } from '@/types/job';
 
 interface JDRequest {
   id: string;
@@ -34,36 +23,20 @@ interface User {
 }
 
 interface JobCreateClientProps {
-  processes: Process[];
   jdRequests: JDRequest[];
   users: User[];
   error?: string;
 }
 
-export function JobCreateClient({ processes, jdRequests, users, error }: JobCreateClientProps) {
+export function JobCreateClient({ jdRequests, users, error }: JobCreateClientProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     jd_request_id: '',
     title: '',
     description: '',
-    process_id: '',
   });
-  const [stageAssignees, setStageAssignees] = useState<Record<string, string[]>>({});
-
-  // 프로세스 선택 시 전형별 담당자 설정 초기화
-  useEffect(() => {
-    if (formData.process_id) {
-      const selectedProcess = processes.find(p => p.id === formData.process_id);
-      if (selectedProcess && selectedProcess.stages) {
-        const initialAssignees: Record<string, string[]> = {};
-        (selectedProcess.stages as Array<{ id: string; name: string }>).forEach(stage => {
-          initialAssignees[stage.id] = [];
-        });
-        setStageAssignees(initialAssignees);
-      }
-    }
-  }, [formData.process_id, processes]);
+  const [customStages, setCustomStages] = useState<CustomStage[]>([]);
 
   // JD 선택 시 제목과 설명 자동 입력
   const handleJDRequestChange = (jdRequestId: string) => {
@@ -97,19 +70,41 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
     });
   };
 
+  // 단계 활성화/비활성화 토글
+  const toggleStageEnabled = (stageId: string) => {
+    setEnabledStages(prev => {
+      if (prev.includes(stageId)) {
+        // 비활성화 (최소 1개는 활성화되어야 함)
+        if (prev.length <= 1) {
+          return prev; // 마지막 단계는 비활성화할 수 없음
+        }
+        return prev.filter(id => id !== stageId);
+      } else {
+        // 활성화
+        return [...prev, stageId];
+      }
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // custom_stages 검증
+    if (customStages.length === 0) {
+      toast.error('최소 1개 이상의 프로세스 단계를 선택해야 합니다.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const formDataToSend = new FormData();
       formDataToSend.append('title', formData.title);
       formDataToSend.append('description', formData.description);
-      formDataToSend.append('process_id', formData.process_id);
       if (formData.jd_request_id) {
         formDataToSend.append('jd_request_id', formData.jd_request_id);
       }
-      formDataToSend.append('stage_assignees', JSON.stringify(stageAssignees));
+      formDataToSend.append('custom_stages', JSON.stringify(customStages));
 
       const result = await createJob(formDataToSend);
 
@@ -204,43 +199,6 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
               />
             </div>
 
-            {/* Process Selection */}
-            <div>
-              <label htmlFor="process_id" className="block text-sm font-medium text-foreground mb-2">
-                채용 프로세스 <span className="text-destructive">*</span>
-              </label>
-              {processes.length === 0 ? (
-                <div className="p-4 bg-accent/10 border border-accent/20 rounded-lg">
-                  <p className="text-sm text-accent">
-                    사용 가능한 채용 프로세스가 없습니다. 먼저{' '}
-                    <button
-                      type="button"
-                      onClick={() => router.push('/templates')}
-                      className="text-primary hover:text-primary/80 underline font-medium"
-                    >
-                      프로세스 템플릿
-                    </button>
-                    을 생성해주세요.
-                  </p>
-                </div>
-              ) : (
-                <select
-                  id="process_id"
-                  required
-                  value={formData.process_id}
-                  onChange={(e) => setFormData({ ...formData, process_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                >
-                  <option value="">프로세스를 선택하세요</option>
-                  {processes.map((process) => (
-                    <option key={process.id} value={process.id}>
-                      {process.name} ({process.stages?.length || 0}단계)
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
             {/* Description */}
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-foreground mb-2">
@@ -251,58 +209,19 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={8}
-                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="채용 공고 상세 설명을 입력하세요..."
               />
             </div>
 
-            {/* Stage Assignees (각 전형별 담당자 설정) */}
-            {formData.process_id && stages.length > 0 && (
-              <div className="pt-4 border-t border-gray-200">
-                <label className="block text-sm font-medium text-gray-700 mb-4">
-                  전형별 담당자 설정 <span className="text-red-500">*</span>
-                </label>
-                <div className="space-y-4">
-                  {stages
-                    .sort((a, b) => a.order - b.order)
-                    .map((stage) => (
-                      <div key={stage.id} className="p-4 bg-gray-50 rounded-lg">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <User className="w-4 h-4" />
-                          {stage.name}
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {users.map((user) => {
-                            const isSelected = (stageAssignees[stage.id] || []).includes(user.id);
-                            return (
-                              <button
-                                key={user.id}
-                                type="button"
-                                onClick={() => toggleStageAssignee(stage.id, user.id)}
-                                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                                  isSelected
-                                    ? 'bg-primary text-white border-primary'
-                                    : 'bg-background text-foreground border-border hover:bg-muted'
-                                }`}
-                              >
-                                {user.email.split('@')[0]}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {users.length === 0 && (
-                          <p className="text-xs text-muted-foreground mt-2">
-                            사용 가능한 담당자가 없습니다.
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  각 전형별로 담당자를 선택하세요. 후보자가 해당 전형에 도달하면 자동으로 담당자가 지정됩니다.
-                </p>
-              </div>
-            )}
+            {/* Process Stage Builder */}
+            <div className="pt-4 border-t border-border">
+              <ProcessStageBuilder
+                initialStages={customStages}
+                users={users}
+                onChange={setCustomStages}
+              />
+            </div>
 
             {/* Form Actions */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4 border-t border-border">
@@ -317,12 +236,7 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  isLoading || 
-                  processes.length === 0 || 
-                  !formData.process_id ||
-                  (stages.length > 0 && Object.keys(stageAssignees).length === 0)
-                }
+                disabled={isLoading || customStages.length === 0}
                 className="w-full sm:w-auto bg-primary hover:bg-primary/90"
               >
                 <Save className="w-4 h-4 mr-2" />

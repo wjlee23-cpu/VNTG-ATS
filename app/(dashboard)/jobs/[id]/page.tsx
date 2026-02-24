@@ -1,6 +1,7 @@
 import { getJobById } from '@/api/queries/jobs';
 import { getCandidatesByJobPost } from '@/api/queries/candidates';
 import { getJobStats } from '@/api/queries/jobs';
+import { getUsers } from '@/api/queries/users';
 import { JobDetailClient } from './JobDetailClient';
 import { validateUUID } from '@/api/utils/validation';
 import { ValidationError } from '@/api/utils/errors';
@@ -58,15 +59,17 @@ export default async function JobDetailPage({
     // 실제 데이터가 없으면 그때 에러 표시
   }
 
-  const [jobResult, candidatesResult, statsResult] = await Promise.all([
+  const [jobResult, candidatesResult, statsResult, usersResult] = await Promise.all([
     getJobById(jobId.trim()),
     getCandidatesByJobPost(jobId.trim()),
     getJobStats(),
+    getUsers(),
   ]);
 
   const job = jobResult.data;
   const candidates = candidatesResult.data || [];
   const stats = statsResult.data;
+  const users = usersResult.data || [];
 
   if (jobResult.error || !job) {
     return (
@@ -107,6 +110,7 @@ export default async function JobDetailPage({
     <JobDetailClient
       job={job}
       candidates={candidates}
+      users={users}
       stats={stats}
     />
   );

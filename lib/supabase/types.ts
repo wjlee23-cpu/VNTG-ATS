@@ -68,6 +68,8 @@ export interface Database {
           title: string
           description: string | null
           process_id: string
+          enabled_stages: Json | null
+          custom_stages: Json | null
           created_at: string
           updated_at: string
         }
@@ -77,6 +79,8 @@ export interface Database {
           title: string
           description?: string | null
           process_id: string
+          enabled_stages?: Json | null
+          custom_stages?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -86,6 +90,8 @@ export interface Database {
           title?: string
           description?: string | null
           process_id?: string
+          enabled_stages?: Json | null
+          custom_stages?: Json | null
           created_at?: string
           updated_at?: string
         }

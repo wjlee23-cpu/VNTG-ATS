@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateUUID, validateRequired } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
-import { RECRUITMENT_STAGES, STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
+import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
+import { getJobProcessInfo, getNextStageId } from '@/utils/stage-utils';
 
 /**
  * 전형별 평가 생성
@@ -169,20 +170,25 @@ export async function approveStageEvaluation(candidateId: string, currentStageId
       throw new Error('모든 평가가 합격 상태가 아닙니다.');
     }
 
-    // 다음 전형 찾기
-    const currentStageIndex = RECRUITMENT_STAGES.findIndex(s => {
-      const stageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
-      return s.name === stageName;
-    });
+    // Job의 커스텀 단계 정보 조회
+    const { customStages } = await getJobProcessInfo(candidate.job_post_id);
 
-    if (currentStageIndex === -1 || currentStageIndex === RECRUITMENT_STAGES.length - 1) {
+    // 다음 전형 찾기 (job의 custom_stages order 순서대로)
+    const nextStageId = getNextStageId(currentStageId, customStages);
+
+    if (!nextStageId) {
       throw new Error('다음 전형이 없습니다.');
     }
 
-    const nextStage = RECRUITMENT_STAGES[currentStageIndex + 1];
-    const nextStageId = Object.keys(STAGE_ID_TO_NAME_MAP).find(
-      key => STAGE_ID_TO_NAME_MAP[key] === nextStage.name
-    ) || `stage-${currentStageIndex + 2}`;
+    // 다음 단계 이름 찾기
+    let nextStageName: string;
+    if (customStages) {
+      const nextStage = customStages.find(s => s.id === nextStageId);
+      nextStageName = nextStage?.name || STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+    } else {
+      // custom_stages가 null이면 기본 매핑 사용
+      nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+    }
 
     // 후보자 전형 업데이트
     const { data, error } = await supabase
@@ -200,13 +206,20 @@ export async function approveStageEvaluation(candidateId: string, currentStageId
     }
 
     // 타임라인 이벤트 생성
+    let currentStageName: string;
+    if (customStages) {
+      const currentStage = customStages.find(s => s.id === currentStageId);
+      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+    } else {
+      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+    }
     await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
       type: 'stage_changed',
       content: {
-        message: `${STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId}에서 ${nextStage.name}로 이동했습니다.`,
-        from_stage: STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId,
-        to_stage: nextStage.name,
+        message: `${currentStageName}에서 ${nextStageName}로 이동했습니다.`,
+        from_stage: currentStageName,
+        to_stage: nextStageName,
         stage_id: nextStageId,
       },
       created_by: user.userId,
@@ -286,20 +299,25 @@ export async function skipStage(candidateId: string, currentStageId: string) {
     const candidate = await verifyCandidateAccess(candidateId);
     const supabase = await createClient();
 
-    // 다음 전형 찾기
-    const currentStageIndex = RECRUITMENT_STAGES.findIndex(s => {
-      const stageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
-      return s.name === stageName;
-    });
+    // Job의 커스텀 단계 정보 조회
+    const { customStages } = await getJobProcessInfo(candidate.job_post_id);
 
-    if (currentStageIndex === -1 || currentStageIndex === RECRUITMENT_STAGES.length - 1) {
+    // 다음 전형 찾기 (job의 custom_stages order 순서대로)
+    const nextStageId = getNextStageId(currentStageId, customStages);
+
+    if (!nextStageId) {
       throw new Error('다음 전형이 없습니다.');
     }
 
-    const nextStage = RECRUITMENT_STAGES[currentStageIndex + 1];
-    const nextStageId = Object.keys(STAGE_ID_TO_NAME_MAP).find(
-      key => STAGE_ID_TO_NAME_MAP[key] === nextStage.name
-    ) || `stage-${currentStageIndex + 2}`;
+    // 다음 단계 이름 찾기
+    let nextStageName: string;
+    if (customStages) {
+      const nextStage = customStages.find(s => s.id === nextStageId);
+      nextStageName = nextStage?.name || STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+    } else {
+      // custom_stages가 null이면 기본 매핑 사용
+      nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+    }
 
     // 후보자 전형 업데이트
     const { data, error } = await supabase
@@ -317,13 +335,20 @@ export async function skipStage(candidateId: string, currentStageId: string) {
     }
 
     // 타임라인 이벤트 생성
+    let currentStageName: string;
+    if (customStages) {
+      const currentStage = customStages.find(s => s.id === currentStageId);
+      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+    } else {
+      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+    }
     await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
       type: 'stage_changed',
       content: {
-        message: `관리자에 의해 ${STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId}에서 ${nextStage.name}로 스킵되었습니다.`,
-        from_stage: STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId,
-        to_stage: nextStage.name,
+        message: `관리자에 의해 ${currentStageName}에서 ${nextStageName}로 스킵되었습니다.`,
+        from_stage: currentStageName,
+        to_stage: nextStageName,
         stage_id: nextStageId,
         skipped: true,
       },
