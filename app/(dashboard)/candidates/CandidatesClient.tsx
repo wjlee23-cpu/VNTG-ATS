@@ -11,6 +11,7 @@ import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/Candida
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { AddCandidateModal } from '@/components/candidates/AddCandidateModal';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 interface Candidate {
   id: string;
@@ -49,7 +50,6 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
   const [selectedCandidateForArchive, setSelectedCandidateForArchive] = useState<{ id: string; name: string } | null>(null);
@@ -93,14 +93,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     
     // selected가 있으면 해당 candidate 데이터 로드
     if (selected) {
-      setIsDetailVisible(false); // 애니메이션을 위해 먼저 숨김
-      setTimeout(() => {
-        setIsDetailVisible(true); // 다음 프레임에서 표시
-      }, 10);
       loadCandidateDetail(selected);
     } else {
       // selected가 없으면 detail 데이터 초기화
-      setIsDetailVisible(false);
       setCandidateDetail(null);
       setSchedules([]);
       setTimelineEvents([]);
@@ -269,10 +264,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   };
 
   return (
-    <div className="h-full flex overflow-hidden">
-      {/* 왼쪽: Candidates 리스트 */}
-      <div className={`flex-1 overflow-auto transition-all duration-300 ${selectedCandidateId ? 'md:w-1/3' : 'w-full'} min-w-0`}>
-        <div className="px-8 py-6">
+    <div className="h-full overflow-auto">
+      {/* Candidates 리스트 */}
+      <div className="px-8 py-6">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -515,31 +509,26 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             총 {filteredCandidates.length}명의 후보자
           </div>
         )}
-        </div>
       </div>
 
-      {/* 오른쪽: Candidate Detail 패널 (모바일에서는 전체 화면) */}
-      {selectedCandidateId && (
-        <>
-          {/* 모바일: 오버레이 배경 */}
-          <div 
-            className="fixed inset-0 bg-black/20 z-40 md:hidden transition-opacity duration-300"
-            onClick={handleCloseDetail}
-          />
-          
-          {/* Detail 패널 - 슬라이드 인 애니메이션 */}
-          <div className={`
-            fixed md:relative md:flex-shrink-0
-            top-0 right-0 bottom-0
-            w-full md:w-2/3 lg:w-[800px] xl:w-[1000px]
-            bg-white
-            z-50 md:z-auto
-            transform transition-transform duration-300 ease-in-out
-            ${isDetailVisible ? 'translate-x-0' : 'translate-x-full'}
-            overflow-auto
-            border-l border-gray-200
-            shadow-lg md:shadow-none
-          `}>
+      {/* 전체 화면 모달: Candidate Detail */}
+      <Dialog open={!!selectedCandidateId} onOpenChange={(open) => {
+        if (!open) {
+          handleCloseDetail();
+        }
+      }}>
+        <DialogContent 
+          className="max-w-none w-full h-full m-0 p-0 rounded-none border-0 bg-white [&>button]:hidden"
+          onInteractOutside={(e) => {
+            // 배경 클릭 시 모달 닫기 방지 (선택적)
+            // e.preventDefault();
+          }}
+        >
+          {/* 접근성을 위한 숨겨진 제목 */}
+          <DialogTitle className="sr-only">
+            {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
+          </DialogTitle>
+          <div className="h-full overflow-auto">
             {isLoadingDetail ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -565,12 +554,12 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 schedules={schedules}
                 timelineEvents={timelineEvents}
                 onClose={handleCloseDetail}
-                isSidebar={true}
+                isSidebar={false}
               />
             ) : null}
           </div>
-        </>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* 아카이브 모달 */}
       {selectedCandidateForArchive && (

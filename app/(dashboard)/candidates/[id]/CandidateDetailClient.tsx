@@ -339,7 +339,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
 
   return (
     <div className={`h-full overflow-auto ${isSidebar ? 'bg-white' : 'bg-gray-50'}`}>
-      <div className={`${isSidebar ? 'px-4 sm:px-6 py-4 sm:py-6' : 'max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6'}`}>
+      <div className={`${isSidebar ? 'px-4 sm:px-6 py-4 sm:py-6' : 'max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 sm:py-8'}`}>
         {/* Header with Close Button */}
         <div className="flex items-start justify-between mb-4 sm:mb-6">
           <div className="flex-1 min-w-0">
