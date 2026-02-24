@@ -26,6 +26,7 @@ interface CandidateScheduleClientProps {
     status: string;
   }>;
   token: string;
+  isConfirmed?: boolean;
 }
 
 export function CandidateScheduleClient({
@@ -33,10 +34,16 @@ export function CandidateScheduleClient({
   schedule,
   options,
   token,
+  isConfirmed: initialIsConfirmed = false,
 }: CandidateScheduleClientProps) {
   const router = useRouter();
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(initialIsConfirmed);
+  const [confirmedOption, setConfirmedOption] = useState<{
+    id: string;
+    scheduled_at: string;
+  } | null>(initialIsConfirmed && options.length > 0 ? options[0] : null);
 
   const handleSelect = async (optionId: string) => {
     setIsSubmitting(true);
@@ -51,10 +58,17 @@ export function CandidateScheduleClient({
         setSelectedOptionId(null);
       } else {
         toast.success('면접 일정이 확정되었습니다!');
-        // 성공 메시지 표시 후 잠시 대기
+        // 성공 상태로 변경하고 선택된 옵션 저장
+        setIsConfirmed(true);
+        const selectedOption = options.find(opt => opt.id === optionId);
+        if (selectedOption) {
+          setConfirmedOption(selectedOption);
+        }
+        setIsSubmitting(false);
+        // 페이지 새로고침하여 서버에서 확정된 일정 정보를 가져오기
         setTimeout(() => {
-          router.push('/');
-        }, 2000);
+          router.refresh();
+        }, 500);
       }
     } catch (error) {
       toast.error('일정 확정에 실패했습니다.');
@@ -64,6 +78,64 @@ export function CandidateScheduleClient({
     }
   };
 
+  // 일정 확정 완료 화면 (서버에서 이미 확정된 경우 또는 클라이언트에서 방금 확정한 경우)
+  if (isConfirmed && confirmedOption) {
+    const date = new Date(confirmedOption.scheduled_at);
+    const endTime = new Date(date);
+    endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-lg shadow-md p-8">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-8 h-8 text-green-600" />
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                면접 일정이 확정되었습니다
+              </h1>
+              <p className="text-gray-600">
+                안녕하세요, <strong>{candidate.name}</strong>님. 면접 일정이 성공적으로 확정되었습니다.
+              </p>
+            </div>
+
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-blue-600" />
+                  <span className="font-medium text-gray-900">날짜:</span>
+                  <span className="text-gray-700">
+                    {format(date, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  <span className="font-medium text-gray-900">시간:</span>
+                  <span className="text-gray-700">
+                    {format(date, 'HH:mm')} - {format(endTime, 'HH:mm')}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600 mt-2">
+                  소요 시간: {schedule.duration_minutes}분
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-6">
+              <p className="text-sm text-gray-500 text-center">
+                구글 캘린더에 일정이 자동으로 추가되었으며, 면접관들에게도 알림이 전송되었습니다.
+                <br />
+                면접 일정을 확인하시고 준비해 주시기 바랍니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 일정 선택 화면
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">

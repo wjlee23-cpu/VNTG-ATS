@@ -2001,7 +2001,7 @@ export async function confirmCandidateSchedule(
     // 후보자가 직접 선택하는 경우이므로 Service Role Client를 사용하여 RLS 우회
     const supabase = createServiceClient();
 
-    // 스케줄 및 후보자 정보 조회
+    // 스케줄 및 후보자 정보 조회 (job_posts 포함하여 포지션명 가져오기)
     const { data: schedule, error: scheduleError } = await supabase
       .from('schedules')
       .select(`
@@ -2010,7 +2010,11 @@ export async function confirmCandidateSchedule(
           id,
           name,
           email,
-          token
+          token,
+          job_posts (
+            id,
+            title
+          )
         )
       `)
       .eq('id', scheduleId)
@@ -2020,10 +2024,14 @@ export async function confirmCandidateSchedule(
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    const candidate = schedule.candidates as { id: string; name: string; email: string; token: string } | null | undefined;
+    const candidate = schedule.candidates as any;
     if (!candidate || candidate.token !== token) {
       throw new Error('인증 토큰이 올바르지 않습니다.');
     }
+
+    // 포지션명 추출
+    const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
+    const positionName = jobPost?.title || '포지션 미지정';
 
     // 선택된 옵션 조회
     const { data: selectedOption, error: optionError } = await supabase
@@ -2068,8 +2076,8 @@ export async function confirmCandidateSchedule(
         organizer.calendar_refresh_token,
         selectedOption.google_event_id,
         {
-          summary: `[확정] ${candidate.name} 면접`,
-          description: `후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n면접 일정이 확정되었습니다.`,
+          summary: `[확정] ${positionName} - ${candidate.name} 면접`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n면접 일정이 확정되었습니다.`,
           start: {
             dateTime: selectedOption.scheduled_at,
             timeZone: 'Asia/Seoul',

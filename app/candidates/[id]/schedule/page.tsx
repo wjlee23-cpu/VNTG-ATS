@@ -49,12 +49,12 @@ export default async function CandidateSchedulePage({
   // 토큰 검증 완료 후 Service Role Client로 전환하여 RLS 우회
   const serviceClient = createServiceClient();
 
-  // 스케줄 및 옵션 조회 (Service Role Client 사용)
+  // 스케줄 조회 (확정된 일정 또는 선택 대기 중인 일정 모두 조회)
   const { data: schedule } = await serviceClient
     .from('schedules')
     .select(`
       *,
-      schedule_options!inner (
+      schedule_options (
         id,
         scheduled_at,
         status,
@@ -62,7 +62,7 @@ export default async function CandidateSchedulePage({
       )
     `)
     .eq('candidate_id', candidateId)
-    .eq('workflow_status', 'pending_candidate')
+    .in('workflow_status', ['pending_candidate', 'confirmed'])
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
@@ -79,7 +79,41 @@ export default async function CandidateSchedulePage({
     );
   }
 
-  if (!schedule || !schedule.schedule_options || schedule.schedule_options.length === 0) {
+  // 이미 확정된 일정인 경우 확정된 일정 정보 표시
+  if (schedule.workflow_status === 'confirmed') {
+    // 확정된 일정 옵션 조회 (status가 'selected'인 옵션)
+    const confirmedOption = schedule.schedule_options?.find((opt: any) => opt.status === 'selected');
+    
+    if (confirmedOption) {
+      return (
+        <CandidateScheduleClient
+          candidate={candidate}
+          schedule={schedule}
+          options={[confirmedOption]}
+          token={token}
+          isConfirmed={true}
+        />
+      );
+    }
+    
+    // 확정된 일정이지만 옵션 정보가 없는 경우 scheduled_at 사용
+    return (
+      <CandidateScheduleClient
+        candidate={candidate}
+        schedule={schedule}
+        options={[{
+          id: 'confirmed',
+          scheduled_at: schedule.scheduled_at,
+          status: 'selected'
+        }]}
+        token={token}
+        isConfirmed={true}
+      />
+    );
+  }
+
+  // 선택 대기 중인 일정인 경우
+  if (!schedule.schedule_options || schedule.schedule_options.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center">
@@ -118,6 +152,7 @@ export default async function CandidateSchedulePage({
       schedule={schedule}
       options={availableOptions}
       token={token}
+      isConfirmed={false}
     />
   );
 }
