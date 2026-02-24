@@ -1,11 +1,12 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { getCurrentUser } from '@/api/utils/auth';
 
 /**
- * 구글 캘린더 OAuth 콜백 처리
- * 사용자가 구글 캘린더 권한을 승인한 후 리디렉트되는 경로
+ * 구글 OAuth 콜백 처리
+ * 로그인과 캘린더 연동을 함께 처리합니다.
+ * - 로그인 플로우: Google OAuth → Supabase 사용자 생성/로그인 → 캘린더 토큰 저장
+ * - 캘린더 연동 플로우: 기존 사용자의 캘린더 토큰만 업데이트
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -13,12 +14,14 @@ export async function GET(request: Request) {
   const error = requestUrl.searchParams.get('error');
   const state = requestUrl.searchParams.get('state');
   
-  // state에서 next 파라미터 추출
+  // state에서 next 파라미터 및 타입 추출
   let next = '/dashboard';
+  let flowType = 'connect'; // 'login' 또는 'connect'
   if (state) {
     try {
       const stateData = JSON.parse(decodeURIComponent(state));
       next = stateData.next || '/dashboard';
+      flowType = stateData.type || 'connect';
     } catch {
       // state 파싱 실패 시 기본값 사용
     }
@@ -27,21 +30,25 @@ export async function GET(request: Request) {
   // 에러가 있으면 처리
   if (error) {
     console.error('구글 OAuth 에러:', error);
+    const errorMessage = flowType === 'login' 
+      ? '구글 로그인에 실패했습니다.'
+      : '구글 캘린더 연동에 실패했습니다.';
     return NextResponse.redirect(
-      new URL(`/dashboard?error=google_oauth_error&message=${encodeURIComponent('구글 캘린더 연동에 실패했습니다.')}`, requestUrl.origin)
+      new URL(`/login?error=google_oauth_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
     );
   }
 
   // 코드가 없으면 에러
   if (!code) {
+    const errorMessage = flowType === 'login'
+      ? '인증 코드를 받지 못했습니다'
+      : '인증 코드를 받지 못했습니다';
     return NextResponse.redirect(
-      new URL(`/dashboard?error=oauth_error&message=${encodeURIComponent('인증 코드를 받지 못했습니다')}`, requestUrl.origin)
+      new URL(`/login?error=oauth_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
     );
   }
 
   try {
-    // 현재 사용자 확인
-    const user = await getCurrentUser();
     const supabase = await createClient();
     const serviceClient = createServiceClient();
 
@@ -59,49 +66,185 @@ export async function GET(request: Request) {
       throw new Error('토큰을 받지 못했습니다.');
     }
 
-    // 토큰 스코프 확인 및 로깅
-    try {
-      const tokenInfo = await oauth2Client.getTokenInfo(tokens.access_token);
-      const scopes = tokenInfo.scopes || [];
-      const hasGmailScope = scopes.some(scope => 
-        scope.includes('gmail.send') || scope === 'https://www.googleapis.com/auth/gmail.send'
-      );
+    // 토큰으로 사용자 정보 가져오기
+    oauth2Client.setCredentials({
+      access_token: tokens.access_token,
+    });
+
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const { data: userInfo } = await oauth2.userinfo.get();
+
+    if (!userInfo.email) {
+      throw new Error('사용자 이메일을 가져올 수 없습니다.');
+    }
+
+    // 로그인 플로우인 경우: Supabase에 사용자 생성/로그인 처리
+    if (flowType === 'login') {
+      // Supabase Auth에 사용자 생성 또는 확인
+      const { data: { user: existingAuthUser }, error: getUserError } = await supabase.auth.admin.getUserByEmail(userInfo.email);
       
-      console.log('토큰 스코프:', scopes);
-      console.log('Gmail 스코프 포함 여부:', hasGmailScope);
+      let authUserId: string;
       
-      if (!hasGmailScope) {
-        console.warn('경고: 토큰에 Gmail 스코프가 포함되지 않았습니다. Google Cloud Console에서 Gmail API 활성화 및 OAuth 동의 화면에 gmail.send 스코프 추가가 필요합니다.');
+      if (existingAuthUser && !getUserError) {
+        // 기존 사용자가 있으면 해당 ID 사용
+        authUserId = existingAuthUser.id;
+      } else {
+        // 새 사용자 생성 (Supabase Auth)
+        const { data: newAuthUser, error: createAuthError } = await supabase.auth.admin.createUser({
+          email: userInfo.email,
+          email_confirm: true,
+          user_metadata: {
+            full_name: userInfo.name || '',
+            avatar_url: userInfo.picture || '',
+            provider: 'google',
+          },
+        });
+
+        if (createAuthError || !newAuthUser.user) {
+          console.error('Supabase Auth 사용자 생성 실패:', createAuthError);
+          throw new Error('사용자 생성에 실패했습니다.');
+        }
+
+        authUserId = newAuthUser.user.id;
       }
-    } catch (scopeError) {
-      console.error('토큰 스코프 확인 실패:', scopeError);
-    }
 
-    // 사용자 정보에 구글 캘린더 토큰 저장
-    const { error: updateError } = await serviceClient
-      .from('users')
-      .update({
-        calendar_provider: 'google',
-        calendar_access_token: tokens.access_token,
-        calendar_refresh_token: tokens.refresh_token,
-      })
-      .eq('id', user.userId);
+      // users 테이블에 사용자가 있는지 확인
+      const { data: existingUser } = await serviceClient
+        .from('users')
+        .select('id, email, organization_id, role')
+        .eq('id', authUserId)
+        .single();
 
-    if (updateError) {
-      console.error('구글 캘린더 토큰 저장 실패:', updateError);
+      if (!existingUser) {
+        // users 테이블에 사용자 생성
+        const { count: totalUsers } = await serviceClient
+          .from('users')
+          .select('*', { count: 'exact', head: true });
+
+        // 기본 조직 찾기 또는 생성
+        let { data: organization } = await serviceClient
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+
+        if (!organization) {
+          const { data: newOrg, error: orgError } = await serviceClient
+            .from('organizations')
+            .insert({ name: 'VNTG Tech' })
+            .select('id')
+            .single();
+
+          if (orgError || !newOrg) {
+            throw new Error('조직 생성에 실패했습니다.');
+          }
+          organization = newOrg;
+        }
+
+        // 최초 사용자는 admin, 그 외는 recruiter로 설정
+        const isVNTGEmail = userInfo.email.endsWith('@vntgcorp.com');
+        const isFirstUser = (totalUsers || 0) === 0;
+        const userRole = (isFirstUser || isVNTGEmail) ? 'admin' : 'recruiter';
+
+        // 사용자 생성 (캘린더 토큰 포함)
+        const { error: createUserError } = await serviceClient
+          .from('users')
+          .insert({
+            id: authUserId,
+            email: userInfo.email,
+            organization_id: organization.id,
+            role: userRole,
+            calendar_provider: 'google',
+            calendar_access_token: tokens.access_token,
+            calendar_refresh_token: tokens.refresh_token,
+          });
+
+        if (createUserError) {
+          console.error('users 테이블 사용자 생성 실패:', createUserError);
+          throw new Error('사용자 생성에 실패했습니다.');
+        }
+      } else {
+        // 기존 사용자의 캘린더 토큰 업데이트
+        const { error: updateError } = await serviceClient
+          .from('users')
+          .update({
+            calendar_provider: 'google',
+            calendar_access_token: tokens.access_token,
+            calendar_refresh_token: tokens.refresh_token,
+          })
+          .eq('id', authUserId);
+
+        if (updateError) {
+          console.error('캘린더 토큰 업데이트 실패:', updateError);
+          throw new Error('캘린더 연동 정보 저장에 실패했습니다.');
+        }
+      }
+
+      // Supabase Auth 세션 생성 (매직 링크 방식)
+      // 매직 링크를 생성하여 자동 로그인
+      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email: userInfo.email,
+      });
+
+      if (linkError || !linkData) {
+        console.error('매직 링크 생성 실패:', linkError);
+        // 매직 링크 생성 실패 시: 사용자에게 이메일로 로그인하도록 안내
+        // (캘린더 토큰은 이미 저장되었으므로, 이후에는 이메일로 로그인하면 됩니다)
+        return NextResponse.redirect(
+          new URL(`/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`, requestUrl.origin)
+        );
+      }
+
+      // 매직 링크의 action_link로 리다이렉트하여 자동 로그인
+      // action_link는 Supabase Auth 세션을 생성하는 URL입니다
+      if (linkData.properties?.action_link) {
+        return NextResponse.redirect(linkData.properties.action_link);
+      }
+
+      // action_link가 없으면 로그인 페이지로 리다이렉트
       return NextResponse.redirect(
-        new URL(`/dashboard?error=token_save_error&message=${encodeURIComponent('구글 캘린더 연동 정보 저장에 실패했습니다.')}`, requestUrl.origin)
+        new URL(`/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`, requestUrl.origin)
+      );
+    } else {
+      // 캘린더 연동 플로우: 기존 사용자의 캘린더 토큰만 업데이트
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      
+      if (!authUser) {
+        return NextResponse.redirect(
+          new URL(`/login?error=auth_required&message=${encodeURIComponent('로그인이 필요합니다.')}`, requestUrl.origin)
+        );
+      }
+
+      // 사용자 정보에 구글 캘린더 토큰 저장
+      const { error: updateError } = await serviceClient
+        .from('users')
+        .update({
+          calendar_provider: 'google',
+          calendar_access_token: tokens.access_token,
+          calendar_refresh_token: tokens.refresh_token,
+        })
+        .eq('id', authUser.id);
+
+      if (updateError) {
+        console.error('구글 캘린더 토큰 저장 실패:', updateError);
+        return NextResponse.redirect(
+          new URL(`/dashboard?error=token_save_error&message=${encodeURIComponent('구글 캘린더 연동 정보 저장에 실패했습니다.')}`, requestUrl.origin)
+        );
+      }
+
+      // 성공 시 대시보드로 리다이렉트
+      return NextResponse.redirect(
+        new URL(`${next}?success=calendar_connected&message=${encodeURIComponent('구글 캘린더가 성공적으로 연동되었습니다.')}`, requestUrl.origin)
       );
     }
-
-    // 성공 시 대시보드로 리다이렉트
-    return NextResponse.redirect(
-      new URL(`${next}?success=calendar_connected&message=${encodeURIComponent('구글 캘린더가 성공적으로 연동되었습니다.')}`, requestUrl.origin)
-    );
   } catch (err: any) {
-    console.error('구글 캘린더 OAuth 콜백 처리 중 오류:', err);
+    console.error('구글 OAuth 콜백 처리 중 오류:', err);
+    const errorMessage = flowType === 'login'
+      ? '구글 로그인 처리 중 오류가 발생했습니다'
+      : '구글 캘린더 연동 처리 중 오류가 발생했습니다';
     return NextResponse.redirect(
-      new URL(`/dashboard?error=unknown_error&message=${encodeURIComponent('구글 캘린더 연동 처리 중 오류가 발생했습니다')}`, requestUrl.origin)
+      new URL(`/login?error=unknown_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
     );
   }
 }

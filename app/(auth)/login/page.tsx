@@ -54,24 +54,15 @@ export default function LoginPage() {
     }
   };
 
-  // 구글 로그인 핸들러
+  // 구글 로그인 핸들러 (모든 권한 포함)
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/dashboard')}`,
-        },
-      });
-
-      if (oauthError) {
-        setError(oauthError.message);
-        setLoading(false);
-      }
-      // 성공 시 리다이렉트되므로 여기서는 아무것도 하지 않음
+      // 직접 Google OAuth를 사용하여 모든 권한(캘린더, Gmail)을 받습니다
+      window.location.href = `/api/auth/google?next=${encodeURIComponent('/dashboard')}`;
+      // 리다이렉트되므로 여기서는 아무것도 하지 않음
     } catch (err) {
       setError('구글 로그인 중 오류가 발생했습니다.');
       setLoading(false);

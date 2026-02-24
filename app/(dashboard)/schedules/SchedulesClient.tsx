@@ -12,12 +12,14 @@ import {
   Filter,
   Calendar as CalendarIcon,
   User,
-  Mail
+  Mail,
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { Button } from '@/components/ui/button';
-import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate } from '@/api/actions/schedules';
+import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate, deleteSchedule, cancelSchedule } from '@/api/actions/schedules';
 import { getAllScheduleProgress } from '@/api/queries/schedules';
 import { toast } from 'sonner';
 
@@ -66,6 +68,8 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [checkingScheduleId, setCheckingScheduleId] = useState<string | null>(null);
   const [isCheckingAll, setIsCheckingAll] = useState(false);
+  const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
+  const [cancellingScheduleId, setCancellingScheduleId] = useState<string | null>(null);
 
   // 필터링된 일정 목록
   const filteredSchedules = useMemo(() => {
@@ -254,6 +258,78 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
       toast.error(`메일 재전송 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
     } finally {
       setCheckingScheduleId(null);
+    }
+  };
+
+  // 면접 일정 삭제
+  const handleDeleteSchedule = async (scheduleId: string) => {
+    if (!confirm('정말로 이 면접 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      return;
+    }
+
+    setDeletingScheduleId(scheduleId);
+    try {
+      const result = await deleteSchedule(scheduleId);
+      
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('면접 일정이 삭제되었습니다.');
+        
+        // 서버에서 최신 데이터 다시 가져오기
+        setTimeout(async () => {
+          try {
+            const latestData = await getAllScheduleProgress();
+            if (latestData.data) {
+              setSchedules(latestData.data);
+            }
+          } catch (refreshError) {
+            console.error('데이터 새로고침 실패:', refreshError);
+            window.location.reload();
+          }
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('면접 일정 삭제 실패:', error);
+      toast.error(`면접 일정 삭제 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+    } finally {
+      setDeletingScheduleId(null);
+    }
+  };
+
+  // 면접 일정 초기화 (취소)
+  const handleCancelSchedule = async (scheduleId: string) => {
+    if (!confirm('이 면접 일정을 취소하시겠습니까? 구글 캘린더의 이벤트도 삭제됩니다.')) {
+      return;
+    }
+
+    setCancellingScheduleId(scheduleId);
+    try {
+      const result = await cancelSchedule(scheduleId);
+      
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('면접 일정이 취소되었습니다.');
+        
+        // 서버에서 최신 데이터 다시 가져오기
+        setTimeout(async () => {
+          try {
+            const latestData = await getAllScheduleProgress();
+            if (latestData.data) {
+              setSchedules(latestData.data);
+            }
+          } catch (refreshError) {
+            console.error('데이터 새로고침 실패:', refreshError);
+            window.location.reload();
+          }
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('면접 일정 취소 실패:', error);
+      toast.error(`면접 일정 취소 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+    } finally {
+      setCancellingScheduleId(null);
     }
   };
 
@@ -546,6 +622,39 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
                         )}
                       </Button>
                     )}
+                    
+                    {/* 삭제 및 초기화 버튼 */}
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        onClick={() => handleCancelSchedule(schedule.id)}
+                        disabled={cancellingScheduleId === schedule.id || deletingScheduleId === schedule.id || schedule.workflow_status === 'cancelled'}
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-yellow-600 border-yellow-300 hover:bg-yellow-50"
+                        title="초기화 (취소)"
+                      >
+                        {cancellingScheduleId === schedule.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-4 h-4" />
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => handleDeleteSchedule(schedule.id)}
+                        disabled={deletingScheduleId === schedule.id || cancellingScheduleId === schedule.id}
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-red-600 border-red-300 hover:bg-red-50"
+                        title="삭제"
+                      >
+                        {deletingScheduleId === schedule.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    
                     <div className="text-xs text-gray-500 mt-2">
                       <div className="flex items-center gap-1">
                         <User className="w-3 h-3" />

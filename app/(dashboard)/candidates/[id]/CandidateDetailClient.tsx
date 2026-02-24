@@ -381,6 +381,57 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             {event.content?.rating && renderStars(event.content.rating)}
           </div>
         );
+      case 'schedule_created':
+        const scheduleOptions = event.content?.schedule_options as Array<{ id: string; scheduled_at: string }> | undefined;
+        const retryCount = event.content?.retry_count as number | undefined;
+        const originalDateRange = event.content?.original_date_range as { start: string; end: string } | undefined;
+        
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">{event.content?.message || '면접 일정 자동화가 시작되었습니다.'}</p>
+            
+            {/* 일정 옵션 목록 */}
+            {scheduleOptions && scheduleOptions.length > 0 && (
+              <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <p className="text-xs font-medium text-blue-900 mb-2">생성된 일정 옵션 ({scheduleOptions.length}개):</p>
+                <div className="space-y-1">
+                  {scheduleOptions.map((option, index) => {
+                    const date = new Date(option.scheduled_at);
+                    return (
+                      <div key={option.id || index} className="text-xs text-blue-800">
+                        <span className="font-medium">옵션 {index + 1}:</span>{' '}
+                        {date.toLocaleDateString('ko-KR', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          weekday: 'short',
+                        })}{' '}
+                        {date.toLocaleTimeString('ko-KR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* 재시도 정보 */}
+            {retryCount !== undefined && retryCount > 0 && (
+              <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-100">
+                <p className="text-xs text-yellow-800">
+                  <span className="font-medium">날짜 범위 확장:</span> 원본 날짜 범위에 일정이 없어 {retryCount}회 날짜 범위를 확장하여 검색했습니다.
+                </p>
+                {originalDateRange && (
+                  <p className="text-xs text-yellow-700 mt-1">
+                    원본 날짜 범위: {new Date(originalDateRange.start).toLocaleDateString('ko-KR')} ~ {new Date(originalDateRange.end).toLocaleDateString('ko-KR')}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        );
       default:
         return (
           <p className="text-sm text-gray-700">{event.content?.message || event.type}</p>

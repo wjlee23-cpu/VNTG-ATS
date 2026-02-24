@@ -1,7 +1,7 @@
 import { getAIClient, generateText, AIProvider } from './client'
 import { CalendarEvent } from '../calendar/google'
 import { addDays, startOfDay, endOfDay, addMinutes, isWithinInterval, format } from 'date-fns'
-import { isWeekday } from '../utils/korean-holidays'
+import { isWeekday, isKoreanHoliday } from '../utils/korean-holidays'
 
 export interface ScheduleOption {
   scheduledAt: Date
@@ -30,8 +30,11 @@ export async function findAvailableTimeSlots(
   let current = startOfDay(startDate)
 
   while (current <= endDate) {
-    // 공휴일이 아닌 평일만 체크
-    if (!isWeekday(current)) {
+    // 공휴일이 아닌 평일만 체크 (토요일/일요일 및 한국 공휴일 제외)
+    const dayOfWeek = current.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6 // 일요일(0) 또는 토요일(6)
+    
+    if (isWeekend || isKoreanHoliday(current)) {
       current = addDays(current, 1)
       continue
     }
@@ -198,9 +201,16 @@ ${availableSlots.slice(0, 50).map((slot, i) => `${i + 1}. ${format(slot, 'yyyy-M
   }
 
   // 최종 결과 반환 (선택된 일정이 있으면 사용, 없으면 fallback)
-  const finalSlots = selectedSlots.length > 0 
+  // 최종 필터링: 공휴일이 포함된 일정 제거
+  const finalSlots = (selectedSlots.length > 0 
     ? selectedSlots 
     : availableSlots.slice(0, 5)
+  ).filter((slot) => {
+    // 공휴일 체크: 토요일/일요일 및 한국 공휴일 제외
+    const dayOfWeek = slot.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    return !isWeekend && !isKoreanHoliday(slot)
+  })
 
   return finalSlots.map((slot) => ({
     scheduledAt: slot,

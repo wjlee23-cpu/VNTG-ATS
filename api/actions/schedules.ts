@@ -232,16 +232,19 @@ export async function updateSchedule(id: string, formData: FormData) {
 
 /**
  * 면접 일정 삭제
+ * 구글 캘린더 이벤트도 함께 삭제하고 타임라인 이벤트를 생성합니다.
  * @param id 면접 일정 ID
  */
 export async function deleteSchedule(id: string) {
   return withErrorHandling(async () => {
-    const supabase = await createClient();
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
     // 면접 일정 조회 및 권한 확인
     const { data: schedule, error: scheduleError } = await supabase
       .from('schedules')
-      .select('candidate_id')
+      .select('id, candidate_id, interviewer_ids')
       .eq('id', id)
       .single();
 
@@ -251,6 +254,63 @@ export async function deleteSchedule(id: string) {
 
     await verifyCandidateAccess(schedule.candidate_id);
 
+    // schedule_options 별도 조회 (구글 캘린더 이벤트 ID 포함)
+    const { data: scheduleOptions, error: optionsError } = await supabase
+      .from('schedule_options')
+      .select('id, google_event_id')
+      .eq('schedule_id', id)
+      .not('google_event_id', 'is', null);
+
+    if (optionsError) {
+      console.error('schedule_options 조회 실패:', optionsError);
+    }
+
+    // 면접관 정보 조회 (구글 캘린더 이벤트 삭제용)
+    const { data: interviewers } = await supabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .in('id', schedule.interviewer_ids || []);
+
+    // 구글 캘린더 이벤트 삭제
+    if (scheduleOptions && scheduleOptions.length > 0 && interviewers && interviewers.length > 0) {
+      // 구글 캘린더에 연동된 면접관 찾기
+      const organizer = interviewers.find(
+        inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
+      );
+      
+      if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
+        for (const option of scheduleOptions) {
+          if (option.google_event_id) {
+            try {
+              await deleteCalendarEvent(
+                organizer.calendar_access_token,
+                organizer.calendar_refresh_token,
+                option.google_event_id
+              );
+              console.log(`구글 캘린더 이벤트 삭제 완료: ${option.google_event_id}`);
+            } catch (error) {
+              console.error(`구글 캘린더 이벤트 삭제 실패 (${option.google_event_id}):`, error);
+              // 이벤트 삭제 실패해도 DB 삭제는 계속 진행
+            }
+          }
+        }
+      } else {
+        console.warn('구글 캘린더에 연동된 면접관을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.');
+      }
+    }
+
+    // 타임라인 이벤트 생성
+    await supabase.from('timeline_events').insert({
+      candidate_id: schedule.candidate_id,
+      type: 'schedule_created',
+      content: {
+        message: '면접 일정이 삭제되었습니다.',
+        schedule_id: id,
+      },
+      created_by: user.userId,
+    });
+
+    // 면접 일정 삭제 (CASCADE로 schedule_options도 자동 삭제됨)
     const { error } = await supabase
       .from('schedules')
       .delete()
@@ -262,6 +322,109 @@ export async function deleteSchedule(id: string) {
 
     // 캐시 무효화
     revalidatePath('/dashboard/calendar');
+    revalidatePath('/dashboard/schedules');
+    revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+  });
+}
+
+/**
+ * 면접 일정 초기화 (취소)
+ * 워크플로우 상태를 'cancelled'로 변경하고 구글 캘린더 이벤트를 삭제합니다.
+ * @param id 면접 일정 ID
+ */
+export async function cancelSchedule(id: string) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // 면접 일정 조회 및 권한 확인
+    const { data: schedule, error: scheduleError } = await supabase
+      .from('schedules')
+      .select('id, candidate_id, interviewer_ids, workflow_status')
+      .eq('id', id)
+      .single();
+
+    if (scheduleError || !schedule) {
+      throw new Error('면접 일정을 찾을 수 없습니다.');
+    }
+
+    await verifyCandidateAccess(schedule.candidate_id);
+
+    // 이미 취소된 경우
+    if (schedule.workflow_status === 'cancelled') {
+      throw new Error('이미 취소된 면접 일정입니다.');
+    }
+
+    // schedule_options 별도 조회 (구글 캘린더 이벤트 ID 포함)
+    const { data: scheduleOptions, error: optionsError } = await supabase
+      .from('schedule_options')
+      .select('id, google_event_id')
+      .eq('schedule_id', id)
+      .not('google_event_id', 'is', null);
+
+    if (optionsError) {
+      console.error('schedule_options 조회 실패:', optionsError);
+    }
+
+    // 면접관 정보 조회 (구글 캘린더 이벤트 삭제용)
+    const { data: interviewers } = await supabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .in('id', schedule.interviewer_ids || []);
+
+    // 구글 캘린더 이벤트 삭제
+    if (scheduleOptions && scheduleOptions.length > 0 && interviewers && interviewers.length > 0) {
+      // 구글 캘린더에 연동된 면접관 찾기
+      const organizer = interviewers.find(
+        inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
+      );
+      
+      if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
+        for (const option of scheduleOptions) {
+          if (option.google_event_id) {
+            try {
+              await deleteCalendarEvent(
+                organizer.calendar_access_token,
+                organizer.calendar_refresh_token,
+                option.google_event_id
+              );
+              console.log(`구글 캘린더 이벤트 삭제 완료: ${option.google_event_id}`);
+            } catch (error) {
+              console.error(`구글 캘린더 이벤트 삭제 실패 (${option.google_event_id}):`, error);
+              // 이벤트 삭제 실패해도 취소는 계속 진행
+            }
+          }
+        }
+      } else {
+        console.warn('구글 캘린더에 연동된 면접관을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.');
+      }
+    }
+
+    // 워크플로우 상태를 'cancelled'로 변경
+    const { error: updateError } = await supabase
+      .from('schedules')
+      .update({ workflow_status: 'cancelled' })
+      .eq('id', id);
+
+    if (updateError) {
+      throw new Error(`면접 일정 취소 실패: ${updateError.message}`);
+    }
+
+    // 타임라인 이벤트 생성
+    await supabase.from('timeline_events').insert({
+      candidate_id: schedule.candidate_id,
+      type: 'schedule_created',
+      content: {
+        message: '면접 일정이 취소되었습니다.',
+        schedule_id: id,
+      },
+      created_by: user.userId,
+    });
+
+    // 캐시 무효화
+    revalidatePath('/dashboard/calendar');
+    revalidatePath('/dashboard/schedules');
     revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
   });
 }
@@ -405,6 +568,12 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       480,
       '면접 시간'
     );
+    const numOptions = validateNumberRange(
+      parseInt(validateRequired(formData.get('num_options'), '일정 옵션 개수') || '2'),
+      1,
+      5,
+      '일정 옵션 개수'
+    );
 
     // 후보자 정보 조회 (권한 확인 포함, 관리자일 경우 Service Role Client 사용)
     // job_post 정보도 함께 조회하여 포지션명 가져오기
@@ -491,7 +660,12 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           })));
         } catch (error) {
           console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
-          throw new Error(`면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다.`);
+          const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+          throw new Error(
+            `면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다. ` +
+            `${errorMessage} ` +
+            `면접관이 구글 캘린더를 재연동해야 할 수 있습니다. (/dashboard/connect-calendar)`
+          );
         }
       }
 
@@ -511,8 +685,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         durationMinutes,
       });
 
-      // 상위 2개 일정 선택
-      selectedSlots = availableSlots.slice(0, 2);
+      // 상위 N개 일정 선택 (numOptions만큼)
+      selectedSlots = availableSlots.slice(0, numOptions);
       
       if (selectedSlots.length > 0) {
         // 일정을 찾았으면 반복문 종료
@@ -543,18 +717,25 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     }
 
     // 메인 스케줄 생성 (워크플로우 상태: pending_interviewers)
-    const scheduleData: ScheduleInsert = {
+    // original_start_date, original_end_date, retry_count 필드는 마이그레이션이 적용된 경우에만 사용
+    // 타입 단언을 사용하여 필드가 없어도 작동하도록 처리
+    const scheduleData = {
       candidate_id: candidateId,
       stage_id: stageId,
       scheduled_at: selectedSlots[0].scheduledAt.toISOString(), // 임시로 첫 번째 일정 사용
       duration_minutes: durationMinutes,
-      status: 'pending',
+      status: 'pending' as const,
       interviewer_ids: interviewerIds,
-      candidate_response: 'pending',
-      workflow_status: 'pending_interviewers',
-      original_start_date: originalStartDate.toISOString(), // 원본 시작 날짜 저장
-      original_end_date: originalEndDate.toISOString(), // 원본 종료 날짜 저장
-      retry_count: retryCount, // 재시도 횟수 저장
+      candidate_response: 'pending' as const,
+      workflow_status: 'pending_interviewers' as const,
+      // 마이그레이션이 적용된 경우에만 이 필드들을 포함 (타입 단언 사용)
+      original_start_date: originalStartDate.toISOString(),
+      original_end_date: originalEndDate.toISOString(),
+      retry_count: retryCount,
+    } as ScheduleInsert & {
+      original_start_date?: string;
+      original_end_date?: string;
+      retry_count?: number;
     };
 
     const { data: schedule, error: scheduleError } = await supabase
@@ -844,6 +1025,16 @@ async function regenerateScheduleOptions(scheduleId: string) {
     .eq('schedule_id', scheduleId)
     .in('status', ['rejected', 'pending']); // 거절된 옵션과 대기 중인 옵션 모두 제외
 
+  // 기존에 생성된 일정 옵션의 개수를 확인하여 동일한 개수로 재생성
+  // (처음 생성 시 설정한 개수와 동일하게 유지)
+  const { count: existingOptionsCount } = await supabase
+    .from('schedule_options')
+    .select('id', { count: 'exact', head: true })
+    .eq('schedule_id', scheduleId);
+  
+  // 기존 일정 옵션 개수가 있으면 그 개수를 사용하고, 없으면 기본값 2 사용
+  const numOptions = existingOptionsCount && existingOptionsCount > 0 ? existingOptionsCount : 2;
+
   // 원본 날짜 범위 확인 (없으면 현재 날짜 기준으로 설정)
   const originalStartDate = schedule.original_start_date 
     ? new Date(schedule.original_start_date) 
@@ -895,7 +1086,12 @@ async function regenerateScheduleOptions(scheduleId: string) {
         })));
       } catch (error) {
         console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
-        throw new Error(`면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다.`);
+        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+        throw new Error(
+          `면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다. ` +
+          `${errorMessage} ` +
+          `면접관이 구글 캘린더를 재연동해야 할 수 있습니다. (/dashboard/connect-calendar)`
+        );
       }
     }
 
@@ -929,8 +1125,8 @@ async function regenerateScheduleOptions(scheduleId: string) {
       durationMinutes: schedule.duration_minutes,
     });
 
-    // 상위 2개 일정 선택
-    selectedSlots = availableSlots.slice(0, 2);
+    // 상위 N개 일정 선택 (기존에 생성된 일정 옵션 개수와 동일하게)
+    selectedSlots = availableSlots.slice(0, numOptions);
     
     if (selectedSlots.length > 0) {
       // 일정을 찾았으면 반복문 종료
@@ -1021,16 +1217,23 @@ async function regenerateScheduleOptions(scheduleId: string) {
   }
 
   // 스케줄의 workflow_status를 다시 'pending_interviewers'로 변경 및 재시도 횟수 업데이트
+  // original_start_date, original_end_date, retry_count 필드는 마이그레이션이 적용된 경우에만 사용
+  const updateData = {
+    workflow_status: 'pending_interviewers' as const,
+    scheduled_at: selectedSlots[0].scheduledAt.toISOString(), // 첫 번째 옵션으로 업데이트
+    // 마이그레이션이 적용된 경우에만 이 필드들을 포함
+    retry_count: retryCount,
+    original_start_date: schedule.original_start_date || originalStartDate.toISOString(),
+    original_end_date: schedule.original_end_date || originalEndDate.toISOString(),
+  } as ScheduleUpdate & {
+    retry_count?: number;
+    original_start_date?: string;
+    original_end_date?: string;
+  };
+
   const { error: updateScheduleError } = await supabase
     .from('schedules')
-    .update({ 
-      workflow_status: 'pending_interviewers',
-      scheduled_at: selectedSlots[0].scheduledAt.toISOString(), // 첫 번째 옵션으로 업데이트
-      retry_count: retryCount, // 재시도 횟수 업데이트
-      // 원본 날짜 범위가 없으면 저장
-      original_start_date: schedule.original_start_date || originalStartDate.toISOString(),
-      original_end_date: schedule.original_end_date || originalEndDate.toISOString(),
-    })
+    .update(updateData)
     .eq('id', scheduleId);
 
   if (updateScheduleError) {

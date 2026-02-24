@@ -197,3 +197,41 @@ export async function seedDummyData() {
     };
   });
 }
+
+/**
+ * 모든 지원자의 이메일 주소를 테스트용 이메일로 일괄 변경 (관리자 전용)
+ * @param email 변경할 이메일 주소 (기본값: blee6291@gmail.com)
+ * @returns 업데이트된 지원자 수
+ */
+export async function updateAllCandidateEmails(email: string = 'blee6291@gmail.com') {
+  return withErrorHandling(async () => {
+    // 관리자 권한 확인
+    await requireAdmin();
+    const serviceClient = createServiceClient();
+
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error('유효하지 않은 이메일 형식입니다.');
+    }
+
+    // 모든 지원자의 이메일 업데이트
+    const { data, error, count } = await serviceClient
+      .from('candidates')
+      .update({ email })
+      .select('id', { count: 'exact' });
+
+    if (error) {
+      throw new Error(`이메일 업데이트 실패: ${error.message}`);
+    }
+
+    // 캐시 무효화
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/candidates');
+
+    return {
+      updatedCount: count || data?.length || 0,
+      email,
+    };
+  });
+}

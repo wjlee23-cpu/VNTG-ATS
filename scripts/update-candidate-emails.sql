@@ -1,13 +1,14 @@
--- 모든 후보자의 이메일을 blee6291@gmail.com으로 업데이트
+-- 모든 지원자의 이메일 주소를 테스트용 이메일로 일괄 변경
 -- Supabase 대시보드 > SQL Editor에서 실행하세요.
+
+-- ⚠️ 주의: 이 쿼리는 모든 지원자의 이메일을 변경합니다.
+-- 테스트 환경에서만 사용하세요.
 
 UPDATE candidates
 SET email = 'blee6291@gmail.com'
-WHERE email LIKE 'candidate%@example.com'
-   OR email != 'blee6291@gmail.com';
+WHERE id IS NOT NULL; -- 모든 레코드 업데이트
 
--- 업데이트된 레코드 수 확인
-SELECT 
-  COUNT(*) as total_candidates,
-  COUNT(CASE WHEN email = 'blee6291@gmail.com' THEN 1 END) as updated_candidates
-FROM candidates;
+-- 변경된 레코드 수 확인
+SELECT COUNT(*) as updated_count
+FROM candidates
+WHERE email = 'blee6291@gmail.com';

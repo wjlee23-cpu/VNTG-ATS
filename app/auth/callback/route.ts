@@ -161,22 +161,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // 구글 캘린더 연동 여부 확인 (신규 사용자인 경우만)
-    const isNewUser = !userData || (userData && !userData.organization_id);
-    if (isNewUser) {
-      const { data: userWithCalendar } = await supabase
-        .from('users')
-        .select('calendar_provider, calendar_access_token, calendar_refresh_token')
-        .eq('id', data.session.user.id)
-        .single();
-
-      // 구글 캘린더가 연동되지 않은 경우 연동 페이지로 리다이렉트
-      if (!userWithCalendar?.calendar_provider || !userWithCalendar?.calendar_access_token) {
-        return NextResponse.redirect(
-          new URL('/dashboard/connect-calendar?from=signup', requestUrl.origin)
-        );
-      }
-    }
+    // 구글 캘린더 연동 여부 확인은 더 이상 필요 없음
+    // 새로운 구글 로그인 플로우에서는 처음부터 모든 권한을 받으므로
+    // 여기서는 확인하지 않습니다.
 
     // 성공 시 대시보드로 리다이렉트
     return NextResponse.redirect(new URL(next, requestUrl.origin));

@@ -1,5 +1,12 @@
 -- 면접 일정 날짜 범위 자동 확장을 위한 필드 추가
 -- schedules 테이블에 원본 날짜 범위 및 재시도 횟수 필드 추가
+-- 
+-- ⚠️ 중요: 이 마이그레이션을 Supabase SQL Editor에서 실행해야 합니다.
+-- 실행 방법:
+-- 1. Supabase 대시보드 > SQL Editor로 이동
+-- 2. New query 클릭
+-- 3. 아래 SQL을 복사하여 붙여넣기
+-- 4. Run 버튼 클릭
 
 -- schedules 테이블 수정
 ALTER TABLE schedules

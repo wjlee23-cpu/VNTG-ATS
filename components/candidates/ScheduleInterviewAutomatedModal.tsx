@@ -33,6 +33,7 @@ export function ScheduleInterviewAutomatedModal({
     duration_minutes: '60',
     stage_id: 'stage-6', // 기본값: 1st Interview
     interviewer_ids: [] as string[],
+    num_options: '2', // 기본값: 2개
   });
 
   // 사용자 목록 로드
@@ -70,6 +71,7 @@ export function ScheduleInterviewAutomatedModal({
       formDataToSend.append('end_date', formData.end_date);
       formDataToSend.append('duration_minutes', formData.duration_minutes);
       formDataToSend.append('interviewer_ids', JSON.stringify(formData.interviewer_ids));
+      formDataToSend.append('num_options', formData.num_options);
 
       const result = await scheduleInterviewAutomated(formDataToSend);
 
@@ -182,6 +184,27 @@ export function ScheduleInterviewAutomatedModal({
           </div>
 
           <div>
+            <label htmlFor="num_options" className="block text-sm font-medium text-gray-700 mb-1">
+              <Calendar className="w-4 h-4 inline mr-1" />
+              일정 옵션 개수
+            </label>
+            <select
+              id="num_options"
+              required
+              value={formData.num_options}
+              onChange={(e) => setFormData({ ...formData, num_options: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="1">1개</option>
+              <option value="2">2개</option>
+              <option value="3">3개</option>
+              <option value="4">4개</option>
+              <option value="5">5개</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">면접관들의 공통 가능 일정 중 선택할 옵션 개수입니다.</p>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Users className="w-4 h-4 inline mr-1" />
               면접관 선택 (최소 1명 이상)
@@ -228,7 +251,7 @@ export function ScheduleInterviewAutomatedModal({
               <strong>자동화 프로세스:</strong>
             </p>
             <ul className="text-xs text-blue-700 mt-1 list-disc list-inside space-y-1">
-              <li>면접관들의 구글 캘린더에서 공통 가능 일정 2개를 찾습니다</li>
+              <li>면접관들의 구글 캘린더에서 공통 가능 일정 {formData.num_options}개를 찾습니다</li>
               <li>구글 캘린더에 block 일정을 생성하고 면접관들에게 초대를 전송합니다</li>
               <li>모든 면접관이 수락하면 후보자에게 일정 옵션을 전송합니다</li>
             </ul>
