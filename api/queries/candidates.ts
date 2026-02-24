@@ -103,6 +103,8 @@ export async function getCandidateById(id: string) {
       .eq('id', id)
       .single();
 
+    // ai_summary, current_salary, expected_salary 필드는 자동으로 포함됨 (SELECT * 사용)
+
     if (error) {
       throw new Error(`후보자 조회 실패: ${error.message}`);
     }
