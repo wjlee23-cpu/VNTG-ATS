@@ -133,47 +133,47 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
   const stages = selectedProcess?.stages as Array<{ id: string; name: string; order: number }> || [];
 
   return (
-    <div className="h-full overflow-auto bg-gray-50">
+    <div className="h-full overflow-auto bg-background">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+            className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">뒤로 가기</span>
           </button>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
               <Briefcase className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">새 채용 공고 만들기</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">새 채용 공고 만들기</h1>
           </div>
-          <p className="text-gray-600">채용 공고 정보를 입력하세요</p>
+          <p className="text-muted-foreground">채용 공고 정보를 입력하세요</p>
         </div>
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+          <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive">
             {error}
           </div>
         )}
 
         {/* Form */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-8">
+        <div className="card-modern p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* JD Request Selection */}
             {jdRequests.length > 0 && (
               <div>
-                <label htmlFor="jd_request_id" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="jd_request_id" className="block text-sm font-medium text-foreground mb-2">
                   승인된 JD 선택 (선택사항)
                 </label>
                 <select
                   id="jd_request_id"
                   value={formData.jd_request_id}
                   onChange={(e) => handleJDRequestChange(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 >
                   <option value="">JD를 선택하세요 (선택사항)</option>
                   {jdRequests.map((jd) => (
@@ -182,7 +182,7 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   승인된 JD를 선택하면 제목과 설명이 자동으로 입력됩니다.
                 </p>
               </div>
@@ -190,8 +190,8 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
 
             {/* Title */}
             <div>
-              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                제목 <span className="text-red-500">*</span>
+              <label htmlFor="title" className="block text-sm font-medium text-foreground mb-2">
+                제목 <span className="text-destructive">*</span>
               </label>
               <input
                 id="title"
@@ -199,24 +199,24 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="예: 시니어 프론트엔드 개발자"
               />
             </div>
 
             {/* Process Selection */}
             <div>
-              <label htmlFor="process_id" className="block text-sm font-medium text-gray-700 mb-2">
-                채용 프로세스 <span className="text-red-500">*</span>
+              <label htmlFor="process_id" className="block text-sm font-medium text-foreground mb-2">
+                채용 프로세스 <span className="text-destructive">*</span>
               </label>
               {processes.length === 0 ? (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
+                <div className="p-4 bg-accent/10 border border-accent/20 rounded-lg">
+                  <p className="text-sm text-accent">
                     사용 가능한 채용 프로세스가 없습니다. 먼저{' '}
                     <button
                       type="button"
                       onClick={() => router.push('/templates')}
-                      className="text-blue-600 hover:text-blue-700 underline font-medium"
+                      className="text-primary hover:text-primary/80 underline font-medium"
                     >
                       프로세스 템플릿
                     </button>
@@ -229,7 +229,7 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                   required
                   value={formData.process_id}
                   onChange={(e) => setFormData({ ...formData, process_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 >
                   <option value="">프로세스를 선택하세요</option>
                   {processes.map((process) => (
@@ -243,7 +243,7 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
 
             {/* Description */}
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="description" className="block text-sm font-medium text-foreground mb-2">
                 설명
               </label>
               <textarea
@@ -251,7 +251,7 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={8}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="채용 공고 상세 설명을 입력하세요..."
               />
             </div>
@@ -281,8 +281,8 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                                 onClick={() => toggleStageAssignee(stage.id, user.id)}
                                 className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
                                   isSelected
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                    ? 'bg-primary text-white border-primary'
+                                    : 'bg-background text-foreground border-border hover:bg-muted'
                                 }`}
                               >
                                 {user.email.split('@')[0]}
@@ -291,21 +291,21 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                           })}
                         </div>
                         {users.length === 0 && (
-                          <p className="text-xs text-gray-500 mt-2">
+                          <p className="text-xs text-muted-foreground mt-2">
                             사용 가능한 담당자가 없습니다.
                           </p>
                         )}
                       </div>
                     ))}
                 </div>
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-muted-foreground">
                   각 전형별로 담당자를 선택하세요. 후보자가 해당 전형에 도달하면 자동으로 담당자가 지정됩니다.
                 </p>
               </div>
             )}
 
             {/* Form Actions */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4 border-t border-gray-200">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4 border-t border-border">
               <Button
                 type="button"
                 variant="outline"
@@ -323,7 +323,7 @@ export function JobCreateClient({ processes, jdRequests, users, error }: JobCrea
                   !formData.process_id ||
                   (stages.length > 0 && Object.keys(stageAssignees).length === 0)
                 }
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
+                className="w-full sm:w-auto bg-primary hover:bg-primary/90"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isLoading ? '생성 중...' : '채용 공고 생성'}

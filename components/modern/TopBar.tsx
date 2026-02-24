@@ -107,15 +107,15 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
   };
 
   return (
-    <header className="h-16 border-b border-gray-200 bg-white/80 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-10">
+    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-10">
       {/* Left: Search */}
       <button
         onClick={onCommandOpen}
-        className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all w-full md:w-96 group"
+        className="flex items-center gap-3 px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 transition-all w-full md:w-96 group"
       >
-        <Search size={16} className="text-gray-400" />
-        <span className="text-sm text-gray-500 flex-1 text-left">Search candidates, jobs...</span>
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-gray-200 text-xs text-gray-400">
+        <Search size={16} className="text-muted-foreground" />
+        <span className="text-sm text-muted-foreground flex-1 text-left">Search candidates, jobs...</span>
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-background border border-border text-xs text-muted-foreground">
           <Command size={10} />
           <span>K</span>
         </div>
@@ -124,16 +124,16 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
       {/* Right: Actions */}
       <div className="flex items-center gap-3">
         {/* Notifications */}
-        <button className="relative w-10 h-10 rounded-xl hover:bg-gray-50 flex items-center justify-center transition-all">
-          <Bell size={18} className="text-gray-600" />
-          <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+        <button className="relative w-10 h-10 rounded-xl hover:bg-muted flex items-center justify-center transition-all">
+          <Bell size={18} className="text-foreground" />
+          <div className="absolute top-2 right-2 w-2 h-2 bg-destructive rounded-full border-2 border-background" />
         </button>
 
         {/* User Menu */}
         {!loading && userProfile ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all">
+              <button className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-muted transition-all">
                 <Avatar className="w-8 h-8">
                   <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.displayName} />
                   <AvatarFallback className="bg-gradient-to-br from-brand-dark to-brand-main text-white text-sm font-semibold">
@@ -141,17 +141,17 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col items-start">
-                  <span className="text-sm font-medium text-gray-700">{userProfile.displayName}</span>
-                  <span className="text-xs text-gray-500">{getRoleText(userProfile.role)}</span>
+                  <span className="text-sm font-medium text-foreground">{userProfile.displayName}</span>
+                  <span className="text-xs text-muted-foreground">{getRoleText(userProfile.role)}</span>
                 </div>
-                <ChevronDown size={14} className="text-gray-400" />
+                <ChevronDown size={14} className="text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{userProfile.displayName}</p>
-                  <p className="text-xs leading-none text-gray-500">{userProfile.email}</p>
+                  <p className="text-xs leading-none text-muted-foreground">{userProfile.email}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -164,7 +164,7 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
                 onClick={() => router.push('/dashboard/connect-calendar')}
                 onSelect={(e) => e.preventDefault()}
               >
-                <Calendar className={`mr-2 h-4 w-4 ${isCalendarConnected ? 'text-green-600' : 'text-orange-600'}`} />
+                <Calendar className={`mr-2 h-4 w-4 ${isCalendarConnected ? 'text-primary' : 'text-accent'}`} />
                 <span>
                   {isCalendarConnected ? '구글 캘린더 연동됨' : '구글 캘린더 연동'}
                 </span>
@@ -177,7 +177,7 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem 
-                className="cursor-pointer text-red-600 focus:text-red-600"
+                className="cursor-pointer text-destructive focus:text-destructive"
                 onClick={handleSignOut}
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -187,12 +187,12 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
           </DropdownMenu>
         ) : (
           // 로딩 중이거나 사용자 정보가 없을 때 기본 표시 (에러 발생 시에도 표시)
-          <button className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all">
+          <button className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-muted transition-all">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center text-white text-sm font-semibold">
               HR
             </div>
-            <span className="text-sm font-medium text-gray-700">HR Team</span>
-            <ChevronDown size={14} className="text-gray-400" />
+            <span className="text-sm font-medium text-foreground">HR Team</span>
+            <ChevronDown size={14} className="text-muted-foreground" />
           </button>
         )}
       </div>

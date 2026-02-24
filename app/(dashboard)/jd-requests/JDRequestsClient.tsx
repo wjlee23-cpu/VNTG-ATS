@@ -49,11 +49,11 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high':
-        return 'bg-red-100 text-red-700 border-red-200';
+        return 'bg-destructive/10 text-destructive border-destructive/20';
       case 'medium':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
+        return 'bg-accent/10 text-accent border-accent/20';
       default:
-        return 'bg-gray-100 text-gray-700 border-gray-200';
+        return 'bg-muted text-muted-foreground border-border';
     }
   };
 
@@ -61,11 +61,11 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
-        return 'bg-green-100 text-green-700';
+        return 'bg-primary/10 text-primary';
       case 'rejected':
-        return 'bg-red-100 text-red-700';
+        return 'bg-destructive/10 text-destructive';
       default:
-        return 'bg-orange-100 text-orange-700';
+        return 'bg-accent/10 text-accent';
     }
   };
 
@@ -138,13 +138,13 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
   };
 
   return (
-    <div className="h-full overflow-auto bg-[#FAFAFA]">
+    <div className="h-full overflow-auto bg-background">
       <div className="px-8 py-6">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">JD Requests</h1>
-            <p className="text-gray-600">
+            <h1 className="text-3xl font-bold text-foreground mb-2">JD Requests</h1>
+            <p className="text-muted-foreground">
               {isAdmin 
                 ? 'Review and approve job description requests from hiring managers'
                 : 'View your submitted JD requests'}
@@ -153,7 +153,7 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
           {!isAdmin && (
             <button
               onClick={() => router.push('/jd-requests/create')}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
             >
               <Plus className="w-4 h-4" />
               새 JD 요청
@@ -167,8 +167,8 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
             onClick={() => setFilterStatus('all')}
             className={`px-4 py-2 rounded-xl font-medium transition-colors ${
               filterStatus === 'all'
-                ? 'bg-orange-500 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                ? 'bg-accent text-white'
+                : 'bg-background text-foreground hover:bg-muted border border-border'
             }`}
           >
             All ({stats.all})
@@ -207,19 +207,19 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+          <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive">
             {error}
           </div>
         )}
 
         {/* Requests List */}
         {filteredRequests.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-              <FileText className="text-gray-400" size={32} />
+          <div className="card-modern p-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+              <FileText className="text-muted-foreground" size={32} />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">JD 요청이 없습니다</h2>
-            <p className="text-gray-600">
+            <h2 className="text-xl font-semibold text-foreground mb-2">JD 요청이 없습니다</h2>
+            <p className="text-muted-foreground">
               {filterStatus === 'all' 
                 ? '아직 등록된 JD 요청이 없습니다.' 
                 : `${filterStatus} 상태의 요청이 없습니다.`}
@@ -230,36 +230,36 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
             {filteredRequests.map((request) => (
               <div
                 key={request.id}
-                className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all"
+                className="card-modern p-6 transition-all"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-bold text-gray-900">{request.title}</h3>
+                      <h3 className="text-lg font-bold text-foreground">{request.title}</h3>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getPriorityColor(request.priority)}`}>
                         {request.priority === 'high' ? 'High Priority' : request.priority === 'medium' ? 'Medium' : 'Low'}
                       </span>
                     </div>
                     
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-3">
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mb-3">
                       {request.category && (
                         <div className="flex items-center gap-2">
-                          <Briefcase size={14} className="text-gray-400" />
+                          <Briefcase size={14} className="text-muted-foreground" />
                           <span>{request.category}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <User size={14} className="text-gray-400" />
+                        <User size={14} className="text-muted-foreground" />
                         <span>{getRequesterName(request)}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Calendar size={14} className="text-gray-400" />
+                        <Calendar size={14} className="text-muted-foreground" />
                         <span>Submitted {new Date(request.submitted_at).toISOString().split('T')[0]}</span>
                       </div>
                     </div>
 
                     {request.description && (
-                      <p className="text-sm text-gray-600 line-clamp-2">
+                      <p className="text-sm text-muted-foreground line-clamp-2">
                         {request.description}
                       </p>
                     )}
@@ -275,7 +275,7 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
                         <button
                           onClick={() => handleApprove(request.id)}
                           disabled={processingIds.has(request.id)}
-                          className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          className="px-3 py-1 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                         >
                           <Check size={14} />
                           승인
@@ -283,7 +283,7 @@ export function JDRequestsClient({ initialRequests, stats, error, isAdmin = fals
                         <button
                           onClick={() => handleReject(request.id)}
                           disabled={processingIds.has(request.id)}
-                          className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          className="px-3 py-1 bg-destructive text-white text-xs rounded-lg hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                         >
                           <X size={14} />
                           거부

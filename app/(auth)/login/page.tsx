@@ -90,14 +90,14 @@ export default function LoginPage() {
 
         {/* Title */}
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-semibold text-gray-900">로그인</h1>
-          <p className="text-sm text-gray-500">VNTG 채용 플랫폼에 오신 것을 환영합니다</p>
+          <h1 className="text-2xl font-semibold text-foreground">로그인</h1>
+          <p className="text-sm text-muted-foreground">VNTG 채용 플랫폼에 오신 것을 환영합니다</p>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
               {error}
             </div>
           )}
@@ -143,7 +143,7 @@ export default function LoginPage() {
             <div className="w-full border-t border-gray-300"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white text-gray-500">또는</span>
+            <span className="px-2 bg-background text-muted-foreground">또는</span>
           </div>
         </div>
 
@@ -177,7 +177,7 @@ export default function LoginPage() {
         </Button>
 
         {/* Sign up link */}
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-sm text-muted-foreground">
           계정이 없으신가요?{' '}
           <a href="/signup" className="text-brand-main hover:text-brand-dark font-medium">
             회원가입

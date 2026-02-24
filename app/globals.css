@@ -33,7 +33,7 @@
   --gray-400: #C3C8CD;
   --gray-500: #A6ADB7;
   
-  --border: var(--gray-300);
+  --border: #E2E8F0;
   --input: var(--gray-300);
   --input-background: var(--gray-100);
   --switch-background: var(--gray-400);
@@ -185,7 +185,7 @@
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-family: 'Roboto', 'Noto Sans KR', sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
   }
 }
 
@@ -245,7 +245,7 @@ html {
 /* Modern Utility Classes */
 @layer utilities {
   .card-modern {
-    background: white;
+    background: var(--card);
     border-radius: 16px;
     box-shadow: var(--shadow-md);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);

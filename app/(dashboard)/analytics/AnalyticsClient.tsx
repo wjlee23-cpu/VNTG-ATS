@@ -17,7 +17,7 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
   // 트렌드 아이콘
   const TrendIcon = ({ isPositive }: { isPositive: boolean }) => {
     const Icon = isPositive ? TrendingUp : TrendingDown;
-    return <Icon size={14} className={isPositive ? 'text-green-600' : 'text-red-600'} />;
+    return <Icon size={14} className={isPositive ? 'text-primary' : 'text-destructive'} />;
   };
 
   // 트렌드 포맷팅
@@ -27,32 +27,32 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
   };
 
   return (
-    <div className="h-full overflow-auto bg-[#FAFAFA]">
+    <div className="h-full overflow-auto bg-background">
       <div className="px-8 py-6">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Analytics & Insights</h1>
-          <p className="text-gray-600">Track your recruitment performance and trends.</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Analytics & Insights</h1>
+          <p className="text-muted-foreground">Track your recruitment performance and trends.</p>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Total Applications */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 relative">
+          <div className="card-modern p-6 relative">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-gray-600">Total Applications</div>
-              <div className="flex items-center gap-1 text-xs text-green-600">
+              <div className="text-sm text-muted-foreground">Total Applications</div>
+              <div className="flex items-center gap-1 text-xs text-primary">
                 <TrendIcon isPositive={stats.totalApplications.isPositive} />
                 <span>{formatTrend(stats.totalApplications.change, stats.totalApplications.isPositive)}</span>
               </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">
+            <div className="text-3xl font-bold text-foreground">
               {stats.totalApplications.value.toLocaleString()}
             </div>
           </div>
 
           {/* Avg. Time to Hire */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 relative">
+          <div className="card-modern p-6 relative">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm text-gray-600">Avg. Time to Hire</div>
               <div className="flex items-center gap-1 text-xs text-green-600">
@@ -60,13 +60,13 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
                 <span>{formatTrend(stats.avgTimeToHire.change, stats.avgTimeToHire.isPositive)}</span>
               </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">
+            <div className="text-3xl font-bold text-foreground">
               {stats.avgTimeToHire.value} days
             </div>
           </div>
 
           {/* Offer Accept Rate */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 relative">
+          <div className="card-modern p-6 relative">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm text-gray-600">Offer Accept Rate</div>
               <div className="flex items-center gap-1 text-xs text-green-600">
@@ -74,13 +74,13 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
                 <span>{formatTrend(stats.offerAcceptRate.change, stats.offerAcceptRate.isPositive)}</span>
               </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">
+            <div className="text-3xl font-bold text-foreground">
               {stats.offerAcceptRate.value}%
             </div>
           </div>
 
           {/* Cost per Hire */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 relative">
+          <div className="card-modern p-6 relative">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm text-gray-600">Cost per Hire</div>
               <div className="flex items-center gap-1 text-xs text-green-600">
@@ -88,7 +88,7 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
                 <span>{formatTrend(stats.costPerHire.change, stats.costPerHire.isPositive)}</span>
               </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">
+            <div className="text-3xl font-bold text-foreground">
               ${stats.costPerHire.value.toLocaleString()}
             </div>
           </div>
@@ -97,7 +97,7 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Application Trends */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <div className="card-modern p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <BarChart3 size={20} />
               Application Trends
@@ -109,13 +109,13 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
                   const height = (trend.count / maxCount) * 100;
                   return (
                     <div key={index} className="flex-1 flex flex-col items-center gap-2">
-                      <div className="w-full bg-gray-200 rounded-t-lg relative" style={{ height: '200px' }}>
+                      <div className="w-full bg-muted rounded-t-lg relative" style={{ height: '200px' }}>
                         <div
-                          className="absolute bottom-0 w-full bg-blue-600 rounded-t-lg transition-all"
+                          className="absolute bottom-0 w-full bg-primary rounded-t-lg transition-all"
                           style={{ height: `${height}%` }}
                         />
                       </div>
-                      <div className="text-xs text-gray-500 text-center transform -rotate-45 origin-top-left whitespace-nowrap">
+                      <div className="text-xs text-muted-foreground text-center transform -rotate-45 origin-top-left whitespace-nowrap">
                         {new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
                     </div>
@@ -133,7 +133,7 @@ export function AnalyticsClient({ stats, trends, funnel }: AnalyticsClientProps)
           </div>
 
           {/* Hiring Funnel */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <div className="card-modern p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <TrendingUp size={20} />
               Hiring Funnel

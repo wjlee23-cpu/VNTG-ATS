@@ -226,13 +226,13 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   // 상태별 색상
   const getStatusColor = (status: string) => {
     const colors = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      in_progress: 'bg-blue-100 text-blue-800',
-      confirmed: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
-      issue: 'bg-orange-100 text-orange-800',
+      pending: 'bg-accent/10 text-accent',
+      in_progress: 'bg-primary/10 text-primary',
+      confirmed: 'bg-primary/10 text-primary',
+      rejected: 'bg-destructive/10 text-destructive',
+      issue: 'bg-accent/10 text-accent',
     };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+    return colors[status as keyof typeof colors] || 'bg-muted text-muted-foreground';
   };
 
   // 상태 텍스트
@@ -270,8 +270,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Candidates</h1>
-            <p className="text-gray-600">{activeCandidatesCount} active candidates</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Candidates</h1>
+            <p className="text-muted-foreground">{activeCandidatesCount} active candidates</p>
           </div>
           <div className="flex items-center gap-3">
             {/* 아카이브 필터 */}
@@ -280,8 +280,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 onClick={() => setArchiveFilter('active')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   archiveFilter === 'active'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    ? 'bg-primary text-white'
+                    : 'bg-background text-foreground border border-border hover:bg-muted'
                 }`}
               >
                 Active
@@ -290,8 +290,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 onClick={() => setArchiveFilter('archived')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   archiveFilter === 'archived'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    ? 'bg-primary text-white'
+                    : 'bg-background text-foreground border border-border hover:bg-muted'
                 }`}
               >
                 Archived
@@ -300,7 +300,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             {/* 후보자 추가 버튼 */}
             <Button
               onClick={() => setAddCandidateModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
             >
               <Users className="w-4 h-4 mr-2" />
               Add Candidate
@@ -324,14 +324,14 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                   className={`
                     px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors
                     ${isSelected
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      ? 'bg-primary text-white'
+                      : 'bg-background text-foreground border border-border hover:bg-muted'
                     }
                   `}
                 >
                   {stage.label}
                   {count > 0 && (
-                    <span className={`ml-2 ${isSelected ? 'text-blue-100' : 'text-gray-500'}`}>
+                    <span className={`ml-2 ${isSelected ? 'text-primary/80' : 'text-muted-foreground'}`}>
                       ({count})
                     </span>
                   )}
@@ -344,16 +344,16 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         {/* Search and Filters */}
         <div className="mb-6 flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={20} />
             <input
               type="text"
               placeholder="Search candidates, jobs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-main focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
-          <button className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 flex items-center gap-2">
+          <button className="px-4 py-2 border border-border rounded-xl hover:bg-muted flex items-center gap-2">
             <Filter size={18} />
             필터
           </button>
@@ -361,24 +361,24 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+          <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive">
             {error}
           </div>
         )}
 
         {/* Candidates List */}
         {isLoadingArchived && archiveFilter === 'archived' ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">아카이브된 후보자를 불러오는 중...</p>
+          <div className="card-modern p-12 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">아카이브된 후보자를 불러오는 중...</p>
           </div>
         ) : filteredCandidates.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-              <Users className="text-gray-400" size={32} />
+          <div className="card-modern p-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+              <Users className="text-muted-foreground" size={32} />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">후보자가 없습니다</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-xl font-semibold text-foreground mb-2">후보자가 없습니다</h2>
+            <p className="text-muted-foreground mb-6">
               {searchQuery ? '검색 결과가 없습니다.' : '아직 등록된 후보자가 없습니다.'}
             </p>
             {!searchQuery && (
@@ -391,21 +391,21 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="card-modern overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-muted border-b border-border">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">CANDIDATE</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">POSITION</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">STAGE</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">MATCH</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">APPLIED</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">STATUS</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"></th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">CANDIDATE</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">POSITION</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STAGE</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">MATCH</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">APPLIED</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STATUS</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-border">
                   {filteredCandidates.map((candidate) => {
                     const stageName = getStageName(candidate.current_stage_id);
                     const matchScore = candidate.parsed_data?.match_score || 0;
@@ -414,8 +414,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                       <tr
                         key={candidate.id}
                         onClick={() => handleCandidateClick(candidate.id)}
-                        className={`hover:bg-gray-50 cursor-pointer transition-colors ${
-                          selectedCandidateId === candidate.id ? 'bg-blue-50' : ''
+                        className={`hover:bg-muted cursor-pointer transition-colors ${
+                          selectedCandidateId === candidate.id ? 'bg-primary/10' : ''
                         }`}
                       >
                         {/* CANDIDATE */}
@@ -425,39 +425,39 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                               {candidate.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <div className="font-medium text-gray-900">{candidate.name}</div>
-                              <div className="text-sm text-gray-500">{candidate.email}</div>
+                              <div className="font-medium text-foreground">{candidate.name}</div>
+                              <div className="text-sm text-muted-foreground">{candidate.email}</div>
                             </div>
                           </div>
                         </td>
                         {/* POSITION */}
                         <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">
+                          <div className="text-sm text-foreground">
                             <div className="font-medium">{candidate.job_posts?.title || '알 수 없음'}</div>
-                            <div className="text-gray-500 text-xs mt-1">Seoul, Korea</div>
+                            <div className="text-muted-foreground text-xs mt-1">Seoul, Korea</div>
                           </div>
                         </td>
                         {/* STAGE */}
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
                             {stageName}
                           </span>
                         </td>
                         {/* MATCH */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
+                            <div className="flex-1 bg-muted rounded-full h-2 max-w-[100px]">
                               <div 
-                                className="bg-blue-600 h-2 rounded-full transition-all"
+                                className="bg-primary h-2 rounded-full transition-all"
                                 style={{ width: `${matchScore}%` }}
                               />
                             </div>
-                            <span className="text-sm font-semibold text-gray-900">{matchScore}</span>
+                            <span className="text-sm font-semibold text-foreground">{matchScore}</span>
                           </div>
                         </td>
                         {/* APPLIED */}
                         <td className="px-6 py-4">
-                          <div className="text-sm text-gray-600">
+                          <div className="text-sm text-muted-foreground">
                             {new Date(candidate.created_at).toISOString().split('T')[0]}
                           </div>
                         </td>
@@ -465,13 +465,13 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${
-                              candidate.status === 'confirmed' ? 'bg-green-500' :
-                              candidate.status === 'in_progress' ? 'bg-blue-500' :
-                              candidate.status === 'pending' ? 'bg-yellow-500' :
-                              candidate.status === 'rejected' ? 'bg-red-500' :
-                              'bg-orange-500'
+                              candidate.status === 'confirmed' ? 'bg-primary' :
+                              candidate.status === 'in_progress' ? 'bg-primary' :
+                              candidate.status === 'pending' ? 'bg-accent' :
+                              candidate.status === 'rejected' ? 'bg-destructive' :
+                              'bg-accent'
                             }`} />
-                            <span className="text-sm text-gray-700 capitalize">
+                            <span className="text-sm text-foreground capitalize">
                               {candidate.status === 'confirmed' ? 'Active' :
                                candidate.status === 'in_progress' ? 'Active' :
                                candidate.status === 'pending' ? 'New' :
@@ -488,10 +488,10 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                               setSelectedCandidateForArchive({ id: candidate.id, name: candidate.name });
                               setArchiveModalOpen(true);
                             }}
-                            className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            className="p-1 hover:bg-muted rounded transition-colors"
                             title="아카이브"
                           >
-                            <Archive size={16} className="text-gray-400" />
+                            <Archive size={16} className="text-muted-foreground" />
                           </button>
                         </td>
                       </tr>
@@ -505,7 +505,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
 
         {/* Summary */}
         {filteredCandidates.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
+          <div className="mt-4 text-sm text-muted-foreground">
             총 {filteredCandidates.length}명의 후보자
           </div>
         )}
@@ -529,17 +529,17 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             {isLoadingDetail ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600">로딩 중...</p>
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">로딩 중...</p>
                 </div>
               </div>
             ) : detailError ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="text-center">
-                  <p className="text-red-600 mb-4">{detailError}</p>
+                  <p className="text-destructive mb-4">{detailError}</p>
                   <button
                     onClick={handleCloseDetail}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="px-4 py-2 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors"
                   >
                     닫기
                   </button>

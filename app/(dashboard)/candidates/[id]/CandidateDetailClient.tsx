@@ -163,41 +163,41 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const getTimelineEventIcon = (type: string) => {
     switch (type) {
       case 'scorecard':
-        return <StarIcon className="w-5 h-5 text-blue-600" />;
+        return <StarIcon className="w-5 h-5 text-primary" />;
       case 'email':
-        return <Mail className="w-5 h-5 text-blue-600" />;
+        return <Mail className="w-5 h-5 text-primary" />;
       case 'comment':
-        return <FileText className="w-5 h-5 text-green-600" />;
+        return <FileText className="w-5 h-5 text-primary" />;
       case 'stage_changed':
-        return <ArrowRightCircle className="w-5 h-5 text-orange-600" />;
+        return <ArrowRightCircle className="w-5 h-5 text-accent" />;
       case 'schedule_created':
       case 'schedule_confirmed':
-        return <Calendar className="w-5 h-5 text-blue-600" />;
+        return <Calendar className="w-5 h-5 text-primary" />;
       case 'archive':
-        return <Archive className="w-5 h-5 text-orange-600" />;
+        return <Archive className="w-5 h-5 text-accent" />;
       case 'stage_evaluation':
-        return <StarIcon className="w-5 h-5 text-purple-600" />;
+        return <StarIcon className="w-5 h-5 text-secondary" />;
       default:
-        return <FileText className="w-5 h-5 text-gray-600" />;
+        return <FileText className="w-5 h-5 text-muted-foreground" />;
     }
   };
 
   const getTimelineEventColor = (type: string) => {
     switch (type) {
       case 'scorecard':
-        return 'text-blue-600';
+        return 'text-primary';
       case 'email':
-        return 'text-blue-600';
+        return 'text-primary';
       case 'comment':
-        return 'text-green-600';
+        return 'text-primary';
       case 'stage_changed':
-        return 'text-orange-600';
+        return 'text-accent';
       case 'archive':
-        return 'text-orange-600';
+        return 'text-accent';
       case 'stage_evaluation':
-        return 'text-purple-600';
+        return 'text-secondary';
       default:
-        return 'text-gray-600';
+        return 'text-muted-foreground';
     }
   };
 
@@ -209,7 +209,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           <Star
             key={star}
             className={`w-4 h-4 ${
-              star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+              star <= rating ? 'fill-accent text-accent' : 'text-muted-foreground/30'
             }`}
           />
         ))}
@@ -272,7 +272,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         const rating = event.content?.overall_rating || event.content?.rating;
         return (
           <div className="space-y-2">
-            <p className="text-sm text-gray-900">{event.content?.notes || event.content?.message || '평가가 작성되었습니다.'}</p>
+            <p className="text-sm text-foreground">{event.content?.notes || event.content?.message || '평가가 작성되었습니다.'}</p>
             {rating && renderStars(rating)}
           </div>
         );
@@ -280,11 +280,11 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         return (
           <div className="space-y-1">
             {event.content?.subject && (
-              <p className="text-sm font-medium text-gray-900">{event.content.subject}</p>
+              <p className="text-sm font-medium text-foreground">{event.content.subject}</p>
             )}
-            <p className="text-sm text-gray-700">{event.content?.body || event.content?.message || '이메일이 발송되었습니다.'}</p>
+            <p className="text-sm text-foreground">{event.content?.body || event.content?.message || '이메일이 발송되었습니다.'}</p>
             {event.content?.from_email && event.content?.to_email && (
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 From: {event.content.from_email} To: {event.content.to_email}
               </p>
             )}
@@ -292,32 +292,32 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         );
       case 'comment':
         return (
-          <p className="text-sm text-gray-900">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
+          <p className="text-sm text-foreground">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
         );
       case 'stage_changed':
         return (
-          <p className="text-sm text-gray-900">
+          <p className="text-sm text-foreground">
             {event.content?.from_stage || '이전 단계'} → {event.content?.to_stage || event.content?.message || '다음 단계'}
           </p>
         );
       case 'archive':
         return (
           <div className="space-y-1">
-            <p className="text-sm text-gray-900">{event.content?.message || '후보자가 아카이브되었습니다.'}</p>
+            <p className="text-sm text-foreground">{event.content?.message || '후보자가 아카이브되었습니다.'}</p>
             {event.content?.archive_reason && (
-              <p className="text-xs text-gray-500">사유: {event.content.archive_reason}</p>
+              <p className="text-xs text-muted-foreground">사유: {event.content.archive_reason}</p>
             )}
           </div>
         );
       case 'stage_evaluation':
         return (
           <div className="space-y-2">
-            <p className="text-sm text-gray-900">{event.content?.message || '전형 평가가 완료되었습니다.'}</p>
+            <p className="text-sm text-foreground">{event.content?.message || '전형 평가가 완료되었습니다.'}</p>
             {event.content?.result && (
               <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                event.content.result === 'pass' ? 'bg-green-100 text-green-800' :
-                event.content.result === 'fail' ? 'bg-red-100 text-red-800' :
-                'bg-gray-100 text-gray-800'
+                event.content.result === 'pass' ? 'bg-primary/10 text-primary' :
+                event.content.result === 'fail' ? 'bg-destructive/10 text-destructive' :
+                'bg-muted text-muted-foreground'
               }`}>
                 {event.content.result === 'pass' ? '합격' : event.content.result === 'fail' ? '불합격' : '대기중'}
               </span>
@@ -326,7 +326,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         );
       default:
         return (
-          <p className="text-sm text-gray-900">{event.content?.message || event.type}</p>
+          <p className="text-sm text-foreground">{event.content?.message || event.type}</p>
         );
     }
   };
@@ -338,39 +338,39 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const skills = candidate.parsed_data?.skills || candidate.skills || [];
 
   return (
-    <div className={`h-full overflow-auto ${isSidebar ? 'bg-white' : 'bg-gray-50'}`}>
+    <div className={`h-full overflow-auto ${isSidebar ? 'bg-background' : 'bg-muted'}`}>
       <div className={`${isSidebar ? 'px-4 sm:px-6 py-4 sm:py-6' : 'w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8'}`}>
         {/* Header with Close Button */}
         <div className="flex items-start justify-between mb-4 sm:mb-6">
           <div className="flex-1 min-w-0">
             {/* Candidate Overview */}
-            <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'bg-white rounded-lg border border-gray-200 p-4 sm:p-6'} mb-4 sm:mb-6`}>
+            <div className={`${isSidebar ? 'bg-transparent border-0 p-0' : 'card-modern p-4 sm:p-6'} mb-4 sm:mb-6`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-lg">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center text-white font-semibold text-lg">
                       {candidate.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{candidate.name}</h1>
+                      <h1 className="text-xl sm:text-2xl font-bold text-foreground truncate">{candidate.name}</h1>
                       {candidate.job_posts?.title && (
-                        <p className="text-sm sm:text-base text-gray-600 truncate">{candidate.job_posts.title}</p>
+                        <p className="text-sm sm:text-base text-muted-foreground truncate">{candidate.job_posts.title}</p>
                       )}
                     </div>
                   </div>
                 </div>
                 <button
                   onClick={handleClose}
-                  className="flex-shrink-0 p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  className="flex-shrink-0 p-2 hover:bg-muted rounded-full transition-colors"
                   aria-label="닫기"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 mt-4">
                 <Button
                   onClick={() => setIsScheduleModalOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
+                  className="bg-primary hover:bg-primary/90 text-white w-full sm:w-auto"
                   size={isSidebar ? "default" : "lg"}
                 >
                   <Calendar className="w-4 h-4 mr-2" />

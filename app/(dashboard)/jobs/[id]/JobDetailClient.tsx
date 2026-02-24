@@ -72,13 +72,13 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
   // 상태별 색상
   const getStatusColor = (status: string) => {
     const colors = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      in_progress: 'bg-blue-100 text-blue-800',
-      confirmed: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
-      issue: 'bg-orange-100 text-orange-800',
+      pending: 'bg-accent/10 text-accent',
+      in_progress: 'bg-primary/10 text-primary',
+      confirmed: 'bg-primary/10 text-primary',
+      rejected: 'bg-destructive/10 text-destructive',
+      issue: 'bg-accent/10 text-accent',
     };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+    return colors[status as keyof typeof colors] || 'bg-muted text-muted-foreground';
   };
 
   const getStatusText = (status: string) => {
@@ -105,24 +105,24 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
         <div className="mb-6">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+            className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft size={18} />
             뒤로가기
           </button>
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{job.title}</h1>
+              <h1 className="text-3xl font-bold text-foreground mb-2">{job.title}</h1>
               {job.processes && (
-                <div className="flex items-center gap-2 text-gray-600">
+                <div className="flex items-center gap-2 text-muted-foreground">
                   <Briefcase size={16} />
                   {job.processes.name}
                 </div>
               )}
             </div>
             <div className="text-right">
-              <div className="text-sm text-gray-600">후보자</div>
-              <div className="text-2xl font-bold text-gray-900">{candidates.length}명</div>
+              <div className="text-sm text-muted-foreground">후보자</div>
+              <div className="text-2xl font-bold text-foreground">{candidates.length}명</div>
             </div>
           </div>
         </div>
@@ -132,16 +132,16 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
           <div className="lg:col-span-2 space-y-6">
             {/* Job Description */}
             {job.description && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">상세 설명</h2>
-                <p className="text-gray-600 whitespace-pre-wrap">{job.description}</p>
+              <div className="card-modern p-6">
+                <h2 className="text-lg font-bold text-foreground mb-4">상세 설명</h2>
+                <p className="text-muted-foreground whitespace-pre-wrap">{job.description}</p>
               </div>
             )}
 
             {/* Process Stages */}
             {job.processes && job.processes.stages && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">채용 프로세스</h2>
+              <div className="card-modern p-6">
+                <h2 className="text-lg font-bold text-foreground mb-4">채용 프로세스</h2>
                 <div className="flex items-center gap-2 overflow-x-auto pb-2">
                   {job.processes.stages.map((stage, index) => (
                     <div key={stage.id} className="flex items-center flex-shrink-0">
@@ -149,10 +149,10 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
                         <div className="w-12 h-12 rounded-full bg-brand-main text-white flex items-center justify-center font-semibold mb-2">
                           {index + 1}
                         </div>
-                        <div className="text-xs text-gray-600 max-w-[80px]">{stage.name}</div>
+                        <div className="text-xs text-muted-foreground max-w-[80px]">{stage.name}</div>
                       </div>
                       {index < job.processes!.stages!.length - 1 && (
-                        <div className="h-1 w-8 bg-gray-200 mx-2" />
+                        <div className="h-1 w-8 bg-border mx-2" />
                       )}
                     </div>
                   ))}
@@ -161,28 +161,28 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
             )}
 
             {/* Candidates List */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">후보자 목록</h2>
-                <span className="text-sm text-gray-600">{filteredCandidates.length}명</span>
+            <div className="card-modern p-6">
+                <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-foreground">후보자 목록</h2>
+                <span className="text-sm text-muted-foreground">{filteredCandidates.length}명</span>
               </div>
 
               {/* Search and Filter */}
               <div className="mb-4 flex flex-col sm:flex-row gap-3">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={18} />
                   <input
                     type="text"
                     placeholder="이름, 이메일로 검색..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-main focus:border-transparent text-sm"
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                   />
                 </div>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-main focus:border-transparent text-sm"
+                  className="px-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                 >
                   <option value="all">전체 상태</option>
                   <option value="pending">대기중</option>
@@ -196,21 +196,21 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
               {/* Candidates Table */}
               {filteredCandidates.length === 0 ? (
                 <div className="text-center py-8">
-                  <Users className="mx-auto text-gray-400 mb-2" size={32} />
-                  <p className="text-gray-500 text-sm">
+                  <Users className="mx-auto text-muted-foreground mb-2" size={32} />
+                  <p className="text-muted-foreground text-sm">
                     {searchQuery || statusFilter !== 'all' ? '검색 결과가 없습니다.' : '등록된 후보자가 없습니다.'}
                   </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-muted border-b border-border">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">이름</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">연락처</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">매치</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">상태</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">등록일</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">이름</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">연락처</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">매치</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">상태</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">등록일</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -218,15 +218,15 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
                         <tr
                           key={candidate.id}
                           onClick={() => router.push(`/candidates/${candidate.id}`)}
-                          className="hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="hover:bg-muted cursor-pointer transition-colors"
                         >
                           <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900">{candidate.name}</div>
+                            <div className="font-medium text-foreground">{candidate.name}</div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600">{candidate.email}</div>
+                            <div className="text-sm text-muted-foreground">{candidate.email}</div>
                             {candidate.phone && (
-                              <div className="text-xs text-gray-500">{candidate.phone}</div>
+                              <div className="text-xs text-muted-foreground">{candidate.phone}</div>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -235,7 +235,7 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
                                 {candidate.parsed_data.match_score}%
                               </div>
                             ) : (
-                              <span className="text-gray-400">-</span>
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -244,7 +244,7 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600">
+                            <div className="text-sm text-muted-foreground">
                               {new Date(candidate.created_at).toLocaleDateString('ko-KR')}
                             </div>
                           </td>
@@ -260,20 +260,20 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
           {/* Right Column - Sidebar */}
           <div className="space-y-6">
             {/* Status Statistics */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">상태별 통계</h2>
+            <div className="card-modern p-6">
+              <h2 className="text-lg font-bold text-foreground mb-4">상태별 통계</h2>
               <div className="space-y-3">
                 {Object.entries(statusCounts).map(([status, count]) => (
                   <div key={status} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">{getStatusText(status)}</span>
+                    <span className="text-sm text-muted-foreground">{getStatusText(status)}</span>
                     <div className="flex items-center gap-3">
-                      <div className="w-24 bg-gray-200 rounded-full h-2">
+                      <div className="w-24 bg-muted rounded-full h-2">
                         <div
                           className={`h-2 rounded-full ${getStatusColor(status).split(' ')[0]}`}
                           style={{ width: `${(count / candidates.length) * 100}%` }}
                         />
                       </div>
-                      <span className="text-sm font-semibold text-gray-900 w-8 text-right">{count}</span>
+                      <span className="text-sm font-semibold text-foreground w-8 text-right">{count}</span>
                     </div>
                   </div>
                 ))}
@@ -281,18 +281,18 @@ export function JobDetailClient({ job, candidates, stats }: JobDetailClientProps
             </div>
 
             {/* Job Info */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">정보</h2>
+            <div className="card-modern p-6">
+              <h2 className="text-lg font-bold text-foreground mb-4">정보</h2>
               <div className="space-y-3 text-sm">
                 <div>
-                  <span className="text-gray-600">생성일</span>
-                  <p className="text-gray-900 font-medium">
+                  <span className="text-muted-foreground">생성일</span>
+                  <p className="text-foreground font-medium">
                     {new Date(job.created_at).toLocaleDateString('ko-KR')}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-600">수정일</span>
-                  <p className="text-gray-900 font-medium">
+                  <span className="text-muted-foreground">수정일</span>
+                  <p className="text-foreground font-medium">
                     {new Date(job.updated_at).toLocaleDateString('ko-KR')}
                   </p>
                 </div>

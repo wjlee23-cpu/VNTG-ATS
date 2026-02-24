@@ -67,7 +67,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-16 bg-white border-r border-gray-200 flex-col items-center py-6 gap-2 z-50">
+    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-16 bg-background border-r border-border flex-col items-center py-6 gap-2 z-50">
       {/* Logo */}
       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center mb-6 shadow-lg shadow-brand-main/20">
         <Zap className="text-white" size={20} />
@@ -87,14 +87,14 @@ export function Sidebar() {
                 "w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative",
                 isActive
                   ? 'bg-brand-main/10 text-brand-main'
-                  : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               )}
               title={item.label}
             >
               <Icon size={20} />
               
               {/* Tooltip */}
-              <div className="absolute left-full ml-3 px-2 py-1 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+              <div className="absolute left-full ml-3 px-2 py-1 bg-foreground text-background text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
                 {item.label}
               </div>
 
@@ -108,7 +108,7 @@ export function Sidebar() {
       </div>
 
       {/* Bottom Navigation */}
-      <div className="flex flex-col gap-2 pt-2 border-t border-gray-200">
+      <div className="flex flex-col gap-2 pt-2 border-t border-border">
         {bottomNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id || pathname === item.path;
@@ -121,14 +121,14 @@ export function Sidebar() {
                 "w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative",
                 isActive
                   ? 'bg-brand-main/10 text-brand-main'
-                  : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               )}
               title={item.label}
             >
               <Icon size={20} />
               
               {/* Tooltip */}
-              <div className="absolute left-full ml-3 px-2 py-1 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+              <div className="absolute left-full ml-3 px-2 py-1 bg-foreground text-background text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
                 {item.label}
               </div>
 

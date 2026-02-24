@@ -1,19 +1,12 @@
 import type { Metadata } from 'next';
-import { Roboto, Noto_Sans_KR } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/sonner';
 
-const roboto = Roboto({
+const inter = Inter({
   weight: ['300', '400', '500', '600', '700'],
   subsets: ['latin'],
-  variable: '--font-roboto',
-  display: 'swap',
-});
-
-const notoSansKR = Noto_Sans_KR({
-  weight: ['300', '400', '500', '600', '700'],
-  subsets: ['latin'],
-  variable: '--font-noto-sans-kr',
+  variable: '--font-inter',
   display: 'swap',
 });
 
@@ -29,7 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" suppressHydrationWarning>
-      <body className={`${roboto.variable} ${notoSansKR.variable} font-sans`}>
+      <body className={`${inter.variable} font-sans`}>
         {children}
         <Toaster />
       </body>

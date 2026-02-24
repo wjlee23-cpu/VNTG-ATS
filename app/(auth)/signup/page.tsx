@@ -66,14 +66,14 @@ export default function SignupPage() {
 
         {/* Title */}
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-semibold text-gray-900">회원가입</h1>
-          <p className="text-sm text-gray-500">새 계정을 만들어 시작하세요</p>
+          <h1 className="text-2xl font-semibold text-foreground">회원가입</h1>
+          <p className="text-sm text-muted-foreground">새 계정을 만들어 시작하세요</p>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
               {error}
             </div>
           )}
@@ -129,7 +129,7 @@ export default function SignupPage() {
         </form>
 
         {/* Login link */}
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-sm text-muted-foreground">
           이미 계정이 있으신가요?{' '}
           <a href="/login" className="text-brand-main hover:text-brand-dark font-medium">
             로그인

@@ -119,8 +119,8 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
       <div className="px-8 py-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Good morning! 👋</h1>
-          <p className="text-gray-600">Here's what's happening with your recruitment today.</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Good morning! 👋</h1>
+          <p className="text-muted-foreground">Here's what's happening with your recruitment today.</p>
         </div>
 
         {/* Stats Grid */}
@@ -128,41 +128,41 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
           {statsData.map((stat) => {
             const Icon = stat.icon;
             const colorClasses = {
-              blue: 'from-blue-500 to-blue-600 shadow-blue-500/20',
-              orange: 'from-orange-500 to-orange-600 shadow-orange-500/20',
-              green: 'from-green-500 to-green-600 shadow-green-500/20',
+              blue: 'from-brand-dark to-brand-main shadow-blue',
+              orange: 'from-accent/80 to-accent shadow-accent/20',
+              green: 'from-primary/80 to-primary shadow-primary/20',
             };
             return (
               <div
                 key={stat.label}
-                className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all"
+                className="card-modern p-6"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${colorClasses[stat.color as keyof typeof colorClasses]} flex items-center justify-center shadow-lg`}>
                     <Icon className="text-white" size={24} />
                   </div>
                   {stat.value !== '0' && (
-                    <div className={`flex items-center gap-1 text-sm font-medium ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`flex items-center gap-1 text-sm font-medium ${stat.trend === 'up' ? 'text-primary' : 'text-destructive'}`}>
                       {stat.trend === 'up' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                       {stat.change}
                     </div>
                   )}
                 </div>
-                <div className="text-3xl font-bold text-gray-900 mb-1">{stat.value}</div>
-                <div className="text-sm text-gray-600">{stat.label}</div>
+                <div className="text-3xl font-bold text-foreground mb-1">{stat.value}</div>
+                <div className="text-sm text-muted-foreground">{stat.label}</div>
               </div>
             );
           })}
         </div>
 
         {!hasData ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <div className="max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                <Users className="text-gray-400" size={32} />
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                <Users className="text-muted-foreground" size={32} />
               </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">데이터가 없습니다</h2>
-              <p className="text-gray-600 mb-6">
+              <h2 className="text-xl font-semibold text-foreground mb-2">데이터가 없습니다</h2>
+              <p className="text-muted-foreground mb-6">
                 더미 데이터를 생성하여 대시보드를 테스트해보세요.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -170,7 +170,7 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
                   <button
                     onClick={handleSeedData}
                     disabled={isSeeding}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl font-medium hover:from-purple-700 hover:to-purple-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="px-6 py-3 gradient-blue text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     <Database size={18} />
                     {isSeeding ? '생성 중...' : '더미 데이터 생성'}
@@ -229,39 +229,39 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
               </div>
 
               {/* Recent Activity */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 mt-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
+              <div className="card-modern p-6 mt-6">
+                <h2 className="text-lg font-bold text-foreground mb-4">Recent Activity</h2>
                 {recentActivity.length > 0 ? (
                   <div className="space-y-4">
                     {recentActivity.map((activity) => (
                       <div key={activity.id} className="flex items-center gap-4 group">
                         <div className="w-2 h-2 rounded-full bg-brand-main" />
                         <div className="flex-1">
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm text-foreground">
                             <span className="font-semibold">{activity.candidate}</span>
                             {' '}{activity.action}{' '}
                             <span className="font-semibold">{activity.job}</span>
                           </p>
-                          <p className="text-xs text-gray-500">{activity.time}</p>
+                          <p className="text-xs text-muted-foreground">{activity.time}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">최근 활동이 없습니다.</p>
+                  <p className="text-sm text-muted-foreground">최근 활동이 없습니다.</p>
                 )}
               </div>
             </div>
 
             {/* Top Candidates */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Top Matches</h2>
+            <div className="card-modern p-6">
+              <h2 className="text-lg font-bold text-foreground mb-4">Top Matches</h2>
               {topCandidates.length > 0 ? (
                 <div className="space-y-4">
                   {topCandidates.map((candidate, index) => (
                     <div 
                       key={candidate.id} 
-                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all cursor-pointer"
+                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-all cursor-pointer"
                       onClick={() => router.push(`/candidates/${candidate.id}`)}
                     >
                       <div className="relative">
@@ -275,18 +275,18 @@ export function OverviewClient({ stats, recentActivity, topCandidates }: Overvie
                         </div>
                       </div>
                       <div className="flex-1">
-                        <div className="font-semibold text-gray-900">{candidate.name}</div>
-                        <div className="text-xs text-gray-500">{candidate.position}</div>
+                        <div className="font-semibold text-foreground">{candidate.name}</div>
+                        <div className="text-xs text-muted-foreground">{candidate.position}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-lg font-bold text-brand-main">{candidate.match}</div>
-                        <div className="text-xs text-gray-500">match</div>
+                        <div className="text-lg font-bold text-primary">{candidate.match}</div>
+                        <div className="text-xs text-muted-foreground">match</div>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">매치된 후보자가 없습니다.</p>
+                <p className="text-sm text-muted-foreground">매치된 후보자가 없습니다.</p>
               )}
             </div>
           </div>
