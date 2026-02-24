@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { 
   X, Mail, Phone, MapPin, Star, FileText, Download, Calendar, 
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
-  MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder
+  MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
+  CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -201,16 +202,25 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const getTimelineEventIcon = (type: string) => {
     switch (type) {
       case 'scorecard':
+      case 'scorecard_created':
         return <StarIcon className="w-5 h-5 text-primary" />;
       case 'email':
+      case 'email_received':
         return <Mail className="w-5 h-5 text-primary" />;
       case 'comment':
+      case 'comment_created':
+      case 'comment_updated':
         return <FileText className="w-5 h-5 text-primary" />;
       case 'stage_changed':
         return <ArrowRightCircle className="w-5 h-5 text-accent" />;
       case 'schedule_created':
       case 'schedule_confirmed':
+      case 'schedule_regenerated':
         return <Calendar className="w-5 h-5 text-primary" />;
+      case 'interviewer_response':
+        return <CheckCircle2 className="w-5 h-5 text-green-500" />;
+      case 'position_changed':
+        return <ArrowRightCircle className="w-5 h-5 text-blue-500" />;
       case 'archive':
         return <Archive className="w-5 h-5 text-accent" />;
       case 'stage_evaluation':
@@ -223,13 +233,25 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const getTimelineEventColor = (type: string) => {
     switch (type) {
       case 'scorecard':
+      case 'scorecard_created':
         return 'text-primary';
       case 'email':
+      case 'email_received':
         return 'text-primary';
       case 'comment':
+      case 'comment_created':
+      case 'comment_updated':
         return 'text-primary';
       case 'stage_changed':
         return 'text-accent';
+      case 'schedule_created':
+      case 'schedule_confirmed':
+      case 'schedule_regenerated':
+        return 'text-primary';
+      case 'interviewer_response':
+        return 'text-green-600';
+      case 'position_changed':
+        return 'text-blue-600';
       case 'archive':
         return 'text-accent';
       case 'stage_evaluation':
@@ -382,6 +404,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           </div>
         );
       case 'schedule_created':
+      case 'schedule_regenerated':
         const scheduleOptions = event.content?.schedule_options as Array<{ id: string; scheduled_at: string }> | undefined;
         const retryCount = event.content?.retry_count as number | undefined;
         const originalDateRange = event.content?.original_date_range as { start: string; end: string } | undefined;
@@ -432,6 +455,104 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             )}
           </div>
         );
+      case 'interviewer_response':
+        const response = event.content?.response as string | undefined;
+        const interviewerEmail = event.content?.interviewer_email as string | undefined;
+        const optionScheduledAt = event.content?.option_scheduled_at as string | undefined;
+        const allAccepted = event.content?.all_accepted as boolean | undefined;
+        
+        return (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-700">{event.content?.message || '면접관이 일정에 응답했습니다.'}</p>
+            {allAccepted ? (
+              <div className="mt-2 p-2 bg-green-50 rounded border border-green-100">
+                <p className="text-xs text-green-800 font-medium">모든 면접관이 수락했습니다.</p>
+                {optionScheduledAt && (
+                  <p className="text-xs text-green-700 mt-1">
+                    일정: {new Date(optionScheduledAt).toLocaleString('ko-KR')}
+                  </p>
+                )}
+              </div>
+            ) : interviewerEmail && response && (
+              <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100">
+                <p className="text-xs text-gray-700">
+                  <span className="font-medium">{interviewerEmail}</span>님이{' '}
+                  <span className={response === 'accepted' ? 'text-green-600 font-medium' : response === 'declined' ? 'text-red-600 font-medium' : 'text-yellow-600 font-medium'}>
+                    {response === 'accepted' ? '수락' : response === 'declined' ? '거절' : '보류'}
+                  </span>했습니다.
+                </p>
+                {optionScheduledAt && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    일정: {new Date(optionScheduledAt).toLocaleString('ko-KR')}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      case 'position_changed':
+        const previousJobTitle = event.content?.previous_job_post_title as string | undefined;
+        const newJobTitle = event.content?.new_job_post_title as string | undefined;
+        
+        return (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-700">{event.content?.message || '포지션이 변경되었습니다.'}</p>
+            {previousJobTitle && newJobTitle && (
+              <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-100">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-gray-600">{previousJobTitle}</span>
+                  <ArrowRight className="w-3 h-3 text-blue-600" />
+                  <span className="text-blue-800 font-medium">{newJobTitle}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      case 'email_received':
+        return (
+          <div className="space-y-1">
+            <p className="text-sm text-gray-700">{event.content?.message || '이메일을 수신했습니다.'}</p>
+            {event.content?.from_email && event.content?.to_email && (
+              <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600 space-y-1">
+                <p>From: {event.content.from_email}</p>
+                <p>To: {event.content.to_email}</p>
+                {event.content?.subject && (
+                  <p>Subject: {event.content.subject}</p>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      case 'comment_created':
+      case 'comment_updated':
+        return (
+          <div className="p-3 bg-green-50 rounded-lg">
+            <p className="text-sm text-gray-700">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
+            {event.content?.previous_content && (
+              <div className="mt-2 p-2 bg-white rounded border border-gray-200">
+                <p className="text-xs text-gray-500 mb-1">이전 내용:</p>
+                <p className="text-xs text-gray-700 line-through">{event.content.previous_content}</p>
+              </div>
+            )}
+          </div>
+        );
+      case 'scorecard_created':
+        const scorecardRating = event.content?.overall_rating || event.content?.rating;
+        return (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-700">{event.content?.message || '면접 평가표가 작성되었습니다.'}</p>
+            {scorecardRating && (
+              <div className="mt-2">
+                {renderStars(scorecardRating)}
+                {event.content?.previous_rating && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    이전 평가: {renderStars(event.content.previous_rating)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
       default:
         return (
           <p className="text-sm text-gray-700">{event.content?.message || event.type}</p>
@@ -443,24 +564,36 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const getTimelineEventTitle = (event: TimelineEvent) => {
     switch (event.type) {
       case 'scorecard':
-        return 'Technical Interview Evaluation';
+      case 'scorecard_created':
+        return '면접 평가표 작성';
       case 'email':
-        return event.content?.subject || 'Interview Confirmation Sent';
+        return event.content?.subject || '이메일 발송';
+      case 'email_received':
+        return event.content?.subject || '이메일 수신';
       case 'comment':
-        return 'Internal Note';
+      case 'comment_created':
+        return '코멘트 작성';
+      case 'comment_updated':
+        return '코멘트 수정';
       case 'stage_changed':
-        return 'Moved to Technical Interview';
+        return '전형 단계 변경';
       case 'schedule_created':
-        return 'Interview Scheduled';
+        return '면접 일정 생성';
       case 'schedule_confirmed':
-        return 'Interview Confirmed';
+        return '면접 일정 확정';
+      case 'schedule_regenerated':
+        return '면접 일정 재생성';
+      case 'interviewer_response':
+        return event.content?.all_accepted ? '모든 면접관 수락' : '면접관 응답';
+      case 'position_changed':
+        return '포지션 변경';
       case 'system_log':
-        return 'Application Received';
+        return '시스템 로그';
       case 'archive':
-        return 'Archived';
+        return '아카이브';
       case 'stage_evaluation':
-        const stageName = event.content?.stage_name || STAGE_ID_TO_NAME_MAP[event.content?.stage_id || ''] || 'Stage Evaluation';
-        return `${stageName} Evaluation`;
+        const stageName = event.content?.stage_name || STAGE_ID_TO_NAME_MAP[event.content?.stage_id || ''] || '전형 평가';
+        return `${stageName} 평가`;
       default:
         return event.type;
     }

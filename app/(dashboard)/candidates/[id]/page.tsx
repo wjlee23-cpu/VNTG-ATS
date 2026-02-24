@@ -66,7 +66,17 @@ export default async function CandidateDetailPage({
 
   const candidate = candidateResult.data;
   const schedules = schedulesResult.data || [];
+  
+  // 타임라인 이벤트 조회 결과 확인
+  if (timelineResult.error) {
+    console.error('타임라인 이벤트 조회 실패:', timelineResult.error);
+  }
   const timelineEvents = timelineResult.data || [];
+  
+  // 디버깅: 타임라인 이벤트 개수 확인
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[타임라인 조회] 후보자 ID: ${candidateId}, 이벤트 개수: ${timelineEvents.length}`);
+  }
 
   if (candidateResult.error || !candidate) {
     return (

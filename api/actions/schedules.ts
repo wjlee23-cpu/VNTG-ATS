@@ -87,7 +87,7 @@ export async function createSchedule(formData: FormData) {
     }
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
       type: 'schedule_created',
       content: {
@@ -98,6 +98,25 @@ export async function createSchedule(formData: FormData) {
       },
       created_by: user.userId,
     });
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (일정 생성):', {
+        error: timelineError,
+        code: timelineError.code,
+        message: timelineError.message,
+        details: timelineError.details,
+        hint: timelineError.hint,
+        candidateId,
+        type: 'schedule_created',
+        scheduleId: data.id,
+      });
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음.');
+      }
+      if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+        console.error('[타임라인] RLS 정책 위반 - 권한 문제.');
+      }
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/calendar');
@@ -211,7 +230,7 @@ export async function updateSchedule(id: string, formData: FormData) {
 
     // 타임라인 이벤트 생성
     if (updateData.status === 'confirmed') {
-      await supabase.from('timeline_events').insert({
+      const { error: timelineError } = await supabase.from('timeline_events').insert({
         candidate_id: schedule.candidate_id,
         type: 'schedule_confirmed',
         content: {
@@ -220,6 +239,13 @@ export async function updateSchedule(id: string, formData: FormData) {
         },
         created_by: user.userId,
       });
+
+      if (timelineError) {
+        console.error('[타임라인] 이벤트 생성 실패 (일정 확정):', timelineError);
+        if (timelineError.code === '23514') {
+          console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_confirmed 타입이 허용되지 않음.');
+        }
+      }
     }
 
     // 캐시 무효화
@@ -300,7 +326,7 @@ export async function deleteSchedule(id: string) {
     }
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: schedule.candidate_id,
       type: 'schedule_created',
       content: {
@@ -309,6 +335,13 @@ export async function deleteSchedule(id: string) {
       },
       created_by: user.userId,
     });
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (일정 삭제):', timelineError);
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음.');
+      }
+    }
 
     // 면접 일정 삭제 (CASCADE로 schedule_options도 자동 삭제됨)
     const { error } = await supabase
@@ -412,7 +445,7 @@ export async function cancelSchedule(id: string) {
     }
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: schedule.candidate_id,
       type: 'schedule_created',
       content: {
@@ -421,6 +454,13 @@ export async function cancelSchedule(id: string) {
       },
       created_by: user.userId,
     });
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (일정 취소):', timelineError);
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음.');
+      }
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/calendar');
@@ -443,15 +483,17 @@ export async function respondToSchedule(
   beveragePreference?: string
 ) {
   return withErrorHandling(async () => {
-    const supabase = await createClient();
+    // Service Role Client를 사용하여 RLS 정책 우회 (타임라인 이벤트 생성 안정성을 위해)
+    const supabase = createServiceClient();
 
-    // 면접 일정과 후보자 조회 (workflow_status 포함)
+    // 면접 일정과 후보자 조회 (workflow_status, interviewer_ids 포함)
     const { data: schedule, error: scheduleError } = await supabase
       .from('schedules')
       .select(`
         id,
         candidate_id,
         workflow_status,
+        interviewer_ids,
         candidates!inner (
           id,
           token
@@ -489,8 +531,19 @@ export async function respondToSchedule(
       throw new Error(`응답 저장 실패: ${error.message}`);
     }
 
+    // 면접관 ID 조회 (타임라인 이벤트 생성용)
+    let interviewerId: string | null = null;
+    if (schedule.interviewer_ids && schedule.interviewer_ids.length > 0) {
+      const { data: interviewer } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', schedule.interviewer_ids[0])
+        .single();
+      interviewerId = interviewer?.id || null;
+    }
+
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: candidate.id,
       type: 'schedule_confirmed',
       content: {
@@ -498,8 +551,30 @@ export async function respondToSchedule(
         schedule_id: scheduleId,
         response,
       },
-      created_by: null, // 후보자가 직접 생성
-    });
+      created_by: interviewerId, // 첫 번째 면접관 ID 사용
+    }).select();
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (후보자 응답):', {
+        error: timelineError,
+        code: timelineError.code,
+        message: timelineError.message,
+        details: timelineError.details,
+        hint: timelineError.hint,
+        candidateId: candidate.id,
+        type: 'schedule_confirmed',
+        scheduleId,
+        interviewerId,
+      });
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_confirmed 타입이 허용되지 않음.');
+      }
+      if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+        console.error('[타임라인] RLS 정책 위반 - 권한 문제.');
+      }
+    } else {
+      console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+    }
 
     // 후보자가 거절했고, workflow_status가 'pending_candidate'인 경우 새로운 일정 옵션 자동 생성
     if (response === 'rejected' && schedule.workflow_status === 'pending_candidate') {
@@ -924,7 +999,9 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       ? `면접 일정 자동화가 시작되었습니다. 원본 날짜 범위에 일정이 없어 ${retryCount}회 날짜 범위를 확장하여 검색했습니다. 면접관들의 수락을 기다리는 중입니다.`
       : '면접 일정 자동화가 시작되었습니다. 면접관들의 수락을 기다리는 중입니다.';
     
-    await supabase.from('timeline_events').insert({
+    console.log(`[타임라인] 일정 자동화 시작 이벤트 생성: candidateId=${candidateId}, scheduleId=${schedule.id}`);
+    
+    const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
       type: 'schedule_created',
       content: {
@@ -942,7 +1019,33 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         },
       },
       created_by: user.userId,
-    });
+    }).select();
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (일정 자동화 시작):', {
+        error: timelineError,
+        code: timelineError.code,
+        message: timelineError.message,
+        details: timelineError.details,
+        hint: timelineError.hint,
+        candidateId,
+        type: 'schedule_created',
+        scheduleId: schedule.id,
+      });
+      console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
+      // DB 제약 조건 위반인지 확인
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
+        console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
+      }
+      // RLS 정책 위반인지 확인
+      if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+        console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
+      }
+      // 타임라인 이벤트 생성 실패해도 일정 생성은 성공한 것으로 처리
+    } else {
+      console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/calendar');
@@ -1356,9 +1459,11 @@ async function regenerateScheduleOptions(scheduleId: string) {
     ? `이전 일정 옵션이 모두 거절되어 새로운 면접 일정 옵션이 자동으로 생성되었습니다. 날짜 범위를 ${retryCount - currentRetryCount}회 확장하여 검색했습니다.`
     : '이전 일정 옵션이 모두 거절되어 새로운 면접 일정 옵션이 자동으로 생성되었습니다.';
   
-  await supabase.from('timeline_events').insert({
+  console.log(`[타임라인] 일정 재생성 이벤트 생성: candidateId=${schedule.candidate_id}, scheduleId=${scheduleId}`);
+  
+  const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
     candidate_id: schedule.candidate_id,
-    type: 'schedule_created',
+    type: 'schedule_regenerated',
     content: {
       message: timelineMessage,
       schedule_id: scheduleId,
@@ -1371,7 +1476,33 @@ async function regenerateScheduleOptions(scheduleId: string) {
       previous_retry_count: currentRetryCount,
     },
     created_by: user.userId,
-  });
+  }).select();
+
+  if (timelineError) {
+    console.error('[타임라인] 이벤트 생성 실패 (일정 재생성):', {
+      error: timelineError,
+      code: timelineError.code,
+      message: timelineError.message,
+      details: timelineError.details,
+      hint: timelineError.hint,
+      candidateId: schedule.candidate_id,
+      type: 'schedule_regenerated',
+      scheduleId,
+    });
+    console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
+    // DB 제약 조건 위반인지 확인
+    if (timelineError.code === '23514') {
+      console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_regenerated 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
+      console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
+    }
+    // RLS 정책 위반인지 확인
+    if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+      console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
+    }
+    // 타임라인 이벤트 생성 실패해도 일정 재생성은 성공한 것으로 처리
+  } else {
+    console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+  }
 
   // 캐시 무효화
   revalidatePath('/dashboard/calendar');
@@ -1393,10 +1524,9 @@ async function regenerateScheduleOptions(scheduleId: string) {
 export async function checkInterviewerResponses(scheduleId: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const isAdmin = user.role === 'admin';
     
-    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
-    const supabase = isAdmin ? createServiceClient() : await createClient();
+    // Service Role Client를 사용하여 RLS 정책 우회 (타임라인 이벤트 생성 안정성을 위해)
+    const supabase = createServiceClient();
 
     // 스케줄 및 옵션 조회
     const { data: schedule, error: scheduleError } = await supabase
@@ -1494,6 +1624,9 @@ export async function checkInterviewerResponses(scheduleId: string) {
           }
         }
 
+        // 이전 응답 상태 조회 (변경 감지용)
+        const previousResponses = (option.interviewer_responses as Record<string, string>) || {};
+        
         // DB에 응답 상태 저장
         const { error: updateError } = await supabase
           .from('schedule_options')
@@ -1504,6 +1637,79 @@ export async function checkInterviewerResponses(scheduleId: string) {
           console.error(`옵션 ${option.id}의 응답 상태 업데이트 실패:`, updateError);
         } else {
           console.log(`옵션 ${option.id}의 응답 상태 업데이트 완료:`, interviewerResponses);
+          
+          // 면접관 응답이 변경된 경우 타임라인 이벤트 생성
+          const changedResponses: Array<{ interviewerId: string; interviewerEmail: string; previousResponse: string; newResponse: string }> = [];
+          
+          for (const interviewer of interviewers) {
+            const previousResponse = previousResponses[interviewer.id] || 'needsAction';
+            const newResponse = interviewerResponses[interviewer.id] || 'needsAction';
+            
+            if (previousResponse !== newResponse && newResponse !== 'needsAction') {
+              changedResponses.push({
+                interviewerId: interviewer.id,
+                interviewerEmail: interviewer.email,
+                previousResponse,
+                newResponse,
+              });
+            }
+          }
+          
+          // 변경된 응답이 있으면 타임라인 이벤트 생성
+          if (changedResponses.length > 0) {
+            console.log(`[타임라인] 변경된 응답 ${changedResponses.length}개 발견, 타임라인 이벤트 생성 시작`);
+            for (const changed of changedResponses) {
+              const responseText = changed.newResponse === 'accepted' ? '수락' : changed.newResponse === 'declined' ? '거절' : '보류';
+              const optionDate = new Date(option.scheduled_at);
+              
+              console.log(`[타임라인] 면접관 응답 이벤트 생성: ${changed.interviewerEmail} - ${responseText}`);
+              
+              const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
+                candidate_id: schedule.candidate_id,
+                type: 'interviewer_response',
+                content: {
+                  message: `${changed.interviewerEmail}님이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 ${responseText}했습니다.`,
+                  schedule_id: scheduleId,
+                  option_id: option.id,
+                  option_scheduled_at: option.scheduled_at,
+                  interviewer_id: changed.interviewerId,
+                  interviewer_email: changed.interviewerEmail,
+                  response: changed.newResponse,
+                  previous_response: changed.previousResponse,
+                },
+                created_by: changed.interviewerId, // 면접관 ID 사용
+              }).select();
+
+              if (timelineError) {
+                console.error('[타임라인] 이벤트 생성 실패 (면접관 응답):', {
+                  error: timelineError,
+                  code: timelineError.code,
+                  message: timelineError.message,
+                  details: timelineError.details,
+                  hint: timelineError.hint,
+                  candidateId: schedule.candidate_id,
+                  type: 'interviewer_response',
+                  scheduleId,
+                  optionId: option.id,
+                  interviewerEmail: changed.interviewerEmail,
+                });
+                console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
+                // DB 제약 조건 위반인지 확인
+                if (timelineError.code === '23514') {
+                  console.error('[타임라인] DB 스키마 제약 조건 위반 - interviewer_response 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
+                  console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
+                }
+                // RLS 정책 위반인지 확인
+                if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+                  console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
+                }
+              } else {
+                console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+              }
+            }
+          } else {
+            console.log(`[타임라인] 변경된 응답 없음 (previous: ${JSON.stringify(previousResponses)}, current: ${JSON.stringify(interviewerResponses)})`);
+          }
         }
 
         // 모든 면접관이 수락한 경우
@@ -1524,6 +1730,55 @@ export async function checkInterviewerResponses(scheduleId: string) {
     // 모든 면접관이 수락한 일정이 있으면 후보자에게 전송
     if (allAcceptedOption) {
       console.log(`모든 면접관이 수락한 일정이 있어 후보자에게 전송 시작: scheduleId=${scheduleId}, optionId=${allAcceptedOption.id}`);
+      
+      // 모든 면접관이 수락한 경우 타임라인 이벤트 생성
+      const optionDate = new Date(allAcceptedOption.scheduled_at);
+      console.log(`[타임라인] 모든 면접관 수락 이벤트 생성: candidateId=${schedule.candidate_id}, optionId=${allAcceptedOption.id}`);
+      
+      // organizer는 이미 위에서 조회됨
+      const organizer = interviewers.find(inv => inv.calendar_access_token);
+      const organizerId = organizer?.id || (interviewers.length > 0 ? interviewers[0].id : null);
+      
+      const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
+        candidate_id: schedule.candidate_id,
+        type: 'interviewer_response',
+        content: {
+          message: `모든 면접관이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 수락했습니다. 후보자에게 전송됩니다.`,
+          schedule_id: scheduleId,
+          option_id: allAcceptedOption.id,
+          option_scheduled_at: allAcceptedOption.scheduled_at,
+          all_accepted: true,
+          interviewers: schedule.interviewer_ids,
+        },
+        created_by: organizerId, // organizer ID 사용 (없으면 첫 번째 면접관 ID)
+      }).select();
+
+      if (timelineError) {
+        console.error('[타임라인] 이벤트 생성 실패 (모든 면접관 수락):', {
+          error: timelineError,
+          code: timelineError.code,
+          message: timelineError.message,
+          details: timelineError.details,
+          hint: timelineError.hint,
+          candidateId: schedule.candidate_id,
+          type: 'interviewer_response',
+          scheduleId,
+          optionId: allAcceptedOption.id,
+        });
+        console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
+        // DB 제약 조건 위반인지 확인
+        if (timelineError.code === '23514') {
+          console.error('[타임라인] DB 스키마 제약 조건 위반 - interviewer_response 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
+          console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
+        }
+        // RLS 정책 위반인지 확인
+        if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+          console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
+        }
+      } else {
+        console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+      }
+      
       try {
         // 후보자에게 일정 옵션 전송
         const sendResult = await sendScheduleOptionsToCandidate(scheduleId);
@@ -1944,7 +2199,7 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       .eq('id', scheduleId);
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: candidate.id,
       type: 'email',
       content: {
@@ -1954,7 +2209,29 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
         options_count: acceptedOptions.length,
       },
       created_by: user.userId,
-    });
+    }).select();
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (일정 옵션 전송):', {
+        error: timelineError,
+        code: timelineError.code,
+        message: timelineError.message,
+        details: timelineError.details,
+        hint: timelineError.hint,
+        candidateId: candidate.id,
+        type: 'email',
+        scheduleId,
+        userId: user.userId,
+      });
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - email 타입이 허용되지 않음.');
+      }
+      if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+        console.error('[타임라인] RLS 정책 위반 - 권한 문제.');
+      }
+    } else {
+      console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+    }
 
     // 캐시 무효화
     revalidatePath(`/dashboard/candidates/${candidate.id}`);
@@ -2218,7 +2495,7 @@ export async function confirmCandidateSchedule(
     }
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: candidate.id,
       type: 'schedule_confirmed',
       content: {
@@ -2227,8 +2504,30 @@ export async function confirmCandidateSchedule(
         scheduled_at: selectedOption.scheduled_at,
         interviewers: schedule.interviewer_ids,
       },
-      created_by: null, // 후보자가 직접 생성
-    });
+      created_by: organizer.id, // organizer ID 사용 (이미 조회됨)
+    }).select();
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (일정 확정):', {
+        error: timelineError,
+        code: timelineError.code,
+        message: timelineError.message,
+        details: timelineError.details,
+        hint: timelineError.hint,
+        candidateId: candidate.id,
+        type: 'schedule_confirmed',
+        scheduleId,
+        organizerId: organizer.id,
+      });
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_confirmed 타입이 허용되지 않음.');
+      }
+      if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
+        console.error('[타임라인] RLS 정책 위반 - 권한 문제.');
+      }
+    } else {
+      console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/calendar');

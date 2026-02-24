@@ -201,3 +201,109 @@ export function generateScheduleSelectionUrl(candidateId: string, token: string,
   const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   return `${appUrl}/candidates/${candidateId}/schedule?token=${token}`
 }
+
+/**
+ * Gmail에서 메시지 목록 조회
+ * @param accessToken Google OAuth access token
+ * @param refreshToken Google OAuth refresh token
+ * @param query 검색 쿼리 (예: 'from:example@gmail.com' 또는 'to:example@gmail.com')
+ * @param maxResults 최대 결과 수 (기본값: 50)
+ * @returns 메시지 ID 목록
+ */
+export async function listMessages(
+  accessToken: string,
+  refreshToken: string,
+  query: string,
+  maxResults: number = 50
+): Promise<string[]> {
+  try {
+    const gmail = await getGmailClient(accessToken, refreshToken)
+    
+    const response = await gmail.users.messages.list({
+      userId: 'me',
+      q: query,
+      maxResults,
+    })
+    
+    return response.data.messages?.map(msg => msg.id || '') || []
+  } catch (error: any) {
+    console.error('Gmail 메시지 목록 조회 실패:', error)
+    throw new Error(`메시지 목록 조회 실패: ${error.message || '알 수 없는 오류'}`)
+  }
+}
+
+/**
+ * Gmail에서 특정 메시지 상세 조회
+ * @param accessToken Google OAuth access token
+ * @param refreshToken Google OAuth refresh token
+ * @param messageId 메시지 ID
+ * @returns 메시지 상세 정보
+ */
+export async function getMessage(
+  accessToken: string,
+  refreshToken: string,
+  messageId: string
+): Promise<{
+  id: string
+  threadId: string
+  subject: string
+  from: string
+  to: string
+  body: string
+  sentAt: string
+  receivedAt?: string
+}> {
+  try {
+    const gmail = await getGmailClient(accessToken, refreshToken)
+    
+    const response = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'full',
+    })
+    
+    const message = response.data
+    const headers = message.payload?.headers || []
+    
+    // 헤더에서 정보 추출
+    const getHeader = (name: string): string => {
+      const header = headers.find(h => h.name?.toLowerCase() === name.toLowerCase())
+      return header?.value || ''
+    }
+    
+    const subject = getHeader('Subject')
+    const from = getHeader('From')
+    const to = getHeader('To')
+    const date = getHeader('Date')
+    
+    // 본문 추출
+    let body = ''
+    if (message.payload?.body?.data) {
+      body = Buffer.from(message.payload.body.data, 'base64').toString('utf-8')
+    } else if (message.payload?.parts) {
+      // 멀티파트 메시지인 경우
+      for (const part of message.payload.parts) {
+        if (part.mimeType === 'text/plain' || part.mimeType === 'text/html') {
+          if (part.body?.data) {
+            body = Buffer.from(part.body.data, 'base64').toString('utf-8')
+            break
+          }
+        }
+      }
+    }
+    
+    return {
+      id: message.id || messageId,
+      threadId: message.threadId || '',
+      subject,
+      from,
+      to,
+      body,
+      sentAt: date || new Date().toISOString(),
+      receivedAt: message.internalDate ? new Date(parseInt(message.internalDate)).toISOString() : undefined,
+    }
+  } catch (error: any) {
+    console.error('Gmail 메시지 조회 실패:', error)
+    throw new Error(`메시지 조회 실패: ${error.message || '알 수 없는 오류'}`)
+  }
+}

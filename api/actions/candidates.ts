@@ -51,7 +51,7 @@ export async function createCandidate(formData: FormData) {
     }
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: data.id,
       type: 'system_log',
       content: {
@@ -60,6 +60,13 @@ export async function createCandidate(formData: FormData) {
       },
       created_by: user.userId,
     });
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (후보자 등록):', timelineError);
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - system_log 타입이 허용되지 않음.');
+      }
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');
@@ -223,7 +230,7 @@ export async function updateCandidateStatus(
     }
 
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: id,
       type: 'stage_changed',
       content: {
@@ -235,9 +242,121 @@ export async function updateCandidateStatus(
       created_by: user.userId,
     });
 
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (상태 변경):', timelineError);
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - stage_changed 타입이 허용되지 않음.');
+      }
+    }
+
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');
     revalidatePath(`/dashboard/candidates/${id}`);
+
+    return data;
+  });
+}
+
+/**
+ * 후보자 포지션 변경
+ * @param candidateId 후보자 ID
+ * @param newJobPostId 새로운 채용 공고 ID
+ * @returns 수정된 후보자 데이터
+ */
+export async function changeCandidatePosition(candidateId: string, newJobPostId: string) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    await verifyCandidateAccess(candidateId);
+    const supabase = await createClient();
+
+    // 입력값 검증
+    const validatedCandidateId = validateUUID(candidateId, '후보자 ID');
+    const validatedNewJobPostId = validateUUID(newJobPostId, '새로운 채용 공고 ID');
+
+    // 기존 후보자 정보 조회 (이전 포지션 포함)
+    const { data: candidate, error: candidateError } = await supabase
+      .from('candidates')
+      .select(`
+        *,
+        job_posts!inner (
+          id,
+          title
+        )
+      `)
+      .eq('id', validatedCandidateId)
+      .single();
+
+    if (candidateError || !candidate) {
+      throw new Error('후보자를 찾을 수 없습니다.');
+    }
+
+    const oldJobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
+    const oldJobPostId = candidate.job_post_id;
+    const oldJobPostTitle = oldJobPost?.title || '알 수 없음';
+
+    // 새로운 채용 공고 접근 권한 확인
+    await verifyJobPostAccess(validatedNewJobPostId);
+
+    // 새로운 채용 공고 정보 조회
+    const { data: newJobPost, error: newJobPostError } = await supabase
+      .from('job_posts')
+      .select('id, title')
+      .eq('id', validatedNewJobPostId)
+      .single();
+
+    if (newJobPostError || !newJobPost) {
+      throw new Error('새로운 채용 공고를 찾을 수 없습니다.');
+    }
+
+    // 같은 포지션이면 변경 불필요
+    if (oldJobPostId === validatedNewJobPostId) {
+      throw new Error('이미 같은 포지션입니다.');
+    }
+
+    // 포지션 변경
+    const { data, error } = await supabase
+      .from('candidates')
+      .update({
+        job_post_id: validatedNewJobPostId,
+      })
+      .eq('id', validatedCandidateId)
+      .select(`
+        *,
+        job_posts (
+          id,
+          title
+        )
+      `)
+      .single();
+
+    if (error) {
+      throw new Error(`포지션 변경 실패: ${error.message}`);
+    }
+
+    // 타임라인 이벤트 생성
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
+      candidate_id: validatedCandidateId,
+      type: 'position_changed',
+      content: {
+        message: `포지션이 변경되었습니다: ${oldJobPostTitle} → ${newJobPost.title}`,
+        previous_job_post_id: oldJobPostId,
+        previous_job_post_title: oldJobPostTitle,
+        new_job_post_id: validatedNewJobPostId,
+        new_job_post_title: newJobPost.title,
+      },
+      created_by: user.userId,
+    });
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (포지션 변경):', timelineError);
+      if (timelineError.code === '23514') {
+        console.error('[타임라인] DB 스키마 제약 조건 위반 - position_changed 타입이 허용되지 않음.');
+      }
+    }
+
+    // 캐시 무효화
+    revalidatePath('/dashboard/candidates');
+    revalidatePath(`/dashboard/candidates/${validatedCandidateId}`);
 
     return data;
   });
