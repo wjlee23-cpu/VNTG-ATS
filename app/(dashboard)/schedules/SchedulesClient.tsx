@@ -12,15 +12,27 @@ import {
   Filter,
   Calendar as CalendarIcon,
   User,
+  Users,
   Mail,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  Settings,
+  Edit,
+  Plus,
+  CheckCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { Button } from '@/components/ui/button';
-import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate, deleteSchedule, cancelSchedule } from '@/api/actions/schedules';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate, deleteSchedule, cancelSchedule, rescheduleInterview, forceConfirmSchedule, addManualScheduleOption, updateScheduleWithManualOverride } from '@/api/actions/schedules';
 import { getAllScheduleProgress } from '@/api/queries/schedules';
+import { ManualScheduleEditor } from '@/components/admin/ManualScheduleEditor';
+import { AddScheduleOptionModal } from '@/components/admin/AddScheduleOptionModal';
+import { ForceConfirmModal } from '@/components/admin/ForceConfirmModal';
 import { toast } from 'sonner';
 
 interface ScheduleOption {
@@ -58,11 +70,40 @@ interface Schedule {
   interviewers?: Interviewer[];
 }
 
-interface SchedulesClientProps {
-  initialSchedules: Schedule[];
+interface ManualSchedule {
+  id: string;
+  candidate_id: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  workflow_status: string | null;
+  needs_rescheduling: boolean | null;
+  rescheduling_reason: string | null;
+  manual_override: boolean | null;
+  interviewer_ids: string[];
+  candidates: {
+    id: string;
+    name: string;
+    email: string;
+    job_posts?: {
+      id: string;
+      title: string;
+    } | null;
+  } | null;
 }
 
-export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
+interface SchedulesClientProps {
+  initialSchedules: Schedule[];
+  needsRescheduling?: ManualSchedule[];
+  manualSchedules?: ManualSchedule[];
+  confirmedSchedules?: ManualSchedule[];
+}
+
+export function SchedulesClient({ 
+  initialSchedules,
+  needsRescheduling = [],
+  manualSchedules = [],
+  confirmedSchedules = [],
+}: SchedulesClientProps) {
   const router = useRouter();
   const [schedules, setSchedules] = useState<Schedule[]>(initialSchedules);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -70,6 +111,15 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
   const [isCheckingAll, setIsCheckingAll] = useState(false);
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [cancellingScheduleId, setCancellingScheduleId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('management');
+  
+  // 수동 조율 관련 상태
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [addingOptionScheduleId, setAddingOptionScheduleId] = useState<string | null>(null);
+  const [forceConfirmScheduleId, setForceConfirmScheduleId] = useState<string | null>(null);
+  const [forceConfirmOptionId, setForceConfirmOptionId] = useState<string | undefined>(undefined);
+  const [reschedulingScheduleId, setReschedulingScheduleId] = useState<string | null>(null);
+  const [isRescheduling, setIsRescheduling] = useState(false);
 
   // 필터링된 일정 목록
   const filteredSchedules = useMemo(() => {
@@ -380,95 +430,115 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
           <p className="text-sm sm:text-base text-gray-600">모든 면접 일정의 진행상황을 확인하고 관리할 수 있습니다.</p>
         </div>
 
-        {/* 통계 카드 */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-gray-900 mb-1">{stats.all}</div>
-            <div className="text-xs sm:text-sm text-gray-600">전체</div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-yellow-600 mb-1">{stats.pending_interviewers}</div>
-            <div className="text-xs sm:text-sm text-gray-600">면접관 대기</div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-blue-600 mb-1">{stats.pending_candidate}</div>
-            <div className="text-xs sm:text-sm text-gray-600">후보자 대기</div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-green-600 mb-1">{stats.confirmed}</div>
-            <div className="text-xs sm:text-sm text-gray-600">확정됨</div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-gray-600 mb-1">{stats.cancelled}</div>
-            <div className="text-xs sm:text-sm text-gray-600">취소됨</div>
-          </div>
-        </div>
-
-        {/* 필터 및 액션 버튼 */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Filter className="w-4 h-4 text-gray-400" />
-              <span className="text-sm font-medium text-gray-700">필터:</span>
-              <Button
-                variant={filterStatus === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterStatus('all')}
-              >
-                전체
-              </Button>
-              <Button
-                variant={filterStatus === 'pending_interviewers' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterStatus('pending_interviewers')}
-              >
-                면접관 대기
-              </Button>
-              <Button
-                variant={filterStatus === 'pending_candidate' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterStatus('pending_candidate')}
-              >
-                후보자 대기
-              </Button>
-              <Button
-                variant={filterStatus === 'confirmed' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterStatus('confirmed')}
-              >
-                확정됨
-              </Button>
-            </div>
-            <Button
-              onClick={handleCheckAll}
-              disabled={isCheckingAll || stats.pending_interviewers === 0}
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              {isCheckingAll ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  확인 중...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  일괄 응답 확인
-                </>
+        {/* 탭 구조 */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="management">
+              <CalendarIcon className="w-4 h-4 mr-2" />
+              일정 관리
+            </TabsTrigger>
+            <TabsTrigger value="manual">
+              <Settings className="w-4 h-4 mr-2" />
+              수동 조율
+              {needsRescheduling.length > 0 && (
+                <Badge variant="destructive" className="ml-2">
+                  {needsRescheduling.length}
+                </Badge>
               )}
-            </Button>
-          </div>
-        </div>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* 일정 목록 */}
-        {filteredSchedules.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-            <CalendarIcon className="mx-auto text-gray-400 mb-4" size={48} />
-            <p className="text-gray-600">일정이 없습니다.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredSchedules.map((schedule) => (
+          {/* 일정 관리 탭 */}
+          <TabsContent value="management" className="space-y-6">
+            {/* 통계 카드 */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-2xl font-bold text-gray-900 mb-1">{stats.all}</div>
+                <div className="text-xs sm:text-sm text-gray-600">전체</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-2xl font-bold text-yellow-600 mb-1">{stats.pending_interviewers}</div>
+                <div className="text-xs sm:text-sm text-gray-600">면접관 대기</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-2xl font-bold text-blue-600 mb-1">{stats.pending_candidate}</div>
+                <div className="text-xs sm:text-sm text-gray-600">후보자 대기</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-2xl font-bold text-green-600 mb-1">{stats.confirmed}</div>
+                <div className="text-xs sm:text-sm text-gray-600">확정됨</div>
+              </div>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-2xl font-bold text-gray-600 mb-1">{stats.cancelled}</div>
+                <div className="text-xs sm:text-sm text-gray-600">취소됨</div>
+              </div>
+            </div>
+
+            {/* 필터 및 액션 버튼 */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700">필터:</span>
+                  <Button
+                    variant={filterStatus === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterStatus('all')}
+                  >
+                    전체
+                  </Button>
+                  <Button
+                    variant={filterStatus === 'pending_interviewers' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterStatus('pending_interviewers')}
+                  >
+                    면접관 대기
+                  </Button>
+                  <Button
+                    variant={filterStatus === 'pending_candidate' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterStatus('pending_candidate')}
+                  >
+                    후보자 대기
+                  </Button>
+                  <Button
+                    variant={filterStatus === 'confirmed' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterStatus('confirmed')}
+                  >
+                    확정됨
+                  </Button>
+                </div>
+                <Button
+                  onClick={handleCheckAll}
+                  disabled={isCheckingAll || stats.pending_interviewers === 0}
+                  size="sm"
+                  className="w-full sm:w-auto"
+                >
+                  {isCheckingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      확인 중...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      일괄 응답 확인
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* 일정 목록 */}
+            {filteredSchedules.length === 0 ? (
+              <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+                <CalendarIcon className="mx-auto text-gray-400 mb-4" size={48} />
+                <p className="text-gray-600">일정이 없습니다.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredSchedules.map((schedule) => (
               <div
                 key={schedule.id}
                 className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow"
@@ -672,9 +742,290 @@ export function SchedulesClient({ initialSchedules }: SchedulesClientProps) {
                 </div>
               </div>
             ))}
-          </div>
-        )}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* 수동 조율 탭 */}
+          <TabsContent value="manual" className="space-y-6">
+            {/* 수동 조율 통계 */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-gray-600">재조율 필요</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">{needsRescheduling.length}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-gray-600">수동 조율 이력</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">{manualSchedules.length}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-gray-600">확정 일정</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">{confirmedSchedules.length}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* 재조율 필요 일정 */}
+            {needsRescheduling.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  재조율 필요 ({needsRescheduling.length})
+                </h2>
+                <div className="space-y-4">
+                  {needsRescheduling.map((schedule) => renderManualScheduleCard(schedule, true))}
+                </div>
+              </div>
+            )}
+
+            {/* 수동 조율 이력 */}
+            {manualSchedules.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-blue-500" />
+                  수동 조율 이력 ({manualSchedules.length})
+                </h2>
+                <div className="space-y-4">
+                  {manualSchedules.map((schedule) => renderManualScheduleCard(schedule, true))}
+                </div>
+              </div>
+            )}
+
+            {/* 확정 일정 (수정 가능) */}
+            {confirmedSchedules.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  확정 일정 ({confirmedSchedules.length})
+                </h2>
+                <div className="space-y-4">
+                  {confirmedSchedules.map((schedule) => renderManualScheduleCard(schedule, true))}
+                </div>
+              </div>
+            )}
+
+            {/* 일정이 없는 경우 */}
+            {needsRescheduling.length === 0 && manualSchedules.length === 0 && confirmedSchedules.length === 0 && (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Settings className="mx-auto text-gray-400 mb-4" size={48} />
+                  <p className="text-gray-600">수동 조율이 필요한 일정이 없습니다.</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* 모달들 */}
+        {(() => {
+          const allSchedules = [...needsRescheduling, ...manualSchedules, ...confirmedSchedules];
+          const editingSchedule = allSchedules.find(s => s.id === editingScheduleId);
+          const addingOptionSchedule = allSchedules.find(s => s.id === addingOptionScheduleId);
+          const forceConfirmSchedule = allSchedules.find(s => s.id === forceConfirmScheduleId);
+
+          return (
+            <>
+              {editingSchedule && (
+                <ManualScheduleEditor
+                  scheduleId={editingSchedule.id}
+                  currentScheduledAt={editingSchedule.scheduled_at}
+                  currentDurationMinutes={editingSchedule.duration_minutes}
+                  currentInterviewerIds={editingSchedule.interviewer_ids}
+                  isOpen={editingScheduleId !== null}
+                  onClose={() => {
+                    setEditingScheduleId(null);
+                    router.refresh();
+                  }}
+                />
+              )}
+
+              {addingOptionSchedule && (
+                <AddScheduleOptionModal
+                  scheduleId={addingOptionSchedule.id}
+                  currentDurationMinutes={addingOptionSchedule.duration_minutes}
+                  isOpen={addingOptionScheduleId !== null}
+                  onClose={() => {
+                    setAddingOptionScheduleId(null);
+                    router.refresh();
+                  }}
+                />
+              )}
+
+              {forceConfirmSchedule && (
+                <ForceConfirmModal
+                  scheduleId={forceConfirmSchedule.id}
+                  optionId={forceConfirmOptionId}
+                  candidateName={forceConfirmSchedule.candidates?.name || '알 수 없음'}
+                  isOpen={forceConfirmScheduleId !== null}
+                  onClose={() => {
+                    setForceConfirmScheduleId(null);
+                    setForceConfirmOptionId(undefined);
+                    router.refresh();
+                  }}
+                />
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
+
+  // 수동 조율 일정 카드 렌더링 함수
+  function renderManualScheduleCard(schedule: ManualSchedule, showActions: boolean = true) {
+    const candidate = schedule.candidates;
+    if (!candidate) return null;
+
+    const scheduledDate = new Date(schedule.scheduled_at);
+    const endTime = new Date(scheduledDate);
+    endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+
+    const getWorkflowStatusBadge = (status: string | null) => {
+      switch (status) {
+        case 'pending_interviewers':
+          return <Badge variant="outline">면접관 대기</Badge>;
+        case 'pending_candidate':
+          return <Badge variant="outline">후보자 대기</Badge>;
+        case 'confirmed':
+          return <Badge variant="default">확정</Badge>;
+        case 'cancelled':
+          return <Badge variant="secondary">취소</Badge>;
+        case 'needs_rescheduling':
+          return <Badge variant="destructive">재조율 필요</Badge>;
+        default:
+          return <Badge variant="outline">알 수 없음</Badge>;
+      }
+    };
+
+    return (
+      <Card key={schedule.id} className="hover:shadow-md transition-shadow">
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="text-lg">{candidate.name}</CardTitle>
+              <CardDescription>{candidate.email}</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              {getWorkflowStatusBadge(schedule.workflow_status)}
+              {schedule.manual_override && (
+                <Badge variant="outline" className="bg-yellow-50">수동 조율</Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm">
+              <CalendarIcon className="w-4 h-4 text-gray-500" />
+              <span>
+                {format(scheduledDate, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} -{' '}
+                {format(endTime, 'HH:mm')}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Clock className="w-4 h-4 text-gray-500" />
+              <span>{schedule.duration_minutes}분</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Users className="w-4 h-4 text-gray-500" />
+              <span>면접관 {schedule.interviewer_ids.length}명</span>
+            </div>
+            {schedule.rescheduling_reason && (
+              <div className="flex items-start gap-2 text-sm text-orange-600">
+                <AlertTriangle className="w-4 h-4 mt-0.5" />
+                <span>재조율 사유: {schedule.rescheduling_reason}</span>
+              </div>
+            )}
+          </div>
+
+          {showActions && (
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditingScheduleId(schedule.id)}
+              >
+                <Edit className="w-4 h-4 mr-1" />
+                수정
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAddingOptionScheduleId(schedule.id)}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                옵션 추가
+              </Button>
+              {(schedule.workflow_status === 'pending_interviewers' || schedule.workflow_status === 'pending_candidate') && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => {
+                    setForceConfirmScheduleId(schedule.id);
+                    setForceConfirmOptionId(undefined);
+                  }}
+                >
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  강제 확정
+                </Button>
+              )}
+              {schedule.needs_rescheduling && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => handleReschedule(schedule.id)}
+                  disabled={isRescheduling && reschedulingScheduleId === schedule.id}
+                >
+                  {isRescheduling && reschedulingScheduleId === schedule.id ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      재조율 중...
+                    </>
+                  ) : (
+                    '재조율'
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 재조율 핸들러
+  async function handleReschedule(scheduleId: string) {
+    setIsRescheduling(true);
+    setReschedulingScheduleId(scheduleId);
+    try {
+      const formData = new FormData();
+      formData.append('rescheduling_reason', '관리자 요청');
+      formData.append('num_options', '2');
+
+      const result = await rescheduleInterview(scheduleId, formData);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('재조율이 완료되었습니다.');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('재조율에 실패했습니다.');
+      console.error(error);
+    } finally {
+      setIsRescheduling(false);
+      setReschedulingScheduleId(null);
+    }
+  }
 }

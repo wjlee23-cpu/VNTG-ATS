@@ -173,7 +173,11 @@ export interface Database {
           beverage_preference: string | null
           google_event_id: string | null
           interviewer_responses: Record<string, string> | null
-          workflow_status: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null
+          workflow_status: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | 'needs_rescheduling' | null
+          needs_rescheduling: boolean | null
+          rescheduling_reason: string | null
+          manual_override: boolean | null
+          manual_override_by: string | null
           created_at: string
           updated_at: string
         }
@@ -189,7 +193,11 @@ export interface Database {
           beverage_preference?: string | null
           google_event_id?: string | null
           interviewer_responses?: Record<string, string> | null
-          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null
+          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | 'needs_rescheduling' | null
+          needs_rescheduling?: boolean | null
+          rescheduling_reason?: string | null
+          manual_override?: boolean | null
+          manual_override_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -205,7 +213,11 @@ export interface Database {
           beverage_preference?: string | null
           google_event_id?: string | null
           interviewer_responses?: Record<string, string> | null
-          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null
+          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | 'needs_rescheduling' | null
+          needs_rescheduling?: boolean | null
+          rescheduling_reason?: string | null
+          manual_override?: boolean | null
+          manual_override_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -218,6 +230,8 @@ export interface Database {
           status: 'pending' | 'selected' | 'rejected'
           google_event_id: string | null
           interviewer_responses: Record<string, string> | null
+          is_manual: boolean | null
+          added_by: string | null
           created_at: string
         }
         Insert: {
@@ -227,6 +241,8 @@ export interface Database {
           status?: 'pending' | 'selected' | 'rejected'
           google_event_id?: string | null
           interviewer_responses?: Record<string, string> | null
+          is_manual?: boolean | null
+          added_by?: string | null
           created_at?: string
         }
         Update: {
@@ -236,6 +252,8 @@ export interface Database {
           status?: 'pending' | 'selected' | 'rejected'
           google_event_id?: string | null
           interviewer_responses?: Record<string, string> | null
+          is_manual?: boolean | null
+          added_by?: string | null
           created_at?: string
         }
       }
@@ -243,7 +261,7 @@ export interface Database {
         Row: {
           id: string
           candidate_id: string
-          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'stage_changed'
+          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'schedule_regenerated' | 'schedule_rescheduled' | 'schedule_manually_edited' | 'schedule_option_manually_added' | 'schedule_force_confirmed' | 'stage_changed' | 'email' | 'email_received' | 'comment' | 'comment_created' | 'comment_updated' | 'scorecard' | 'scorecard_created' | 'approval' | 'stage_evaluation' | 'archive' | 'interviewer_response' | 'position_changed'
           content: Json
           created_by: string | null
           created_at: string
@@ -251,7 +269,7 @@ export interface Database {
         Insert: {
           id?: string
           candidate_id: string
-          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'stage_changed'
+          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'schedule_regenerated' | 'schedule_rescheduled' | 'schedule_manually_edited' | 'schedule_option_manually_added' | 'schedule_force_confirmed' | 'stage_changed' | 'email' | 'email_received' | 'comment' | 'comment_created' | 'comment_updated' | 'scorecard' | 'scorecard_created' | 'approval' | 'stage_evaluation' | 'archive' | 'interviewer_response' | 'position_changed'
           content: Json
           created_by?: string | null
           created_at?: string
