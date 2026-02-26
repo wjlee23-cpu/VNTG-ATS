@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -33,6 +33,11 @@ import { getAllScheduleProgress } from '@/api/queries/schedules';
 import { ManualScheduleEditor } from '@/components/admin/ManualScheduleEditor';
 import { AddScheduleOptionModal } from '@/components/admin/AddScheduleOptionModal';
 import { ForceConfirmModal } from '@/components/admin/ForceConfirmModal';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { getCandidateById } from '@/api/queries/candidates';
+import { getSchedulesByCandidate } from '@/api/queries/schedules';
+import { getTimelineEvents } from '@/api/queries/timeline';
+import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
 import { toast } from 'sonner';
 
 interface ScheduleOption {
@@ -105,6 +110,7 @@ export function SchedulesClient({
   confirmedSchedules = [],
 }: SchedulesClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [schedules, setSchedules] = useState<Schedule[]>(initialSchedules);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [checkingScheduleId, setCheckingScheduleId] = useState<string | null>(null);
@@ -120,6 +126,83 @@ export function SchedulesClient({
   const [forceConfirmOptionId, setForceConfirmOptionId] = useState<string | undefined>(undefined);
   const [reschedulingScheduleId, setReschedulingScheduleId] = useState<string | null>(null);
   const [isRescheduling, setIsRescheduling] = useState(false);
+
+  // Candidate Detail 관련 상태
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [candidateDetail, setCandidateDetail] = useState<any>(null);
+  const [candidateSchedules, setCandidateSchedules] = useState<any[]>([]);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  // 일정 카드 refs (자동 스크롤용)
+  const scheduleRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // URL query parameter에서 candidate 값 읽기
+  useEffect(() => {
+    const candidateId = searchParams.get('candidate');
+    setSelectedCandidateId(candidateId);
+    
+    // candidate가 있으면 해당 candidate 데이터 로드
+    if (candidateId) {
+      loadCandidateDetail(candidateId);
+      
+      // 해당 후보자의 일정 카드로 스크롤
+      setTimeout(() => {
+        const schedule = schedules.find(s => s.candidates.id === candidateId);
+        if (schedule && scheduleRefs.current[schedule.id]) {
+          scheduleRefs.current[schedule.id]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }
+      }, 300); // Sheet가 열리는 시간을 고려한 지연
+    } else {
+      // candidate가 없으면 detail 데이터 초기화
+      setCandidateDetail(null);
+      setCandidateSchedules([]);
+      setTimelineEvents([]);
+    }
+  }, [searchParams, schedules]);
+
+  // Candidate detail 데이터 로드
+  const loadCandidateDetail = async (candidateId: string) => {
+    setIsLoadingDetail(true);
+    setDetailError(null);
+    
+    try {
+      const [candidateResult, schedulesResult, timelineResult] = await Promise.all([
+        getCandidateById(candidateId),
+        getSchedulesByCandidate(candidateId),
+        getTimelineEvents(candidateId),
+      ]);
+
+      if (candidateResult.error || !candidateResult.data) {
+        setDetailError(candidateResult.error || '후보자를 찾을 수 없습니다.');
+        setCandidateDetail(null);
+      } else {
+        setCandidateDetail(candidateResult.data);
+        setCandidateSchedules(schedulesResult.data || []);
+        setTimelineEvents(timelineResult.data || []);
+        setDetailError(null);
+      }
+    } catch (err) {
+      setDetailError('후보자 정보를 불러오는 중 오류가 발생했습니다.');
+      setCandidateDetail(null);
+    } finally {
+      setIsLoadingDetail(false);
+    }
+  };
+
+  // 후보자 이름 클릭 핸들러
+  const handleCandidateClick = (candidateId: string) => {
+    router.push(`/schedules?candidate=${candidateId}`);
+  };
+
+  // Detail 패널 닫기
+  const handleCloseDetail = () => {
+    router.push('/schedules');
+  };
 
   // 필터링된 일정 목록
   const filteredSchedules = useMemo(() => {
@@ -538,10 +621,19 @@ export function SchedulesClient({
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredSchedules.map((schedule) => (
+                {filteredSchedules.map((schedule) => {
+                  const isSelectedCandidate = selectedCandidateId === schedule.candidates.id;
+                  return (
               <div
                 key={schedule.id}
-                className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow"
+                ref={(el) => {
+                  scheduleRefs.current[schedule.id] = el;
+                }}
+                className={`bg-white rounded-lg border p-4 sm:p-6 hover:shadow-md transition-shadow ${
+                  isSelectedCandidate 
+                    ? 'border-blue-500 border-2 shadow-lg ring-2 ring-blue-200' 
+                    : 'border-gray-200'
+                }`}
               >
                 <div className="flex flex-col lg:flex-row gap-4">
                   {/* 왼쪽: 후보자 정보 */}
@@ -551,7 +643,13 @@ export function SchedulesClient({
                         {schedule.candidates.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                        <h3 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCandidateClick(schedule.candidates.id);
+                          }}
+                          className="text-base sm:text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                        >
                           {schedule.candidates.name}
                         </h3>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -741,7 +839,8 @@ export function SchedulesClient({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+                })}
               </div>
             )}
           </TabsContent>
@@ -879,6 +978,53 @@ export function SchedulesClient({
           );
         })()}
       </div>
+
+      {/* 오른쪽 사이드 패널: Candidate Detail */}
+      <Sheet open={!!selectedCandidateId} onOpenChange={(open) => {
+        if (!open) {
+          handleCloseDetail();
+        }
+      }}>
+        <SheetContent 
+          side="right"
+          className="!w-full md:!w-[1000px] lg:!w-[1200px] !h-full p-0 overflow-y-auto !max-w-none sm:!max-w-none md:!max-w-none lg:!max-w-none [&>button]:hidden"
+        >
+          {/* 접근성을 위한 숨겨진 제목 */}
+          <SheetTitle className="sr-only">
+            {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
+          </SheetTitle>
+          <div className="h-full">
+            {isLoadingDetail ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">로딩 중...</p>
+                </div>
+              </div>
+            ) : detailError ? (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-center">
+                  <p className="text-destructive mb-4">{detailError}</p>
+                  <button
+                    onClick={handleCloseDetail}
+                    className="px-4 py-2 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            ) : candidateDetail ? (
+              <CandidateDetailClient
+                candidate={candidateDetail}
+                schedules={candidateSchedules}
+                timelineEvents={timelineEvents}
+                onClose={handleCloseDetail}
+                isSidebar={true}
+              />
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 

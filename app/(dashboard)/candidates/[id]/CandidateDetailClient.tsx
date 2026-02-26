@@ -6,7 +6,7 @@ import {
   X, Mail, Phone, MapPin, Star, FileText, Download, Calendar, 
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
-  CheckCircle2
+  CheckCircle2, Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -644,7 +644,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
           <Button
             onClick={() => setIsScheduleModalOpen(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -653,6 +653,17 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             <Calendar className="w-4 h-4 mr-2" />
             Schedule Interview
           </Button>
+          {schedules.length > 0 && (
+            <Button
+              onClick={() => router.push(`/schedules?candidate=${candidate.id}`)}
+              variant="outline"
+              className="border-gray-300 bg-white"
+              size="default"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              일정 조율 관리
+            </Button>
+          )}
           <Button
             onClick={() => setIsEmailModalOpen(true)}
             variant="outline"
