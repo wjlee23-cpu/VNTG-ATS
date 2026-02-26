@@ -129,6 +129,7 @@ export function SchedulesClient({
 
   // Candidate Detail 관련 상태
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [showCandidateDetail, setShowCandidateDetail] = useState<boolean>(false);
   const [candidateDetail, setCandidateDetail] = useState<any>(null);
   const [candidateSchedules, setCandidateSchedules] = useState<any[]>([]);
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
@@ -141,13 +142,16 @@ export function SchedulesClient({
   // URL query parameter에서 candidate 값 읽기
   useEffect(() => {
     const candidateId = searchParams.get('candidate');
-    setSelectedCandidateId(candidateId);
+    const showDetail = searchParams.get('showDetail') === 'true';
     
-    // candidate가 있으면 해당 candidate 데이터 로드
-    if (candidateId) {
+    setSelectedCandidateId(candidateId);
+    setShowCandidateDetail(showDetail);
+    
+    // candidate가 있고 showDetail이 true일 때만 candidate 데이터 로드
+    if (candidateId && showDetail) {
       loadCandidateDetail(candidateId);
-      
-      // 해당 후보자의 일정 카드로 스크롤
+    } else if (candidateId) {
+      // candidate는 있지만 showDetail이 없으면 스크롤만 수행
       setTimeout(() => {
         const schedule = schedules.find(s => s.candidates.id === candidateId);
         if (schedule && scheduleRefs.current[schedule.id]) {
@@ -156,12 +160,13 @@ export function SchedulesClient({
             block: 'center',
           });
         }
-      }, 300); // Sheet가 열리는 시간을 고려한 지연
+      }, 100);
     } else {
       // candidate가 없으면 detail 데이터 초기화
       setCandidateDetail(null);
       setCandidateSchedules([]);
       setTimelineEvents([]);
+      setShowCandidateDetail(false);
     }
   }, [searchParams, schedules]);
 
@@ -196,12 +201,18 @@ export function SchedulesClient({
 
   // 후보자 이름 클릭 핸들러
   const handleCandidateClick = (candidateId: string) => {
-    router.push(`/schedules?candidate=${candidateId}`);
+    router.push(`/schedules?candidate=${candidateId}&showDetail=true`);
   };
 
   // Detail 패널 닫기
   const handleCloseDetail = () => {
-    router.push('/schedules');
+    const candidateId = searchParams.get('candidate');
+    if (candidateId) {
+      // candidate query parameter는 유지하되 showDetail만 제거
+      router.push(`/schedules?candidate=${candidateId}`);
+    } else {
+      router.push('/schedules');
+    }
   };
 
   // 필터링된 일정 목록
@@ -980,7 +991,7 @@ export function SchedulesClient({
       </div>
 
       {/* 오른쪽 사이드 패널: Candidate Detail */}
-      <Sheet open={!!selectedCandidateId} onOpenChange={(open) => {
+      <Sheet open={showCandidateDetail && !!selectedCandidateId} onOpenChange={(open) => {
         if (!open) {
           handleCloseDetail();
         }
