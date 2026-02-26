@@ -1,6 +1,6 @@
 'use client';
 
-import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, Sparkles, ArrowRight, ChevronRight } from 'lucide-react';
+import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, ArrowRight, ChevronRight, TrendingUp, UserPlus, CalendarCheck, Award } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUserProfile } from '@/api/queries/auth';
@@ -134,6 +134,19 @@ export function OverviewClient({
     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // 시간대별 색상 클래스 (오전/오후/저녁)
+  const getTimeSlotColor = (dateString: string) => {
+    const date = new Date(dateString);
+    const hour = date.getHours();
+    if (hour < 12) {
+      return 'bg-blue-50 border-blue-200 text-blue-700';
+    } else if (hour < 18) {
+      return 'bg-orange-50 border-orange-200 text-orange-700';
+    } else {
+      return 'bg-purple-50 border-purple-200 text-purple-700';
+    }
+  };
+
   // 면접 타입 한글 변환
   const getInterviewTypeText = (type?: string) => {
     const typeMap: Record<string, string> = {
@@ -212,12 +225,12 @@ export function OverviewClient({
     <div className="h-full overflow-auto bg-gray-50">
       <div className="px-8 py-6">
         {/* Header */}
-        <div className="mb-6 border-b border-gray-200 bg-white px-8 py-6 -mx-8">
+        <div className="mb-8 gradient-blue-subtle rounded-2xl px-8 py-6 -mx-8 animate-fade-in">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground mb-1">좋은 오후에요, 김하늘님</h1>
+              <h1 className="text-2xl font-bold text-foreground mb-2">좋은 오후에요, 김하늘님</h1>
               <p className="text-sm text-muted-foreground">
-                오늘 면접 {todaySummary.interviews}건 긴급 액션 {todaySummary.urgentActions}건
+                오늘 면접 <span className="font-semibold text-brand-main">{todaySummary.interviews}</span>건 · 긴급 액션 <span className="font-semibold text-orange-600">{todaySummary.urgentActions}</span>건
               </p>
             </div>
           </div>
@@ -225,21 +238,48 @@ export function OverviewClient({
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <div className="text-sm text-muted-foreground mb-2">신규 지원</div>
-            <div className="text-3xl font-bold text-foreground">{stats.newApplications}</div>
+          {/* 신규 지원 */}
+          <div className="card-modern p-6 bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200/50 animate-slide-up" style={{ animationDelay: '0ms' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-blue">
+                <UserPlus className="text-white" size={24} />
+              </div>
+            </div>
+            <div className="text-sm text-blue-700 font-medium mb-1">신규 지원</div>
+            <div className="text-3xl font-bold text-blue-900">{stats.newApplications}</div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <div className="text-sm text-muted-foreground mb-2">면접 진행</div>
-            <div className="text-3xl font-bold text-foreground">{stats.interviewsInProgress}</div>
+
+          {/* 면접 진행 */}
+          <div className="card-modern p-6 bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50 animate-slide-up" style={{ animationDelay: '100ms' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 8px 24px rgba(249, 115, 22, 0.15)' }}>
+                <Clock className="text-white" size={24} />
+              </div>
+            </div>
+            <div className="text-sm text-orange-700 font-medium mb-1">면접 진행</div>
+            <div className="text-3xl font-bold text-orange-900">{stats.interviewsInProgress}</div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <div className="text-sm text-muted-foreground mb-2">오퍼 발송</div>
-            <div className="text-3xl font-bold text-foreground">{stats.offersSent}</div>
+
+          {/* 오퍼 발송 */}
+          <div className="card-modern p-6 bg-gradient-to-br from-green-50 to-green-100/50 border-green-200/50 animate-slide-up" style={{ animationDelay: '200ms' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 8px 24px rgba(34, 197, 94, 0.15)' }}>
+                <Send className="text-white" size={24} />
+              </div>
+            </div>
+            <div className="text-sm text-green-700 font-medium mb-1">오퍼 발송</div>
+            <div className="text-3xl font-bold text-green-900">{stats.offersSent}</div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <div className="text-sm text-muted-foreground mb-2">채용 완료</div>
-            <div className="text-3xl font-bold text-foreground">{stats.hiringCompleted}</div>
+
+          {/* 채용 완료 */}
+          <div className="card-modern p-6 bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200/50 animate-slide-up" style={{ animationDelay: '300ms' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 8px 24px rgba(168, 85, 247, 0.15)' }}>
+                <Award className="text-white" size={24} />
+              </div>
+            </div>
+            <div className="text-sm text-purple-700 font-medium mb-1">채용 완료</div>
+            <div className="text-3xl font-bold text-purple-900">{stats.hiringCompleted}</div>
           </div>
         </div>
 
@@ -277,8 +317,13 @@ export function OverviewClient({
             {/* 중앙 섹션: 액션 필요 + 오늘 일정 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 액션 필요 */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-foreground mb-4">액션 필요</h2>
+              <div className="card-modern p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
+                    <AlertCircle className="text-white" size={18} />
+                  </div>
+                  <h2 className="text-lg font-bold text-foreground">액션 필요</h2>
+                </div>
                 {(pendingActions || []).length > 0 ? (
                   <div className="space-y-3">
                     {(pendingActions || []).slice(0, 5).map((action, index) => {
@@ -292,7 +337,7 @@ export function OverviewClient({
                           className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                           onClick={() => firstItem && router.push(firstItem.link)}
                         >
-                          <div className={`w-10 h-10 rounded-lg ${colorClass} flex items-center justify-center flex-shrink-0`}>
+                          <div className={`w-10 h-10 rounded-lg ${colorClass} flex items-center justify-center flex-shrink-0 shadow-sm`}>
                             <Icon size={20} />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -301,7 +346,8 @@ export function OverviewClient({
                               {action.description}
                             </div>
                             {firstItem?.daysOverdue !== undefined && firstItem.daysOverdue > 0 && (
-                              <div className="text-xs text-orange-600 mt-1">
+                              <div className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full mt-1">
+                                <AlertCircle size={12} />
                                 {firstItem.daysOverdue}일 지연
                               </div>
                             )}
@@ -317,22 +363,27 @@ export function OverviewClient({
               </div>
 
               {/* 오늘 일정 */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-foreground">오늘 일정 {filteredSchedules.length}건</h2>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
+                      <Calendar className="text-white" size={18} />
+                    </div>
+                    <h2 className="text-lg font-bold text-foreground">오늘 일정 <span className="text-brand-main">{filteredSchedules.length}</span>건</h2>
+                  </div>
                   <button
                     onClick={() => router.push('/calendar')}
-                    className="text-sm text-brand-main hover:text-brand-dark"
+                    className="text-sm font-medium text-brand-main hover:text-brand-dark flex items-center gap-1 transition-colors"
                   >
-                    전체 보기
+                    전체 보기 <ArrowRight size={14} />
                   </button>
                 </div>
                 <div className="flex gap-2 mb-4">
                   <button
                     onClick={() => setScheduleFilter('today')}
-                    className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
                       scheduleFilter === 'today'
-                        ? 'bg-brand-main text-white'
+                        ? 'gradient-blue text-white shadow-blue'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -340,9 +391,9 @@ export function OverviewClient({
                   </button>
                   <button
                     onClick={() => setScheduleFilter('week')}
-                    className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
                       scheduleFilter === 'week'
-                        ? 'bg-brand-main text-white'
+                        ? 'gradient-blue text-white shadow-blue'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -350,9 +401,9 @@ export function OverviewClient({
                   </button>
                   <button
                     onClick={() => setScheduleFilter('tomorrow')}
-                    className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
                       scheduleFilter === 'tomorrow'
-                        ? 'bg-brand-main text-white'
+                        ? 'gradient-blue text-white shadow-blue'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -361,35 +412,41 @@ export function OverviewClient({
                 </div>
                 {filteredSchedules.length > 0 ? (
                   <div className="space-y-3">
-                    {filteredSchedules.slice(0, 4).map((schedule) => (
-                      <div
-                        key={schedule.id}
-                        className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                        onClick={() => router.push(`/candidates/${schedule.candidateId}`)}
-                      >
-                        <div className="flex-shrink-0">
-                          <div className="text-sm font-medium text-foreground">
-                            {formatTime(schedule.scheduledAt)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {schedule.durationMinutes}분
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-foreground mb-1">
-                            {getInterviewTypeText(schedule.interviewType)}
-                          </div>
-                          <div className="text-sm text-muted-foreground truncate">
-                            {schedule.candidateName} · {schedule.position}
-                          </div>
-                          {schedule.interviewers.length > 0 && (
-                            <div className="text-xs text-muted-foreground mt-1">
-                              면접관: {schedule.interviewers.map(i => i.email.split('@')[0]).join(', ')}
+                    {filteredSchedules.slice(0, 4).map((schedule) => {
+                      const timeSlotColor = getTimeSlotColor(schedule.scheduledAt);
+                      return (
+                        <div
+                          key={schedule.id}
+                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-all border border-transparent hover:border-gray-200"
+                          onClick={() => router.push(`/candidates/${schedule.candidateId}`)}
+                        >
+                          <div className={`flex-shrink-0 px-3 py-2 rounded-lg border ${timeSlotColor} min-w-[60px] text-center`}>
+                            <div className="text-sm font-bold">
+                              {formatTime(schedule.scheduledAt)}
                             </div>
-                          )}
+                            <div className="text-xs font-medium">
+                              {schedule.durationMinutes}분
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarCheck className="text-brand-main" size={16} />
+                              <div className="font-medium text-foreground">
+                                {getInterviewTypeText(schedule.interviewType)}
+                              </div>
+                            </div>
+                            <div className="text-sm text-muted-foreground truncate">
+                              {schedule.candidateName} · {schedule.position}
+                            </div>
+                            {schedule.interviewers.length > 0 && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                면접관: {schedule.interviewers.map(i => i.email.split('@')[0]).join(', ')}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">일정이 없습니다.</p>
@@ -397,168 +454,155 @@ export function OverviewClient({
               </div>
             </div>
 
-            {/* 하단 좌측: 내 포지션 현황 + AI 추천 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                {/* 내 포지션 현황 */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-bold text-foreground mb-4">내 포지션 현황 {(positionStatus || []).length}개</h2>
-                  {(positionStatus || []).length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-gray-200">
-                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">포지션</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">신규</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">서류</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">면접</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">최종</th>
-                            <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">오퍼</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">진행률</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(positionStatus || []).map((position) => {
-                            const total = position.new + position.document + position.interview + position.final + position.offer;
-                            return (
-                              <tr key={position.jobPostId} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/jobs/${position.jobPostId}`)}>
-                                <td className="py-3 px-4">
-                                  <div className="font-medium text-foreground">{position.position}</div>
-                                  <div className="text-xs text-muted-foreground">{position.team} - D+{position.daysSincePost}</div>
-                                </td>
-                                <td className="text-center py-3 px-4 text-sm">{position.new}</td>
-                                <td className="text-center py-3 px-4 text-sm">{position.document}</td>
-                                <td className="text-center py-3 px-4 text-sm">{position.interview}</td>
-                                <td className="text-center py-3 px-4 text-sm">{position.final}</td>
-                                <td className="text-center py-3 px-4 text-sm">{position.offer}</td>
-                                <td className="py-3 px-4">
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                      <div
-                                        className="h-full bg-brand-main transition-all"
-                                        style={{ width: `${position.progress}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs text-muted-foreground w-12 text-right">{position.progress}%</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">포지션이 없습니다.</p>
-                  )}
+            {/* 내 포지션 현황 */}
+            <div className="card-modern p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
+                  <Briefcase className="text-white" size={18} />
                 </div>
+                <h2 className="text-lg font-bold text-foreground">내 포지션 현황 <span className="text-brand-main">{(positionStatus || []).length}</span>개</h2>
+              </div>
+              {(positionStatus || []).length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">포지션</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">신규</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">서류</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">면접</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">최종</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">오퍼</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">진행률</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(positionStatus || []).map((position) => {
+                        const total = position.new + position.document + position.interview + position.final + position.offer;
+                        return (
+                          <tr key={position.jobPostId} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/jobs/${position.jobPostId}`)}>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-foreground">{position.position}</div>
+                              <div className="text-xs text-muted-foreground">{position.team} - D+{position.daysSincePost}</div>
+                            </td>
+                            <td className="text-center py-3 px-4 text-sm">{position.new}</td>
+                            <td className="text-center py-3 px-4 text-sm">{position.document}</td>
+                            <td className="text-center py-3 px-4 text-sm">{position.interview}</td>
+                            <td className="text-center py-3 px-4 text-sm">{position.final}</td>
+                            <td className="text-center py-3 px-4 text-sm">{position.offer}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full gradient-blue transition-all rounded-full"
+                                    style={{ width: `${position.progress}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium text-muted-foreground w-12 text-right">{position.progress}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">포지션이 없습니다.</p>
+              )}
+            </div>
 
-                {/* AI 추천 */}
-                {topCandidates.length > 0 && topCandidates[0].match >= 90 && (
-                  <div className="bg-gradient-to-r from-brand-main/5 to-brand-main/10 rounded-2xl border border-brand-main/20 p-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-brand-main/10 flex items-center justify-center flex-shrink-0">
-                        <Sparkles className="text-brand-main" size={24} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-medium text-brand-main bg-brand-main/10 px-2 py-1 rounded">AI 추천 NEW</span>
-                        </div>
-                        <p className="text-sm text-foreground mb-1">
-                          <span className="font-semibold">{topCandidates[0].name}</span>님이{' '}
-                          <span className="font-semibold">{topCandidates[0].position}</span> 포지션에{' '}
-                          <span className="font-semibold text-brand-main">{topCandidates[0].match}%</span> 매칭률로 지원했습니다. 이력서를 확인해보세요.
-                        </p>
-                        <button
-                          onClick={() => router.push(`/candidates/${topCandidates[0].id}`)}
-                          className="mt-3 text-sm font-medium text-brand-main hover:text-brand-dark flex items-center gap-1"
-                        >
-                          확인하기 <ArrowRight size={16} />
-                        </button>
-                      </div>
-                    </div>
+            {/* 최근 활동 + 채용 퍼널 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 최근 활동 */}
+              <div className="card-modern p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
+                    <Clock className="text-white" size={18} />
                   </div>
+                  <h2 className="text-lg font-bold text-foreground">최근 활동</h2>
+                </div>
+                {(recentActivity || []).length > 0 ? (
+                  <div className="space-y-4">
+                    {(recentActivity || []).slice(0, 6).map((activity, index) => (
+                      <div key={activity.id} className="flex items-start gap-3 relative pl-4">
+                        {/* 타임라인 라인 */}
+                        {index < (recentActivity || []).slice(0, 6).length - 1 && (
+                          <div className="absolute left-[7px] top-5 w-0.5 h-full bg-gradient-to-b from-brand-main to-transparent" />
+                        )}
+                        <div className="w-3 h-3 rounded-full bg-brand-main border-2 border-white shadow-sm flex-shrink-0 mt-1.5 relative z-10" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-foreground">
+                            <span className="font-semibold">{activity.candidate}</span>
+                            {' '}{activity.action}{' '}
+                            <span className="font-semibold">{activity.job}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">최근 활동이 없습니다.</p>
                 )}
               </div>
 
-              {/* 하단 우측: 최근 활동 + 채용 퍼널 */}
-              <div className="space-y-6">
-                {/* 최근 활동 */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-bold text-foreground mb-4">최근 활동</h2>
-                  {(recentActivity || []).length > 0 ? (
-                    <div className="space-y-4">
-                      {(recentActivity || []).slice(0, 6).map((activity) => (
-                        <div key={activity.id} className="flex items-start gap-3">
-                          <div className="w-2 h-2 rounded-full bg-brand-main mt-2 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-foreground">
-                              <span className="font-semibold">{activity.candidate}</span>
-                              {' '}{activity.action}{' '}
-                              <span className="font-semibold">{activity.job}</span>
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
-                          </div>
-                        </div>
-                      ))}
+              {/* 채용 퍼널 */}
+              <div className="card-modern p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
+                      <TrendingUp className="text-white" size={18} />
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">최근 활동이 없습니다.</p>
-                  )}
-                </div>
-
-                {/* 채용 퍼널 */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-foreground">채용 퍼널</h2>
-                    <select className="text-sm border border-gray-200 rounded-lg px-3 py-1">
-                      <option>전체 포지션</option>
-                    </select>
                   </div>
-                  {(hiringFunnel || []).length > 0 ? (
-                    <div className="space-y-4">
-                      {(hiringFunnel || []).map((stage, index) => {
-                        const maxCount = Math.max(...(hiringFunnel || []).map(s => s.count));
-                        const percentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
-                        const stageNames: Record<string, string> = {
-                          'Applied': '서류 접수',
-                          'Screening': '서류 통과',
-                          'Interview': '면접 진행',
-                          'Offer': '최종 합격',
-                          'Hired': '채용 완료',
-                        };
-                        const stageName = stageNames[stage.stage] || stage.stage;
-                        
-                        return (
-                          <div key={index}>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-foreground">{stageName}</span>
-                              <span className="text-sm text-muted-foreground">{stage.count}명</span>
-                            </div>
-                            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-brand-main transition-all"
-                                style={{ width: `${percentage}%` }}
-                              />
-                            </div>
+                  <select className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:border-brand-main transition-colors">
+                    <option>전체 포지션</option>
+                  </select>
+                </div>
+                {(hiringFunnel || []).length > 0 ? (
+                  <div className="space-y-4">
+                    {(hiringFunnel || []).map((stage, index) => {
+                      const maxCount = Math.max(...(hiringFunnel || []).map(s => s.count));
+                      const percentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
+                      const stageNames: Record<string, string> = {
+                        'Applied': '서류 접수',
+                        'Screening': '서류 통과',
+                        'Interview': '면접 진행',
+                        'Offer': '최종 합격',
+                        'Hired': '채용 완료',
+                      };
+                      const stageName = stageNames[stage.stage] || stage.stage;
+                      
+                      return (
+                        <div key={index}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-foreground">{stageName}</span>
+                            <span className="text-sm font-semibold text-brand-main">{stage.count}명</span>
                           </div>
-                        );
-                      })}
-                      <div className="pt-4 border-t border-gray-200 mt-4">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">전환율</span>
-                          <span className="text-sm font-medium text-foreground">
-                            {(hiringFunnel || []).length > 0 && (hiringFunnel || [])[0]?.count > 0
-                              ? (((hiringFunnel || [])[(hiringFunnel || []).length - 1]?.count || 0) / (hiringFunnel || [])[0].count * 100).toFixed(1)
-                              : '0.0'}%
-                          </span>
+                          <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full gradient-blue transition-all rounded-full"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
                         </div>
+                      );
+                    })}
+                    <div className="pt-4 border-t border-gray-200 mt-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">전환율</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {(hiringFunnel || []).length > 0 && (hiringFunnel || [])[0]?.count > 0
+                            ? (((hiringFunnel || [])[(hiringFunnel || []).length - 1]?.count || 0) / (hiringFunnel || [])[0].count * 100).toFixed(1)
+                            : '0.0'}%
+                        </span>
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">데이터가 없습니다.</p>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">데이터가 없습니다.</p>
+                )}
               </div>
             </div>
           </div>
