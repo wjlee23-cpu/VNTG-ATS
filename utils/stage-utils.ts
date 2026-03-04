@@ -145,3 +145,40 @@ export async function getJobProcessInfo(jobPostId: string, isAdmin: boolean = fa
     throw error;
   }
 }
+
+/**
+ * 사용 가능한 모든 단계 목록 조회
+ * @param jobPostId Job Post ID
+ * @param currentStageId 현재 단계 ID (비활성화 처리용)
+ * @param isAdmin 관리자 여부 (선택, 기본값: false)
+ * @returns 사용 가능한 단계 배열 (현재 단계 포함, order 기준 정렬)
+ */
+export async function getAvailableStages(
+  jobPostId: string,
+  currentStageId: string,
+  isAdmin: boolean = false
+): Promise<Array<{ id: string; name: string; order: number; isCurrent: boolean }>> {
+  const { customStages } = await getJobProcessInfo(jobPostId, isAdmin);
+
+  // custom_stages가 null이면 기본 8단계 모두 활성화로 간주
+  if (customStages === null) {
+    // 기본 단계 목록 생성 (STAGE_ID_TO_NAME_MAP에서)
+    const stageIds = Object.keys(STAGE_ID_TO_NAME_MAP).sort();
+    return stageIds.map((id, index) => ({
+      id,
+      name: STAGE_ID_TO_NAME_MAP[id] || id,
+      order: index + 1,
+      isCurrent: id === currentStageId,
+    }));
+  }
+
+  // custom_stages를 order 기준으로 정렬
+  const sortedStages = [...customStages].sort((a, b) => a.order - b.order);
+  
+  return sortedStages.map(stage => ({
+    id: stage.id,
+    name: stage.name,
+    order: stage.order,
+    isCurrent: stage.id === currentStageId,
+  }));
+}

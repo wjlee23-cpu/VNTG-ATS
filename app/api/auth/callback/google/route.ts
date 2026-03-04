@@ -62,9 +62,12 @@ export async function GET(request: Request) {
     // 인증 코드를 액세스 토큰으로 교환
     const { tokens } = await oauth2Client.getToken(code);
 
-    if (!tokens.access_token || !tokens.refresh_token) {
-      throw new Error('토큰을 받지 못했습니다.');
+    if (!tokens.access_token) {
+      throw new Error('액세스 토큰을 받지 못했습니다.');
     }
+
+    // refresh token이 없을 수 있음 (이미 권한이 있는 경우)
+    // 이 경우 기존 refresh token을 유지하도록 처리
 
     // 토큰으로 사용자 정보 가져오기
     oauth2Client.setCredentials({
@@ -165,13 +168,33 @@ export async function GET(request: Request) {
         }
       } else {
         // 기존 사용자의 캘린더 토큰 업데이트
+        // refresh token이 없으면 기존 refresh token을 유지
+        const { data: existingUserData } = await serviceClient
+          .from('users')
+          .select('calendar_refresh_token')
+          .eq('id', authUserId)
+          .single();
+
+        const updateData: {
+          calendar_provider: string;
+          calendar_access_token: string;
+          calendar_refresh_token?: string;
+        } = {
+          calendar_provider: 'google',
+          calendar_access_token: tokens.access_token,
+        };
+
+        // refresh token이 있으면 업데이트, 없으면 기존 것 유지
+        if (tokens.refresh_token) {
+          updateData.calendar_refresh_token = tokens.refresh_token;
+        } else if (existingUserData?.calendar_refresh_token) {
+          // refresh token이 없지만 기존 refresh token이 있으면 유지
+          updateData.calendar_refresh_token = existingUserData.calendar_refresh_token;
+        }
+
         const { error: updateError } = await serviceClient
           .from('users')
-          .update({
-            calendar_provider: 'google',
-            calendar_access_token: tokens.access_token,
-            calendar_refresh_token: tokens.refresh_token,
-          })
+          .update(updateData)
           .eq('id', authUserId);
 
         if (updateError) {
@@ -217,13 +240,33 @@ export async function GET(request: Request) {
       }
 
       // 사용자 정보에 구글 캘린더 토큰 저장
+      // refresh token이 없으면 기존 refresh token을 유지
+      const { data: existingUserData } = await serviceClient
+        .from('users')
+        .select('calendar_refresh_token')
+        .eq('id', authUser.id)
+        .single();
+
+      const updateData: {
+        calendar_provider: string;
+        calendar_access_token: string;
+        calendar_refresh_token?: string;
+      } = {
+        calendar_provider: 'google',
+        calendar_access_token: tokens.access_token,
+      };
+
+      // refresh token이 있으면 업데이트, 없으면 기존 것 유지
+      if (tokens.refresh_token) {
+        updateData.calendar_refresh_token = tokens.refresh_token;
+      } else if (existingUserData?.calendar_refresh_token) {
+        // refresh token이 없지만 기존 refresh token이 있으면 유지
+        updateData.calendar_refresh_token = existingUserData.calendar_refresh_token;
+      }
+
       const { error: updateError } = await serviceClient
         .from('users')
-        .update({
-          calendar_provider: 'google',
-          calendar_access_token: tokens.access_token,
-          calendar_refresh_token: tokens.refresh_token,
-        })
+        .update(updateData)
         .eq('id', authUser.id);
 
       if (updateError) {

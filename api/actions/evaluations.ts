@@ -6,7 +6,23 @@ import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateUUID, validateRequired } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
-import { getJobProcessInfo, getNextStageId } from '@/utils/stage-utils';
+import { getJobProcessInfo, getNextStageId, getAvailableStages } from '@/utils/stage-utils';
+import { CustomStage } from '@/types/job';
+
+/**
+ * 사용 가능한 단계 목록 조회 (Server Action)
+ * @param jobPostId Job Post ID
+ * @param currentStageId 현재 단계 ID
+ */
+export async function getAvailableStagesAction(jobPostId: string, currentStageId: string) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    const stages = await getAvailableStages(jobPostId, currentStageId, isAdmin);
+    return stages;
+  });
+}
 
 /**
  * 전형별 평가 생성
@@ -447,5 +463,106 @@ export async function forceApproveStage(candidateId: string, currentStageId: str
 
     // 다음 전형으로 이동
     return approveStageEvaluation(candidateId, currentStageId);
+  });
+}
+
+/**
+ * 특정 단계로 이동
+ * @param candidateId 후보자 ID
+ * @param targetStageId 이동할 목표 단계 ID
+ */
+export async function moveToStage(candidateId: string, targetStageId: string) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자 또는 리크루터 권한 확인
+    if (!isAdmin && user.role !== 'recruiter') {
+      throw new Error('관리자 또는 리크루터만 전형을 이동할 수 있습니다.');
+    }
+
+    const candidate = await verifyCandidateAccess(candidateId);
+    
+    // job_post_id 확인
+    if (!candidate.job_post_id) {
+      throw new Error('후보자와 연결된 채용 공고를 찾을 수 없습니다.');
+    }
+
+    // 현재 단계 확인
+    if (!candidate.current_stage_id) {
+      throw new Error('현재 전형 정보를 찾을 수 없습니다.');
+    }
+
+    // 목표 단계가 현재 단계와 같으면 에러
+    if (candidate.current_stage_id === targetStageId) {
+      throw new Error('이미 해당 단계에 있습니다.');
+    }
+
+    // 관리자일 경우 Service Role Client를 일관되게 사용하여 RLS 정책 우회
+    // 리크루터는 일반 클라이언트 사용
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // 사용 가능한 단계 목록 조회
+    const availableStages = await getAvailableStages(
+      candidate.job_post_id,
+      candidate.current_stage_id,
+      isAdmin
+    );
+
+    // 목표 단계가 사용 가능한 단계 목록에 있는지 확인
+    const targetStage = availableStages.find(stage => stage.id === targetStageId);
+    if (!targetStage) {
+      throw new Error('이동할 수 없는 단계입니다.');
+    }
+
+    // Job의 커스텀 단계 정보 조회 (단계 이름을 찾기 위해)
+    const { customStages } = await getJobProcessInfo(candidate.job_post_id, isAdmin);
+
+    // 현재 단계 이름 찾기
+    let currentStageName: string;
+    if (customStages) {
+      const currentStage = customStages.find(s => s.id === candidate.current_stage_id);
+      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id;
+    } else {
+      currentStageName = STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id;
+    }
+
+    // 목표 단계 이름 찾기
+    const targetStageName = targetStage.name;
+
+    // 후보자 전형 업데이트
+    const { data, error } = await supabase
+      .from('candidates')
+      .update({
+        current_stage_id: targetStageId,
+        status: 'in_progress',
+      })
+      .eq('id', candidateId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`전형 이동 실패: ${error.message}`);
+    }
+
+    // 타임라인 이벤트 생성
+    await supabase.from('timeline_events').insert({
+      candidate_id: candidateId,
+      type: 'stage_changed',
+      content: {
+        message: `${user.role === 'admin' ? '관리자' : '리크루터'}에 의해 ${currentStageName}에서 ${targetStageName}로 이동했습니다.`,
+        from_stage: currentStageName,
+        to_stage: targetStageName,
+        stage_id: targetStageId,
+        manually_moved: true,
+      },
+      created_by: user.userId,
+    });
+
+    // 캐시 무효화
+    revalidatePath('/dashboard/candidates');
+    revalidatePath(`/dashboard/candidates/${candidateId}`);
+
+    return data;
   });
 }

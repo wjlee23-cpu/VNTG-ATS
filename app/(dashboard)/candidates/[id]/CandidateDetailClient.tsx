@@ -6,10 +6,11 @@ import {
   X, Mail, Phone, MapPin, Star, FileText, Download, Calendar, 
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
-  CheckCircle2, Settings
+  CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScheduleInterviewAutomatedModal } from '@/components/candidates/ScheduleInterviewAutomatedModal';
 import { EmailModal } from '@/components/candidates/EmailModal';
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
@@ -19,7 +20,7 @@ import { getStageEvaluations } from '@/api/queries/evaluations';
 import { getResumeFilesByCandidate } from '@/api/queries/resume-files';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { getUserProfile } from '@/api/queries/auth';
-import { skipStage } from '@/api/actions/evaluations';
+import { skipStage, moveToStage, getAvailableStagesAction } from '@/api/actions/evaluations';
 import { toast } from 'sonner';
 
 interface Candidate {
@@ -136,6 +137,9 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [showCompensation, setShowCompensation] = useState(false);
+  const [isStagePopoverOpen, setIsStagePopoverOpen] = useState(false);
+  const [availableStages, setAvailableStages] = useState<Array<{ id: string; name: string; order: number; isCurrent: boolean }>>([]);
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
 
   // 평가 데이터 및 파일 로드
   useEffect(() => {
@@ -629,30 +633,74 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   // Schedule Interview 버튼 표시 조건 (1차 면접 또는 2차 면접 단계에서만)
   const canScheduleInterview = candidate.current_stage_id === 'stage-6' || candidate.current_stage_id === 'stage-8';
 
-  // 다음 전형으로 이동 핸들러
+  // 전형 이동 관련 상태
   const [isMovingStage, setIsMovingStage] = useState(false);
-  const handleMoveToNextStage = async () => {
+
+  // Popover 열릴 때 사용 가능한 단계 목록 로드
+  const loadAvailableStages = async () => {
+    if (!candidate.job_posts?.id || !candidate.current_stage_id) {
+      return;
+    }
+
+    setIsLoadingStages(true);
+    try {
+      const result = await getAvailableStagesAction(candidate.job_posts.id, candidate.current_stage_id);
+      if (result.error) {
+        toast.error('단계 목록을 불러오는데 실패했습니다.');
+      } else {
+        setAvailableStages(result.data || []);
+      }
+    } catch (error) {
+      console.error('Load available stages error:', error);
+      toast.error('단계 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoadingStages(false);
+    }
+  };
+
+  // Popover 열림/닫힘 핸들러
+  const handlePopoverOpenChange = (open: boolean) => {
+    setIsStagePopoverOpen(open);
+    if (open) {
+      loadAvailableStages();
+    }
+  };
+
+  // 특정 단계로 이동 핸들러
+  const handleMoveToStage = async (targetStageId: string) => {
     if (!candidate.current_stage_id) {
       toast.error('현재 전형 정보를 찾을 수 없습니다.');
       return;
     }
 
-    if (!confirm('다음 전형으로 이동하시겠습니까?')) {
+    if (candidate.current_stage_id === targetStageId) {
+      toast.error('이미 해당 단계에 있습니다.');
+      return;
+    }
+
+    const targetStage = availableStages.find(s => s.id === targetStageId);
+    if (!targetStage) {
+      toast.error('이동할 수 없는 단계입니다.');
+      return;
+    }
+
+    if (!confirm(`${targetStage.name}로 이동하시겠습니까?`)) {
       return;
     }
 
     setIsMovingStage(true);
+    setIsStagePopoverOpen(false);
     try {
-      const result = await skipStage(candidate.id, candidate.current_stage_id);
+      const result = await moveToStage(candidate.id, targetStageId);
       if (result.error) {
         toast.error(result.error);
       } else {
-        toast.success('다음 전형으로 이동했습니다.');
+        toast.success(`${targetStage.name}로 이동했습니다.`);
         router.refresh();
       }
     } catch (error) {
       toast.error('전형 이동 중 오류가 발생했습니다.');
-      console.error('Move to next stage error:', error);
+      console.error('Move to stage error:', error);
     } finally {
       setIsMovingStage(false);
     }
@@ -718,18 +766,85 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
               Email
             </Button>
           )}
-          {/* 다음 전형으로 이동 버튼: 관리자/리크루터만 표시 */}
+          {/* 전형 이동 버튼: 관리자/리크루터만 표시 */}
           {canManageCandidate && (
-            <Button
-              onClick={handleMoveToNextStage}
-              variant="outline"
-              className="border-green-300 text-green-700 hover:bg-green-50"
-              size="default"
-              disabled={isMovingStage}
-            >
-              <ArrowRight className="w-4 h-4 mr-2" />
-              {isMovingStage ? '이동 중...' : '다음 전형으로 이동'}
-            </Button>
+            <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="border-green-300 text-green-700 hover:bg-green-50"
+                  size="default"
+                  disabled={isMovingStage || !candidate.current_stage_id}
+                >
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                  {isMovingStage ? '이동 중...' : '전형 이동'}
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <div className="p-2">
+                  <div className="px-3 py-2 text-sm font-semibold text-gray-700 border-b">
+                    전형 단계 선택
+                  </div>
+                  {isLoadingStages ? (
+                    <div className="p-4 text-center text-sm text-gray-500">
+                      로딩 중...
+                    </div>
+                  ) : availableStages.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-gray-500">
+                      사용 가능한 단계가 없습니다.
+                    </div>
+                  ) : (
+                    <div className="max-h-64 overflow-y-auto">
+                      {availableStages.map((stage) => {
+                        const isCurrent = stage.isCurrent;
+                        const currentIndex = availableStages.findIndex(s => s.isCurrent);
+                        const stageIndex = availableStages.findIndex(s => s.id === stage.id);
+                        const isForward = stageIndex > currentIndex;
+                        const isBackward = stageIndex < currentIndex;
+
+                        return (
+                          <button
+                            key={stage.id}
+                            onClick={() => !isCurrent && handleMoveToStage(stage.id)}
+                            disabled={isCurrent}
+                            className={`
+                              w-full px-3 py-2.5 text-left text-sm transition-colors
+                              flex items-center justify-between
+                              ${isCurrent
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'hover:bg-green-50 text-gray-700 cursor-pointer'
+                              }
+                              ${!isCurrent && 'border-b border-gray-100 last:border-b-0'}
+                            `}
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {isBackward && (
+                                <ArrowUp className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                              )}
+                              {isForward && (
+                                <ArrowDown className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                              )}
+                              {!isBackward && !isForward && (
+                                <div className="w-3.5 h-3.5 flex-shrink-0" />
+                              )}
+                              <span className={isCurrent ? 'font-medium' : ''}>
+                                {stage.name}
+                              </span>
+                            </div>
+                            {isCurrent && (
+                              <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                                (현재)
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
         </div>
 

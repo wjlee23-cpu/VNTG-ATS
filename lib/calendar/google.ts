@@ -114,9 +114,9 @@ export function getGoogleAuthUrl(): string {
   ]
 
   return oauth2Client.generateAuthUrl({
-    access_type: 'offline',
+    access_type: 'offline', // refresh token 받기 위해 필수
     scope: scopes,
-    prompt: 'consent',
+    prompt: 'consent', // 캘린더 연동 시 항상 동의 화면 표시하여 refresh token 확실히 받기
   })
 }
 
@@ -152,15 +152,40 @@ export async function refreshAccessTokenIfNeeded(
     }
     return credentials.access_token
   } catch (error: any) {
-    console.error('Error refreshing access token:', error)
+    // 자세한 에러 로깅
+    console.error('Error refreshing access token:', {
+      message: error?.message,
+      code: error?.code,
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      data: error?.response?.data,
+      stack: error?.stack,
+    })
     
-    // 인증 관련 에러인지 확인
-    if (error?.code === 401 || error?.message?.includes('invalid_grant') || error?.message?.includes('invalid authentication')) {
-      throw new Error('구글 캘린더 인증이 만료되었습니다. 구글 캘린더를 재연동해주세요.')
+    // invalid_grant 에러: refresh token이 만료되었거나 사용자가 권한을 취소한 경우
+    if (error?.message?.includes('invalid_grant') || error?.code === 'invalid_grant') {
+      console.error('Refresh token이 유효하지 않습니다. 재연동이 필요합니다.')
+      throw new Error(
+        '구글 캘린더 인증이 만료되었거나 권한이 취소되었습니다. ' +
+        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
+      )
+    }
+    
+    // 인증 관련 에러 (401, invalid authentication 등)
+    if (error?.code === 401 || error?.message?.includes('invalid authentication')) {
+      console.error('인증 토큰이 유효하지 않습니다. 재연동이 필요합니다.')
+      throw new Error(
+        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
+        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
+      )
     }
     
     // 다른 에러도 명확하게 전달
-    throw new Error(`토큰 갱신 실패: ${error?.message || '알 수 없는 오류'}. 구글 캘린더를 재연동해주세요.`)
+    console.error('알 수 없는 토큰 갱신 에러:', error)
+    throw new Error(
+      `토큰 갱신 실패: ${error?.message || '알 수 없는 오류'}. ` +
+      '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
+    )
   }
 }
 

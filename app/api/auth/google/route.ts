@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 /**
  * 구글 로그인 시작점 (모든 권한 포함)
@@ -26,14 +27,49 @@ export async function GET(request: Request) {
       'https://www.googleapis.com/auth/userinfo.profile', // 프로필 정보
     ];
 
+    // 사용자가 이미 로그인되어 있고 캘린더를 연동했는지 확인
+    let usePromptConsent = true; // 기본값: 항상 동의 화면 표시
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // 사용자가 이미 로그인되어 있으면 연동 상태 확인
+        const serviceClient = createServiceClient();
+        const { data: userData } = await serviceClient
+          .from('users')
+          .select('calendar_provider, calendar_refresh_token')
+          .eq('id', user.id)
+          .single();
+
+        // 이미 연동되어 있고 refresh token이 있으면 prompt: 'consent' 제거
+        if (userData?.calendar_provider === 'google' && userData?.calendar_refresh_token) {
+          usePromptConsent = false;
+        }
+      }
+    } catch (error) {
+      // 사용자 확인 실패 시 기본값 사용 (항상 동의 화면 표시)
+      console.log('사용자 연동 상태 확인 실패, 기본값 사용:', error);
+    }
+
     // OAuth URL 생성
-    const authUrl = oauth2Client.generateAuthUrl({
+    const authUrlOptions: {
+      access_type: string;
+      scope: string[];
+      prompt?: string;
+      state: string;
+    } = {
       access_type: 'offline', // refresh token 받기 위해 필수
       scope: scopes,
-      prompt: 'consent', // 매번 동의 화면 표시 (처음 권한 받기 위해)
-      // next 파라미터를 state에 포함하여 콜백에서 사용
       state: encodeURIComponent(JSON.stringify({ next, type: 'login' })),
-    });
+    };
+
+    // 사용자가 이미 연동되어 있으면 prompt 제거, 아니면 prompt: 'consent' 사용
+    if (usePromptConsent) {
+      authUrlOptions.prompt = 'consent';
+    }
+
+    const authUrl = oauth2Client.generateAuthUrl(authUrlOptions);
 
     return NextResponse.redirect(authUrl);
   } catch (error: any) {

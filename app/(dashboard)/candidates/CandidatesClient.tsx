@@ -330,7 +330,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 >
                   {stage.label}
                   {count > 0 && (
-                    <span className={`ml-2 ${isSelected ? 'text-primary/80' : 'text-muted-foreground'}`}>
+                    <span className={`ml-2 ${isSelected ? 'text-white' : 'text-muted-foreground'}`}>
                       ({count})
                     </span>
                   )}
