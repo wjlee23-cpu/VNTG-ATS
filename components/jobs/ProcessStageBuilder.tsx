@@ -22,10 +22,9 @@ import { GripVertical, Plus, X, User } from 'lucide-react';
 import { CustomStage, BaseStage } from '@/types/job';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 
-// 8개의 기본 단계 정의
+// 7개의 기본 단계 정의 (HR Screening 제거됨)
 const BASE_STAGES: BaseStage[] = [
   { id: 'stage-1', name: 'New Application' },
-  { id: 'stage-2', name: 'HR Screening' },
   { id: 'stage-3', name: 'Application Review' },
   { id: 'stage-4', name: 'Competency Assessment' },
   { id: 'stage-5', name: 'Technical Test' },

@@ -2,7 +2,7 @@
  * 프로세스 단계 관련 유틸리티 함수
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { CustomStage } from '@/types/job';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 
@@ -85,26 +85,63 @@ export function getNextStageId(
 /**
  * Job의 커스텀 단계 정보 조회
  * @param jobPostId Job Post ID
+ * @param isAdmin 관리자 여부 (선택, 기본값: false)
  * @returns { customStages }
  */
-export async function getJobProcessInfo(jobPostId: string) {
-  const supabase = await createClient();
+export async function getJobProcessInfo(jobPostId: string, isAdmin: boolean = false) {
+  // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+  const supabase = isAdmin ? createServiceClient() : await createClient();
   
-  const { data: job, error } = await supabase
-    .from('job_posts')
-    .select('custom_stages')
-    .eq('id', jobPostId)
-    .single();
-
-  if (error || !job) {
-    throw new Error('Job을 찾을 수 없습니다.');
+  if (!jobPostId) {
+    throw new Error('채용 공고 ID가 제공되지 않았습니다.');
   }
+  
+  try {
+    const { data: job, error } = await supabase
+      .from('job_posts')
+      .select('custom_stages')
+      .eq('id', jobPostId)
+      .single();
 
-  const customStages = job.custom_stages === null 
-    ? null 
-    : (Array.isArray(job.custom_stages) ? job.custom_stages as CustomStage[] : null);
+    if (error) {
+      // custom_stages 컬럼이 없는 경우 (컬럼이 존재하지 않음)
+      if (error.message?.includes('does not exist') || error.message?.includes('column') || error.message?.includes('custom_stages')) {
+        // custom_stages 컬럼이 없으면 null 반환 (기본 단계 사용)
+        return {
+          customStages: null,
+        };
+      }
+      
+      // RLS 정책 위반인 경우
+      if (error.code === 'PGRST116' || error.message?.includes('row-level security') || error.message?.includes('RLS')) {
+        throw new Error('채용 공고에 접근할 권한이 없습니다.');
+      }
+      // 데이터가 없는 경우
+      if (error.code === 'PGRST116' || error.message?.includes('No rows') || error.message?.includes('0 rows')) {
+        throw new Error(`ID가 ${jobPostId}인 채용 공고를 찾을 수 없습니다.`);
+      }
+      // 기타 에러
+      throw new Error(`채용 공고 조회 중 오류가 발생했습니다: ${error.message}`);
+    }
 
-  return {
-    customStages,
-  };
+    if (!job) {
+      throw new Error(`ID가 ${jobPostId}인 채용 공고를 찾을 수 없습니다.`);
+    }
+
+    const customStages = job.custom_stages === null 
+      ? null 
+      : (Array.isArray(job.custom_stages) ? job.custom_stages as CustomStage[] : null);
+
+    return {
+      customStages,
+    };
+  } catch (error) {
+    // custom_stages 컬럼이 없는 경우 fallback
+    if (error instanceof Error && (error.message.includes('does not exist') || error.message.includes('column') || error.message.includes('custom_stages'))) {
+      return {
+        customStages: null,
+      };
+    }
+    throw error;
+  }
 }

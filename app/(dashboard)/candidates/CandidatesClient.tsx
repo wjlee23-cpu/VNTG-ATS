@@ -175,7 +175,6 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     // 매핑되지 않은 경우, stageId가 이미 단계 이름인지 확인 (하위 호환성)
     const stageNames = [
       'New Application',
-      'HR Screening',
       'Application Review',
       'Competency Assessment',
       'Technical Test',

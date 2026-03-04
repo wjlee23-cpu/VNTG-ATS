@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateUUID, validateRequired } from '@/api/utils/validation';
@@ -170,8 +170,9 @@ export async function approveStageEvaluation(candidateId: string, currentStageId
       throw new Error('모든 평가가 합격 상태가 아닙니다.');
     }
 
-    // Job의 커스텀 단계 정보 조회
-    const { customStages } = await getJobProcessInfo(candidate.job_post_id);
+    // Job의 커스텀 단계 정보 조회 (관리자 여부 전달)
+    const isAdmin = user.role === 'admin';
+    const { customStages } = await getJobProcessInfo(candidate.job_post_id, isAdmin);
 
     // 다음 전형 찾기 (job의 custom_stages order 순서대로)
     const nextStageId = getNextStageId(currentStageId, customStages);
@@ -290,17 +291,50 @@ export async function rejectCandidate(candidateId: string, stageId: string, reas
 export async function skipStage(candidateId: string, currentStageId: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
     
-    // 관리자 권한 확인
-    if (user.role !== 'admin') {
-      throw new Error('관리자만 전형을 스킵할 수 있습니다.');
+    // 관리자 또는 리크루터 권한 확인
+    if (!isAdmin && user.role !== 'recruiter') {
+      throw new Error('관리자 또는 리크루터만 전형을 이동할 수 있습니다.');
     }
 
     const candidate = await verifyCandidateAccess(candidateId);
-    const supabase = await createClient();
+    
+    // job_post_id 확인
+    if (!candidate.job_post_id) {
+      throw new Error('후보자와 연결된 채용 공고를 찾을 수 없습니다.');
+    }
+
+    // 관리자일 경우 Service Role Client를 일관되게 사용하여 RLS 정책 우회
+    // 리크루터는 일반 클라이언트 사용
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
     // Job의 커스텀 단계 정보 조회
-    const { customStages } = await getJobProcessInfo(candidate.job_post_id);
+    // Service Role Client를 직접 사용하여 RLS 정책 우회
+    let customStages: CustomStage[] | null = null;
+    try {
+      const { data: job, error: jobError } = await supabase
+        .from('job_posts')
+        .select('custom_stages')
+        .eq('id', candidate.job_post_id)
+        .single();
+
+      if (jobError) {
+        // custom_stages 컬럼이 없는 경우 무시하고 null 사용
+        if (jobError.message?.includes('does not exist') || jobError.message?.includes('column') || jobError.message?.includes('custom_stages')) {
+          customStages = null;
+        } else {
+          throw new Error(`채용 공고 조회 중 오류: ${jobError.message}`);
+        }
+      } else if (job) {
+        customStages = job.custom_stages === null 
+          ? null 
+          : (Array.isArray(job.custom_stages) ? job.custom_stages as CustomStage[] : null);
+      }
+    } catch (error) {
+      // 에러가 발생해도 기본 단계 매핑을 사용하도록 null로 설정
+      customStages = null;
+    }
 
     // 다음 전형 찾기 (job의 custom_stages order 순서대로)
     const nextStageId = getNextStageId(currentStageId, customStages);
@@ -346,7 +380,7 @@ export async function skipStage(candidateId: string, currentStageId: string) {
       candidate_id: candidateId,
       type: 'stage_changed',
       content: {
-        message: `관리자에 의해 ${currentStageName}에서 ${nextStageName}로 스킵되었습니다.`,
+        message: `${user.role === 'admin' ? '관리자' : '리크루터'}에 의해 ${currentStageName}에서 ${nextStageName}로 이동했습니다.`,
         from_stage: currentStageName,
         to_stage: nextStageName,
         stage_id: nextStageId,

@@ -19,6 +19,8 @@ import { getStageEvaluations } from '@/api/queries/evaluations';
 import { getResumeFilesByCandidate } from '@/api/queries/resume-files';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { getUserProfile } from '@/api/queries/auth';
+import { skipStage } from '@/api/actions/evaluations';
+import { toast } from 'sonner';
 
 interface Candidate {
   id: string;
@@ -621,6 +623,41 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   // Compensation 권한 체크
   const canViewCompensation = ['admin', 'recruiter', 'hiring_manager'].includes(userRole);
 
+  // 관리자/리크루터 권한 체크
+  const canManageCandidate = userRole === 'admin' || userRole === 'recruiter';
+
+  // Schedule Interview 버튼 표시 조건 (1차 면접 또는 2차 면접 단계에서만)
+  const canScheduleInterview = candidate.current_stage_id === 'stage-6' || candidate.current_stage_id === 'stage-8';
+
+  // 다음 전형으로 이동 핸들러
+  const [isMovingStage, setIsMovingStage] = useState(false);
+  const handleMoveToNextStage = async () => {
+    if (!candidate.current_stage_id) {
+      toast.error('현재 전형 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    if (!confirm('다음 전형으로 이동하시겠습니까?')) {
+      return;
+    }
+
+    setIsMovingStage(true);
+    try {
+      const result = await skipStage(candidate.id, candidate.current_stage_id);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('다음 전형으로 이동했습니다.');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('전형 이동 중 오류가 발생했습니다.');
+      console.error('Move to next stage error:', error);
+    } finally {
+      setIsMovingStage(false);
+    }
+  };
+
   // 문서 열기 핸들러
   const handleDocumentClick = (file: ResumeFile) => {
     setSelectedDocument(file);
@@ -658,23 +695,42 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3 mb-6 flex-wrap">
-          <Button
-            onClick={() => setIsScheduleModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            size="default"
-          >
-            <Calendar className="w-4 h-4 mr-2" />
-            Schedule Interview
-          </Button>
-          <Button
-            onClick={() => setIsEmailModalOpen(true)}
-            variant="outline"
-            className="border-gray-300 bg-white"
-            size="default"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Email
-          </Button>
+          {/* Schedule Interview 버튼: 관리자/리크루터만, 1차/2차 면접 단계에서만 표시 */}
+          {canManageCandidate && canScheduleInterview && (
+            <Button
+              onClick={() => setIsScheduleModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              size="default"
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              Schedule Interview
+            </Button>
+          )}
+          {/* Email 버튼: 관리자/리크루터만 표시 */}
+          {canManageCandidate && (
+            <Button
+              onClick={() => setIsEmailModalOpen(true)}
+              variant="outline"
+              className="border-gray-300 bg-white"
+              size="default"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Email
+            </Button>
+          )}
+          {/* 다음 전형으로 이동 버튼: 관리자/리크루터만 표시 */}
+          {canManageCandidate && (
+            <Button
+              onClick={handleMoveToNextStage}
+              variant="outline"
+              className="border-green-300 text-green-700 hover:bg-green-50"
+              size="default"
+              disabled={isMovingStage}
+            >
+              <ArrowRight className="w-4 h-4 mr-2" />
+              {isMovingStage ? '이동 중...' : '다음 전형으로 이동'}
+            </Button>
+          )}
         </div>
 
         {/* Match Score - 파란색 배경 카드 */}

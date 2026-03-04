@@ -5,7 +5,6 @@
 export const RECRUITMENT_STAGES = [
   { id: 'all', name: 'All Stages', label: 'All Stages' },
   { id: 'new_application', name: 'New Application', label: 'New Application' },
-  { id: 'hr_screening', name: 'HR Screening', label: 'HR Screening' },
   { id: 'application_review', name: 'Application Review', label: 'Application Review' },
   { id: 'competency_assessment', name: 'Competency Assessment', label: 'Competency Assessment' },
   { id: 'technical_test', name: 'Technical Test', label: 'Technical Test' },
@@ -41,7 +40,6 @@ export function getStageNameById(id: string): string | null {
  */
 export const STAGE_ID_TO_NAME_MAP: Record<string, string> = {
   'stage-1': 'New Application',
-  'stage-2': 'HR Screening',
   'stage-3': 'Application Review',
   'stage-4': 'Competency Assessment',
   'stage-5': 'Technical Test',
@@ -52,8 +50,8 @@ export const STAGE_ID_TO_NAME_MAP: Record<string, string> = {
 
 /**
  * Process Stage ID를 단계 이름으로 변환
- * @param stageId process의 stage ID (예: "stage-1", "stage-2")
- * @returns 단계 이름 (예: "New Application", "HR Screening") 또는 null
+ * @param stageId process의 stage ID (예: "stage-1", "stage-3")
+ * @returns 단계 이름 (예: "New Application", "Application Review") 또는 null
  */
 export function getStageNameByStageId(stageId: string | null): string | null {
   if (!stageId) {
