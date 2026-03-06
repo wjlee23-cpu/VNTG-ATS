@@ -959,28 +959,6 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
               Email
             </Button>
           )}
-          {/* 이메일 동기화 버튼: 관리자/리크루터만 표시 */}
-          {canManageCandidate && (
-            <Button
-              onClick={handleSyncEmails}
-              variant="outline"
-              className="border-blue-300 bg-white hover:bg-blue-50"
-              size="default"
-              disabled={isSyncingEmails}
-            >
-              {isSyncingEmails ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  동기화 중...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  이메일 동기화
-                </>
-              )}
-            </Button>
-          )}
           {/* 전형 이동 버튼: 관리자/리크루터만 표시 */}
           {canManageCandidate && (
             <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
@@ -1246,7 +1224,26 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         {/* Activity Timeline */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity Timeline</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity Timeline</h2>
+                  {/* 이메일 동기화 버튼: 관리자/리크루터만 표시 (아이콘만) */}
+                  {canManageCandidate && (
+                    <Button
+                      onClick={handleSyncEmails}
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-blue-50"
+                      disabled={isSyncingEmails}
+                      title="이메일 동기화"
+                    >
+                      {isSyncingEmails ? (
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 text-blue-600" />
+                      )}
+                    </Button>
+                  )}
+                </div>
                 {currentStageId && (
                   <Button
                     onClick={() => setIsEvaluationModalOpen(true)}
