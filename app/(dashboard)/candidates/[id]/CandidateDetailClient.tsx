@@ -6,11 +6,16 @@ import {
   X, Mail, Phone, MapPin, Star, FileText, Download, Calendar, 
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
-  CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown, RefreshCw
+  CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown, RefreshCw,
+  ArrowUpRight, ArrowDownLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { ScheduleInterviewAutomatedModal } from '@/components/candidates/ScheduleInterviewAutomatedModal';
 import { EmailModal } from '@/components/candidates/EmailModal';
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
@@ -223,26 +228,26 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     switch (type) {
       case 'scorecard':
       case 'scorecard_created':
-        return <StarIcon className="w-5 h-5 text-primary" />;
+        return <StarIcon className="w-5 h-5 text-yellow-600" />;
       case 'email':
       case 'email_received':
-        return <Mail className="w-5 h-5 text-primary" />;
+        return <Mail className="w-5 h-5 text-blue-600" />;
       case 'comment':
       case 'comment_created':
       case 'comment_updated':
-        return <FileText className="w-5 h-5 text-primary" />;
+        return <FileText className="w-5 h-5 text-slate-600" />;
       case 'stage_changed':
-        return <ArrowRightCircle className="w-5 h-5 text-accent" />;
+        return <ArrowRightCircle className="w-5 h-5 text-purple-600" />;
       case 'schedule_created':
       case 'schedule_confirmed':
       case 'schedule_regenerated':
-        return <Calendar className="w-5 h-5 text-primary" />;
+        return <Calendar className="w-5 h-5 text-green-600" />;
       case 'interviewer_response':
         return <CheckCircle2 className="w-5 h-5 text-green-500" />;
       case 'position_changed':
-        return <ArrowRightCircle className="w-5 h-5 text-blue-500" />;
+        return <ArrowRightCircle className="w-5 h-5 text-indigo-600" />;
       case 'archive':
-        return <Archive className="w-5 h-5 text-accent" />;
+        return <Archive className="w-5 h-5 text-orange-600" />;
       case 'stage_evaluation':
         return <StarIcon className="w-5 h-5 text-yellow-500" />;
       default:
@@ -254,30 +259,94 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     switch (type) {
       case 'scorecard':
       case 'scorecard_created':
-        return 'text-primary';
+        return 'text-yellow-600';
       case 'email':
       case 'email_received':
-        return 'text-primary';
+        return 'text-blue-600';
       case 'comment':
       case 'comment_created':
       case 'comment_updated':
-        return 'text-primary';
+        return 'text-slate-600';
       case 'stage_changed':
-        return 'text-accent';
+        return 'text-purple-600';
       case 'schedule_created':
       case 'schedule_confirmed':
       case 'schedule_regenerated':
-        return 'text-primary';
+        return 'text-green-600';
       case 'interviewer_response':
         return 'text-green-600';
       case 'position_changed':
-        return 'text-blue-600';
+        return 'text-indigo-600';
       case 'archive':
-        return 'text-accent';
+        return 'text-orange-600';
       case 'stage_evaluation':
         return 'text-yellow-600';
       default:
         return 'text-muted-foreground';
+    }
+  };
+
+  // 타임라인 이벤트 아이콘 배경색
+  const getTimelineEventIconBg = (type: string) => {
+    switch (type) {
+      case 'scorecard':
+      case 'scorecard_created':
+        return 'bg-yellow-50 border-yellow-200';
+      case 'email':
+      case 'email_received':
+        return 'bg-blue-50 border-blue-200';
+      case 'comment':
+      case 'comment_created':
+      case 'comment_updated':
+        return 'bg-slate-50 border-slate-200';
+      case 'stage_changed':
+        return 'bg-purple-50 border-purple-200';
+      case 'schedule_created':
+      case 'schedule_confirmed':
+      case 'schedule_regenerated':
+        return 'bg-green-50 border-green-200';
+      case 'interviewer_response':
+        return 'bg-green-50 border-green-200';
+      case 'position_changed':
+        return 'bg-indigo-50 border-indigo-200';
+      case 'archive':
+        return 'bg-orange-50 border-orange-200';
+      case 'stage_evaluation':
+        return 'bg-yellow-50 border-yellow-200';
+      default:
+        return 'bg-card border-border';
+    }
+  };
+
+  // 타임라인 이벤트 카드 배경색 및 테두리 색상
+  const getTimelineEventCardBg = (type: string) => {
+    switch (type) {
+      case 'scorecard':
+      case 'scorecard_created':
+        return 'bg-yellow-50/30 border-yellow-200/50';
+      case 'email':
+      case 'email_received':
+        return 'bg-blue-50/30 border-blue-200/50';
+      case 'comment':
+      case 'comment_created':
+      case 'comment_updated':
+        return 'bg-slate-50/30 border-slate-200/50';
+      case 'stage_changed':
+        return 'bg-purple-50/30 border-purple-200/50';
+      case 'schedule_created':
+      case 'schedule_confirmed':
+      case 'schedule_regenerated':
+        return 'bg-green-50/30 border-green-200/50';
+      case 'interviewer_response':
+        return 'bg-green-50/30 border-green-200/50';
+      case 'position_changed':
+        return 'bg-indigo-50/30 border-indigo-200/50';
+      case 'archive':
+        return 'bg-orange-50/30 border-orange-200/50';
+      case 'stage_evaluation':
+        return 'bg-yellow-50/30 border-yellow-200/50';
+      default:
+        return 'bg-card border-border';
     }
   };
 
@@ -359,12 +428,43 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     return decoded.replace(/\s+/g, ' ').trim();
   };
 
-  // 이메일 내용 포맷팅 (HTML 처리 및 줄바꿈 처리)
-  const formatEmailBody = (body: string | undefined | null): string => {
+  // 이메일 본문을 읽기 쉽게 포맷팅 (인용문, 줄바꿈 처리)
+  const formatEmailBodyForDisplay = (body: string | undefined | null): string => {
     if (!body) return '';
-    const text = stripHtml(body);
-    // 줄바꿈을 유지하면서 표시
-    return text.replace(/\n/g, '\n');
+    
+    // HTML 태그 제거
+    let text = body.replace(/<[^>]*>/g, '');
+    
+    // HTML 엔티티 디코딩
+    text = text
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<p[^>]*>/gi, '');
+    
+    // 인용문 처리 (> 기호로 시작하는 줄)
+    const lines = text.split('\n');
+    const formattedLines = lines.map(line => {
+      const trimmed = line.trim();
+      // 인용문이면 그대로 유지 (나중에 스타일링)
+      if (trimmed.startsWith('>')) {
+        return trimmed;
+      }
+      return trimmed;
+    });
+    
+    return formattedLines.join('\n').trim();
+  };
+
+  // 이메일 내용 포맷팅 (HTML 처리 및 줄바꿈 처리) - 기존 호환성 유지
+  const formatEmailBody = (body: string | undefined | null): string => {
+    return formatEmailBodyForDisplay(body);
   };
 
   // 이메일 본문이 긴지 확인 (200자 이상)
@@ -380,8 +480,8 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       case 'scorecard':
         const rating = event.content?.overall_rating || event.content?.rating;
         return (
-          <div className="space-y-2">
-            <p className="text-sm text-gray-700">{event.content?.notes || event.content?.message || '평가가 작성되었습니다.'}</p>
+          <div className="space-y-3">
+            <p className="text-sm text-foreground">{event.content?.notes || event.content?.message || '평가가 작성되었습니다.'}</p>
             {rating && renderStars(rating)}
           </div>
         );
@@ -393,10 +493,15 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         const isLong = isLongEmail(event.content?.body);
         const isExpanded = expandedEmails.has(event.id);
         
-        // 긴 이메일의 경우 처음 200자만 표시
-        const truncatedBody = isLong && !isExpanded 
-          ? emailBody.substring(0, 200) + '...' 
-          : emailBody;
+        // 이메일 본문을 줄 단위로 분리
+        const emailBodyLines = emailBody.split('\n');
+        
+        // 긴 이메일의 경우 처음 10줄만 표시 (또는 전체)
+        const maxLines = 10;
+        const displayLines = isLong && !isExpanded 
+          ? emailBodyLines.slice(0, maxLines)
+          : emailBodyLines;
+        const hasMoreLines = emailBodyLines.length > maxLines;
         
         const toggleEmailExpansion = () => {
           setExpandedEmails(prev => {
@@ -412,53 +517,95 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         
         return (
           <div className="space-y-3">
-            {/* 방향 배지 및 제목 */}
-            <div className="flex items-start gap-2">
-              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                emailDirection === 'outbound' 
-                  ? 'bg-blue-100 text-blue-800' 
-                  : 'bg-green-100 text-green-800'
-              }`}>
-                {emailDirection === 'outbound' ? '📤 발신' : '📥 수신'}
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-900">{emailSubject}</p>
+            {/* 이메일 헤더 - 제목과 방향 배지 */}
+            <div className="flex items-start gap-3 pb-3 border-b border-border/50">
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-semibold text-foreground break-words mb-1">{emailSubject}</h4>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <Badge 
+                    variant={emailDirection === 'outbound' ? 'default' : 'secondary'}
+                    className="text-xs flex items-center gap-1"
+                  >
+                    {emailDirection === 'outbound' ? (
+                      <ArrowUpRight className="w-3 h-3" />
+                    ) : (
+                      <ArrowDownLeft className="w-3 h-3" />
+                    )}
+                    {emailDirection === 'outbound' ? '발신' : '수신'}
+                  </Badge>
+                  {(event.content?.from_email || event.content?.to_email) && (
+                    <span className="text-xs text-muted-foreground">
+                      {emailDirection === 'outbound' 
+                        ? `To: ${event.content?.to_email || ''}`
+                        : `From: ${event.content?.from_email || ''}`
+                      }
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             
             {/* 이메일 본문 */}
             {emailBody && (
-              <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{truncatedBody}</p>
+              <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
+                <div className="space-y-1.5 text-sm text-foreground leading-relaxed">
+                  {displayLines.map((line, index) => {
+                    const trimmed = line.trim();
+                    const isEmpty = trimmed === '';
+                    const isQuote = trimmed.startsWith('>');
+                    
+                    // 빈 줄 처리
+                    if (isEmpty) {
+                      return <div key={index} className="h-2" />;
+                    }
+                    
+                    // 인용문 처리
+                    if (isQuote) {
+                      // 여러 개의 > 기호 처리 (중첩 인용문)
+                      const quoteLevel = trimmed.match(/^>+/)?.[0].length || 1;
+                      const quoteText = trimmed.substring(quoteLevel).trim();
+                      return (
+                        <div 
+                          key={index} 
+                          className={`pl-4 border-l-2 border-muted-foreground/30 text-muted-foreground italic ${
+                            quoteLevel > 1 ? 'ml-2' : ''
+                          }`}
+                        >
+                          {quoteText || '\u00A0'}
+                        </div>
+                      );
+                    }
+                    
+                    // 일반 텍스트
+                    return (
+                      <div key={index} className="break-words">
+                        {trimmed}
+                      </div>
+                    );
+                  })}
+                  {hasMoreLines && !isExpanded && (
+                    <div className="pt-2 text-xs text-muted-foreground italic">
+                      ... {emailBodyLines.length - maxLines}줄 더 있음
+                    </div>
+                  )}
+                </div>
                 {isLong && (
                   <button
                     onClick={toggleEmailExpansion}
-                    className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                    className="mt-3 text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1.5 transition-colors duration-200"
                   >
                     {isExpanded ? (
                       <>
-                        <ArrowUp className="w-3 h-3" />
+                        <ArrowUp className="w-3.5 h-3.5" />
                         접기
                       </>
                     ) : (
                       <>
-                        <ArrowDown className="w-3 h-3" />
-                        더 보기
+                        <ArrowDown className="w-3.5 h-3.5" />
+                        전체 내용 보기
                       </>
                     )}
                   </button>
-                )}
-              </div>
-            )}
-            
-            {/* 이메일 메타데이터 */}
-            {(event.content?.from_email || event.content?.to_email) && (
-              <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600 space-y-1 border border-gray-100">
-                {event.content?.from_email && (
-                  <p><span className="font-medium">From:</span> {event.content.from_email}</p>
-                )}
-                {event.content?.to_email && (
-                  <p><span className="font-medium">To:</span> {event.content.to_email}</p>
                 )}
               </div>
             )}
@@ -466,27 +613,28 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         );
       case 'comment':
         return (
-          <div className="p-3 bg-green-50 rounded-lg">
-            <p className="text-sm text-gray-700">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
+          <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
+            <p className="text-sm text-foreground">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
           </div>
         );
       case 'stage_changed':
         return (
-          <div className="space-y-2">
-            <p className="text-sm text-gray-700">
+          <div className="space-y-3">
+            <p className="text-sm text-foreground">
               {event.content?.from_stage || '이전 단계'} → {event.content?.to_stage || event.content?.message || '다음 단계'}
             </p>
             {(event.content?.from_stage || event.content?.to_stage) && (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {event.content?.from_stage && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                  <Badge variant="outline" className="text-xs">
                     {event.content.from_stage}
-                  </span>
+                  </Badge>
                 )}
+                <ArrowRight className="w-4 h-4 text-muted-foreground" />
                 {event.content?.to_stage && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                  <Badge variant="default" className="text-xs">
                     {event.content.to_stage}
-                  </span>
+                  </Badge>
                 )}
               </div>
             )}
@@ -494,27 +642,30 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         );
       case 'archive':
         return (
-          <div className="space-y-1">
-            <p className="text-sm text-gray-700">{event.content?.message || '후보자가 아카이브되었습니다.'}</p>
+          <div className="space-y-2">
+            <p className="text-sm text-foreground">{event.content?.message || '후보자가 아카이브되었습니다.'}</p>
             {event.content?.archive_reason && (
-              <p className="text-xs text-gray-500">사유: {event.content.archive_reason}</p>
+              <p className="text-xs text-muted-foreground">사유: {event.content.archive_reason}</p>
             )}
           </div>
         );
       case 'stage_evaluation':
         const stageName = event.content?.stage_name || STAGE_ID_TO_NAME_MAP[event.content?.stage_id || ''] || '전형 평가';
         return (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-900">{stageName} 평가</p>
-            <p className="text-sm text-gray-700">{event.content?.notes || event.content?.message || '평가가 완료되었습니다.'}</p>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-foreground">{stageName} 평가</p>
+            <p className="text-sm text-foreground">{event.content?.notes || event.content?.message || '평가가 완료되었습니다.'}</p>
             {event.content?.result && (
-              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                event.content.result === 'pass' ? 'bg-green-100 text-green-800' :
-                event.content.result === 'fail' ? 'bg-red-100 text-red-800' :
-                'bg-yellow-100 text-yellow-800'
-              }`}>
+              <Badge 
+                variant={
+                  event.content.result === 'pass' ? 'default' :
+                  event.content.result === 'fail' ? 'destructive' :
+                  'secondary'
+                }
+                className="text-xs"
+              >
                 {event.content.result === 'pass' ? '합격' : event.content.result === 'fail' ? '불합격' : '대기중'}
-              </span>
+              </Badge>
             )}
             {event.content?.rating && renderStars(event.content.rating)}
           </div>
@@ -531,13 +682,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             
             {/* 일정 옵션 목록 */}
             {scheduleOptions && scheduleOptions.length > 0 && (
-              <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                <p className="text-xs font-medium text-blue-900 mb-2">생성된 일정 옵션 ({scheduleOptions.length}개):</p>
-                <div className="space-y-1">
+              <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                <p className="text-xs font-medium text-foreground mb-2">생성된 일정 옵션 ({scheduleOptions.length}개):</p>
+                <div className="space-y-2">
                   {scheduleOptions.map((option, index) => {
                     const date = new Date(option.scheduled_at);
                     return (
-                      <div key={option.id || index} className="text-xs text-blue-800">
+                      <div key={option.id || index} className="text-xs text-foreground p-2 bg-card rounded border border-border">
                         <span className="font-medium">옵션 {index + 1}:</span>{' '}
                         {date.toLocaleDateString('ko-KR', {
                           year: 'numeric',
@@ -558,12 +709,12 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             
             {/* 재시도 정보 */}
             {retryCount !== undefined && retryCount > 0 && (
-              <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-100">
-                <p className="text-xs text-yellow-800">
+              <div className="mt-2 p-3 bg-yellow-50/50 rounded-lg border border-yellow-200/50">
+                <p className="text-xs text-foreground">
                   <span className="font-medium">날짜 범위 확장:</span> 원본 날짜 범위에 일정이 없어 {retryCount}회 날짜 범위를 확장하여 검색했습니다.
                 </p>
                 {originalDateRange && (
-                  <p className="text-xs text-yellow-700 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     원본 날짜 범위: {new Date(originalDateRange.start).toLocaleDateString('ko-KR')} ~ {new Date(originalDateRange.end).toLocaleDateString('ko-KR')}
                   </p>
                 )}
@@ -576,7 +727,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 onClick={() => router.push(`/schedules?candidate=${candidate.id}`)}
                 variant="outline"
                 size="sm"
-                className="border-gray-300 bg-white hover:bg-gray-50"
+                className="border-border bg-card hover:bg-accent transition-all duration-200"
               >
                 <Settings className="w-4 h-4 mr-2" />
                 일정 조율 관리로 이동
@@ -594,24 +745,31 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           <div className="space-y-2">
             <p className="text-sm text-gray-700">{event.content?.message || '면접관이 일정에 응답했습니다.'}</p>
             {allAccepted ? (
-              <div className="mt-2 p-2 bg-green-50 rounded border border-green-100">
-                <p className="text-xs text-green-800 font-medium">모든 면접관이 수락했습니다.</p>
+              <div className="mt-2 p-3 bg-green-50/50 rounded-lg border border-green-200/50">
+                <p className="text-xs text-foreground font-medium">모든 면접관이 수락했습니다.</p>
                 {optionScheduledAt && (
-                  <p className="text-xs text-green-700 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     일정: {new Date(optionScheduledAt).toLocaleString('ko-KR')}
                   </p>
                 )}
               </div>
             ) : interviewerEmail && response && (
-              <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100">
-                <p className="text-xs text-gray-700">
+              <div className="mt-2 p-3 bg-muted/50 rounded-lg border border-border">
+                <p className="text-xs text-foreground">
                   <span className="font-medium">{interviewerEmail}</span>님이{' '}
-                  <span className={response === 'accepted' ? 'text-green-600 font-medium' : response === 'declined' ? 'text-red-600 font-medium' : 'text-yellow-600 font-medium'}>
+                  <Badge 
+                    variant={
+                      response === 'accepted' ? 'default' : 
+                      response === 'declined' ? 'destructive' : 
+                      'secondary'
+                    }
+                    className="text-xs"
+                  >
                     {response === 'accepted' ? '수락' : response === 'declined' ? '거절' : '보류'}
-                  </span>했습니다.
+                  </Badge>했습니다.
                 </p>
                 {optionScheduledAt && (
-                  <p className="text-xs text-gray-600 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     일정: {new Date(optionScheduledAt).toLocaleString('ko-KR')}
                   </p>
                 )}
@@ -627,11 +785,11 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           <div className="space-y-2">
             <p className="text-sm text-gray-700">{event.content?.message || '포지션이 변경되었습니다.'}</p>
             {previousJobTitle && newJobTitle && (
-              <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-100">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-gray-600">{previousJobTitle}</span>
-                  <ArrowRight className="w-3 h-3 text-blue-600" />
-                  <span className="text-blue-800 font-medium">{newJobTitle}</span>
+              <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <Badge variant="outline" className="text-xs">{previousJobTitle}</Badge>
+                  <ArrowRight className="w-4 h-4 text-primary" />
+                  <Badge variant="default" className="text-xs">{newJobTitle}</Badge>
                 </div>
               </div>
             )}
@@ -640,12 +798,12 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       case 'comment_created':
       case 'comment_updated':
         return (
-          <div className="p-3 bg-green-50 rounded-lg">
-            <p className="text-sm text-gray-700">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
+          <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
+            <p className="text-sm text-foreground">{event.content?.content || event.content?.message || '코멘트가 작성되었습니다.'}</p>
             {event.content?.previous_content && (
-              <div className="mt-2 p-2 bg-white rounded border border-gray-200">
-                <p className="text-xs text-gray-500 mb-1">이전 내용:</p>
-                <p className="text-xs text-gray-700 line-through">{event.content.previous_content}</p>
+              <div className="mt-2 p-2 bg-card rounded border border-border">
+                <p className="text-xs text-muted-foreground mb-1">이전 내용:</p>
+                <p className="text-xs text-muted-foreground line-through">{event.content.previous_content}</p>
               </div>
             )}
           </div>
@@ -653,13 +811,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       case 'scorecard_created':
         const scorecardRating = event.content?.overall_rating || event.content?.rating;
         return (
-          <div className="space-y-2">
-            <p className="text-sm text-gray-700">{event.content?.message || '면접 평가표가 작성되었습니다.'}</p>
+          <div className="space-y-3">
+            <p className="text-sm text-foreground">{event.content?.message || '면접 평가표가 작성되었습니다.'}</p>
             {scorecardRating && (
               <div className="mt-2">
                 {renderStars(scorecardRating)}
                 {event.content?.previous_rating && (
-                  <div className="mt-2 text-xs text-gray-500">
+                  <div className="mt-2 text-xs text-muted-foreground">
                     이전 평가: {renderStars(event.content.previous_rating)}
                   </div>
                 )}
@@ -669,7 +827,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         );
       default:
         return (
-          <p className="text-sm text-gray-700">{event.content?.message || event.type}</p>
+          <p className="text-sm text-foreground">{event.content?.message || event.type}</p>
         );
     }
   };
@@ -905,67 +1063,81 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     }
   };
 
+  // 현재 전형 단계 이름 가져오기
+  const currentStageName = currentStageId ? STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId : 'Unknown';
+
   return (
-    <div className={`h-full overflow-auto ${isSidebar ? 'bg-background' : 'bg-gray-50'}`}>
+    <>
+    <div className={`h-full overflow-auto ${isSidebar ? 'bg-background' : 'bg-gradient-to-b from-gray-50 to-background'}`}>
       <div className={`${isSidebar ? 'px-4 sm:px-6 py-4 sm:py-6' : 'w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8'}`}>
-        {/* Header with Close Button */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex-1 min-w-0">
-            {/* Candidate Header - 이미지와 동일한 레이아웃 */}
-            <div className="flex items-center gap-4 mb-4">
-              {/* 프로필 이미지 */}
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold text-xl flex-shrink-0">
-                {candidate.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-2xl font-bold text-gray-900 mb-1">{candidate.name}</h1>
-                {candidate.job_posts?.title && (
-                  <p className="text-base text-gray-600">{candidate.job_posts.title}</p>
-                )}
+        {/* 헤더 섹션 - 그라데이션 배경 */}
+        <div className="relative mb-8 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pt-6 pb-8 bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 rounded-b-2xl shadow-lg">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              {/* 프로필 정보 - 모바일 반응형 */}
+              <div className="flex items-center gap-3 sm:gap-4 mb-4">
+                <Avatar className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-white/20 shadow-xl flex-shrink-0">
+                  <AvatarFallback className="bg-gradient-to-br from-white/20 to-white/10 text-white text-xl sm:text-2xl font-bold">
+                    {candidate.name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 drop-shadow-sm break-words">{candidate.name}</h1>
+                  {candidate.job_posts?.title && (
+                    <p className="text-sm sm:text-base text-slate-200 mb-2 break-words">{candidate.job_posts.title}</p>
+                  )}
+                  {/* 현재 전형 단계 배지 */}
+                  {currentStageId && (
+                    <Badge 
+                      variant="secondary" 
+                      className="bg-white/25 text-white border-white/40 hover:bg-white/35 backdrop-blur-sm text-xs sm:text-sm font-medium px-3 py-1 shadow-sm"
+                    >
+                      {currentStageName}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
+            <button
+              onClick={handleClose}
+              className="flex-shrink-0 p-2 sm:p-2.5 hover:bg-white/20 rounded-full transition-all duration-200 text-white hover:scale-110 min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="닫기"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={handleClose}
-            className="flex-shrink-0 p-2 hover:bg-gray-100 rounded-full transition-colors ml-4"
-            aria-label="닫기"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-3 mb-6 flex-wrap">
-          {/* Schedule Interview 버튼: 관리자/리크루터만, 1차/2차 면접 단계에서만 표시 */}
-          {canManageCandidate && canScheduleInterview && (
-            <Button
-              onClick={() => setIsScheduleModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              size="default"
-            >
-              <Calendar className="w-4 h-4 mr-2" />
-              Schedule Interview
-            </Button>
-          )}
-          {/* Email 버튼: 관리자/리크루터만 표시 */}
-          {canManageCandidate && (
+        {/* Action Buttons - 개선된 스타일, 모바일 반응형 */}
+        {canManageCandidate && (
+          <div className="flex items-center gap-3 mb-8 flex-wrap">
+            {/* Schedule Interview 버튼: 관리자/리크루터만, 1차/2차 면접 단계에서만 표시 */}
+            {canScheduleInterview && (
+              <Button
+                onClick={() => setIsScheduleModalOpen(true)}
+                className="bg-primary hover:bg-primary/90 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                size="default"
+              >
+                <Calendar className="w-4 h-4 mr-2" />
+                Schedule Interview
+              </Button>
+            )}
+            {/* Email 버튼 */}
             <Button
               onClick={() => setIsEmailModalOpen(true)}
-              variant="outline"
-              className="border-gray-300 bg-white"
+              variant="ghost"
+              className="text-foreground hover:bg-muted/80 hover:text-primary transition-all duration-200"
               size="default"
             >
-              <Send className="w-4 h-4 mr-2" />
+              <Mail className="w-4 h-4 mr-2" />
               Email
             </Button>
-          )}
-          {/* 전형 이동 버튼: 관리자/리크루터만 표시 */}
-          {canManageCandidate && (
+            {/* 전형 이동 버튼 */}
             <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="border-green-300 text-green-700 hover:bg-green-50"
+                  className="border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 shadow-sm hover:shadow-md transition-all duration-200"
                   size="default"
                   disabled={isMovingStage || !currentStageId || !candidate.job_posts?.id}
                 >
@@ -974,21 +1146,21 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   <ChevronDown className="w-4 h-4 ml-2" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-64 p-0" align="start">
+              <PopoverContent className="w-64 p-0 shadow-xl" align="start">
                 <div className="p-2">
-                  <div className="px-3 py-2 text-sm font-semibold text-gray-700 border-b">
+                  <div className="px-3 py-2 text-sm font-semibold text-foreground border-b">
                     전형 단계 선택
                   </div>
                   {isLoadingStages ? (
-                    <div className="p-4 text-center text-sm text-gray-500">
+                    <div className="p-4 text-center text-sm text-muted-foreground">
                       로딩 중...
                     </div>
                   ) : !currentStageId ? (
-                    <div className="p-4 text-center text-sm text-red-500">
+                    <div className="p-4 text-center text-sm text-destructive">
                       현재 전형 정보가 없습니다.
                     </div>
                   ) : availableStages.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-gray-500">
+                    <div className="p-4 text-center text-sm text-muted-foreground">
                       사용 가능한 단계가 없습니다.
                     </div>
                   ) : (
@@ -1006,13 +1178,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                             onClick={() => !isCurrent && handleMoveToStage(stage.id)}
                             disabled={isCurrent}
                             className={`
-                              w-full px-3 py-2.5 text-left text-sm transition-colors
+                              w-full px-3 py-2.5 text-left text-sm transition-all duration-200
                               flex items-center justify-between
                               ${isCurrent
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'hover:bg-green-50 text-gray-700 cursor-pointer'
+                                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                                : 'hover:bg-primary/5 text-foreground cursor-pointer'
                               }
-                              ${!isCurrent && 'border-b border-gray-100 last:border-b-0'}
+                              ${!isCurrent && 'border-b border-border last:border-b-0'}
                             `}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1030,7 +1202,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                               </span>
                             </div>
                             {isCurrent && (
-                              <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                              <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
                                 (현재)
                               </span>
                             )}
@@ -1042,319 +1214,357 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 </div>
               </PopoverContent>
             </Popover>
-          )}
-          {/* 아카이브 버튼: 관리자/리크루터만 표시 */}
-          {canManageCandidate && (
+            {/* 아카이브 버튼 */}
             <Button
               onClick={() => setIsArchiveModalOpen(true)}
               variant="outline"
-              className="border-orange-300 text-orange-700 hover:bg-orange-50"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 shadow-sm hover:shadow-md transition-all duration-200"
               size="default"
             >
               <Archive className="w-4 h-4 mr-2" />
               아카이브
             </Button>
-          )}
-        </div>
-
-        {/* Match Score - 파란색 배경 카드 */}
-        {candidate.parsed_data?.match_score !== undefined && (
-          <div className="bg-blue-50 rounded-lg border border-blue-100 p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wide">Match Score</h2>
-                  <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                </div>
-                <div className="flex items-baseline gap-2 mb-4">
-                  <span className="text-4xl font-bold text-blue-600">{candidate.parsed_data.match_score}</span>
-                  <span className="text-xl text-gray-500">/ 100</span>
-                </div>
-                <div className="w-full bg-blue-200 rounded-full h-2 mb-4">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{ width: `${candidate.parsed_data.match_score}%` }}
-                  />
-            </div>
-            {/* AI SUMMARY 박스 - 같은 카드 안에 */}
-            {candidate.ai_summary && (
-              <div className="mt-4 p-4 bg-white rounded-lg border border-blue-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-sm font-semibold text-blue-900">AI SUMMARY</h3>
-                </div>
-                <p className="text-sm text-gray-700">{candidate.ai_summary}</p>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Contact */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Contact</h2>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="text-sm text-gray-900 break-all">{candidate.email}</span>
+        {/* Match Score - 그라데이션 카드 */}
+        {candidate.parsed_data?.match_score !== undefined && (
+          <Card className="mb-6 bg-card border-border shadow-md hover:shadow-lg transition-shadow duration-200">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  Match Score
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-bold text-primary">{candidate.parsed_data.match_score}</span>
+                <span className="text-xl text-muted-foreground">/ 100</span>
+              </div>
+              <Progress 
+                value={candidate.parsed_data.match_score} 
+                className="h-3 bg-muted"
+              />
+              {/* AI SUMMARY 박스 */}
+              {candidate.ai_summary && (
+                <div className="mt-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">AI SUMMARY</h3>
+                  </div>
+                  <p className="text-sm text-foreground leading-relaxed">{candidate.ai_summary}</p>
                 </div>
-                {candidate.phone && (
-                  <div className="flex items-center gap-3">
-                    <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <span className="text-sm text-gray-900 break-all">{candidate.phone}</span>
-                  </div>
-                )}
-                {location && (
-                  <div className="flex items-center gap-3">
-                    <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <span className="text-sm text-gray-900">{location}</span>
-                  </div>
-                )}
-          </div>
-        </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Contact */}
+        <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">Contact</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+              <Mail className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+              <span className="text-sm text-foreground break-all">{candidate.email}</span>
+            </div>
+            {candidate.phone && (
+              <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+                <Phone className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm text-foreground break-all">{candidate.phone}</span>
+              </div>
+            )}
+            {location && (
+              <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+                <MapPin className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm text-foreground">{location}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Compensation - 권한이 있는 경우만 표시 */}
         {canViewCompensation && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Compensation</h2>
-                  {showCompensation && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowCompensation(false)}
-                      className="text-gray-600 hover:text-gray-900"
-                    >
-                      <EyeOff className="w-4 h-4 mr-2" />
-                      Hide
-                    </Button>
-                  )}
+          <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold">Compensation</CardTitle>
+                {showCompensation && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCompensation(false)}
+                    className="text-muted-foreground hover:text-foreground transition-colors duration-200"
+                  >
+                    <EyeOff className="w-4 h-4 mr-2" />
+                    Hide
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!showCompensation ? (
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-dashed">
+                  <p className="text-sm text-muted-foreground">Click to view sensitive data</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCompensation(true)}
+                    className="transition-all duration-200"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    View
+                  </Button>
                 </div>
-                {!showCompensation ? (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600">Click to view sensitive data</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowCompensation(true)}
-                    >
-                      View
-                    </Button>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-card border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <p className="text-xs text-muted-foreground mb-2 font-medium">Current</p>
+                    <p className="text-xl font-semibold text-foreground">
+                      {candidate.current_salary || 'N/A'}
+                    </p>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-white border border-gray-200 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">Current</p>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {candidate.current_salary || 'N/A'}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-white border border-gray-200 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">Expected</p>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {candidate.expected_salary || 'N/A'}
-                      </p>
-                    </div>
-            </div>
-          )}
-        </div>
+                  <div className="p-4 bg-card border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <p className="text-xs text-muted-foreground mb-2 font-medium">Expected</p>
+                    <p className="text-xl font-semibold text-foreground">
+                      {candidate.expected_salary || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {/* Skills */}
         {skills.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Skills</h2>
-                <div className="flex flex-wrap gap-2">
-                  {skills.map((skill, index) => (
-                    <span
-                      key={index}
-                      className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-            </div>
-          </div>
+          <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold">Skills</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {skills.map((skill, index) => (
+                  <Badge
+                    key={index}
+                    variant="secondary"
+                    className="px-3 py-1.5 text-sm font-medium hover:bg-primary/10 transition-colors duration-200"
+                  >
+                    {skill}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Documents - 여러 파일 지원 */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Documents</h2>
-                {resumeFiles.length > 0 && (
-                  <span className="text-xs text-gray-500">{resumeFiles.length} files</span>
-                )}
-              </div>
-              {isLoadingFiles ? (
-                <p className="text-sm text-gray-500 py-4 text-center">파일을 불러오는 중...</p>
-              ) : resumeFiles.length === 0 ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-center">
-                    <FileIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500">첨부 파일이 없습니다.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {resumeFiles.map((file) => {
-                    const fileName = getFileName(file.file_url);
-                    const fileSize = file.parsed_data?.file_size;
-                    return (
-                      <div
-                        key={file.id}
-                        onClick={() => handleDocumentClick(file)}
-                        className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                      >
-                        {file.file_type === 'pdf' ? (
-                          <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <Folder className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 break-words">{fileName}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {fileSize ? formatFileSize(fileSize) : 'Unknown size'} • {formatDate(file.created_at)}
-                          </p>
-                        </div>
-                        <Download className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
-                      </div>
-                    );
-                  })}
+        <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold">Documents</CardTitle>
+              {resumeFiles.length > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {resumeFiles.length} files
+                </Badge>
+              )}
             </div>
-          )}
-        </div>
+          </CardHeader>
+          <CardContent>
+            {isLoadingFiles ? (
+              <div className="flex items-center justify-center py-8">
+                <p className="text-sm text-muted-foreground">파일을 불러오는 중...</p>
+              </div>
+            ) : resumeFiles.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <FileIcon className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
+                  <p className="text-sm text-muted-foreground">첨부 파일이 없습니다.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {resumeFiles.map((file) => {
+                  const fileName = getFileName(file.file_url);
+                  const fileSize = file.parsed_data?.file_size;
+                  return (
+                    <div
+                      key={file.id}
+                      onClick={() => handleDocumentClick(file)}
+                      className="flex items-start gap-3 p-4 border border-border rounded-lg hover:bg-accent/50 cursor-pointer transition-all duration-200 hover:shadow-md group"
+                    >
+                      {file.file_type === 'pdf' ? (
+                        <FileText className="w-6 h-6 text-primary flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform duration-200" />
+                      ) : (
+                        <Folder className="w-6 h-6 text-muted-foreground flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform duration-200" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground break-words group-hover:text-primary transition-colors duration-200">{fileName}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {fileSize ? formatFileSize(fileSize) : 'Unknown size'} • {formatDate(file.created_at)}
+                        </p>
+                      </div>
+                      <Download className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-1 group-hover:text-primary transition-colors duration-200" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Activity Timeline */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity Timeline</h2>
-                  {/* 이메일 동기화 버튼: 관리자/리크루터만 표시 (아이콘만) */}
-                  {canManageCandidate && (
-                    <Button
-                      onClick={handleSyncEmails}
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 hover:bg-blue-50"
-                      disabled={isSyncingEmails}
-                      title="이메일 동기화"
-                    >
-                      {isSyncingEmails ? (
-                        <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
-                      ) : (
-                        <RefreshCw className="w-4 h-4 text-blue-600" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-                {currentStageId && (
+        <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
+                {/* 이메일 동기화 버튼: 관리자/리크루터만 표시 */}
+                {canManageCandidate && (
                   <Button
-                    onClick={() => setIsEvaluationModalOpen(true)}
-                    variant="outline"
+                    onClick={handleSyncEmails}
+                    variant="ghost"
                     size="sm"
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                    className="h-8 w-8 p-0 hover:bg-primary/10 transition-all duration-200"
+                    disabled={isSyncingEmails}
+                    title="이메일 동기화"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Evaluation
+                    {isSyncingEmails ? (
+                      <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 text-primary" />
+                    )}
                   </Button>
                 )}
               </div>
-              {timelineEvents.length === 0 ? (
-                <p className="text-sm text-gray-500 py-8 text-center">타임라인 이벤트가 없습니다.</p>
-              ) : (
-                <div className="relative">
-                  {/* 타임라인 라인 */}
-                  <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gray-200" />
-                  
-                  <div className="space-y-6">
-                    {timelineEvents.map((event) => (
-                      <div key={event.id} className="relative flex gap-4">
-                        {/* 아이콘 */}
-                        <div className="relative z-10 flex-shrink-0">
-                          <div className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">
-                            {getTimelineEventIcon(event.type)}
-                          </div>
+              {currentStageId && (
+                <Button
+                  onClick={() => setIsEvaluationModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Evaluation
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {timelineEvents.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <MessageSquare className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
+                  <p className="text-sm text-muted-foreground">타임라인 이벤트가 없습니다.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                {/* 타임라인 라인 - 개선된 스타일 */}
+                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-muted via-border to-muted" />
+                
+                <div className="space-y-6">
+                  {timelineEvents.map((event, index) => (
+                    <div key={event.id} className="relative flex gap-4 group">
+                      {/* 아이콘 - 개선된 스타일 */}
+                      <div className="relative z-10 flex-shrink-0">
+                        <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200 ${getTimelineEventIconBg(event.type)}`}>
+                          {getTimelineEventIcon(event.type)}
                         </div>
-                        
-                        {/* 내용 */}
-                        <div className="flex-1 pb-6 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-sm font-medium ${getTimelineEventColor(event.type)}`}>
+                      </div>
+                      
+                      {/* 내용 - 카드 스타일 */}
+                      <div className="flex-1 pb-6 min-w-0">
+                        <div className={`border rounded-lg p-4 shadow-sm hover:shadow-md transition-all duration-200 ${getTimelineEventCardBg(event.type)}`}>
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className={`text-sm font-semibold ${getTimelineEventColor(event.type)}`}>
                               {getTimelineEventTitle(event)}
                             </span>
+                            <Badge variant="outline" className="text-xs">
+                              {formatRelativeTime(event.created_at)}
+                            </Badge>
                           </div>
-                          <p className="text-xs text-gray-500 mb-2">
-                            {event.created_by_user?.name || event.created_by_user?.email || 'System'} • {formatDate(event.created_at)} {new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} • {formatRelativeTime(event.created_at)}
+                          <p className="text-xs text-muted-foreground mb-3">
+                            {event.created_by_user?.name || event.created_by_user?.email || 'System'} • {formatDate(event.created_at)} {new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                           </p>
-                          <div className="text-sm text-gray-700">
+                          <div className="text-sm text-foreground">
                             {renderTimelineContent(event)}
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-          </div>
-        )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
 
-      {/* Schedule Interview Automated Modal */}
-      <ScheduleInterviewAutomatedModal
-        candidateId={candidate.id}
-        candidateName={candidate.name}
-        isOpen={isScheduleModalOpen}
-        onClose={() => setIsScheduleModalOpen(false)}
-      />
+    {/* Schedule Interview Automated Modal */}
+    <ScheduleInterviewAutomatedModal
+      candidateId={candidate.id}
+      candidateName={candidate.name}
+      isOpen={isScheduleModalOpen}
+      onClose={() => setIsScheduleModalOpen(false)}
+    />
 
-      {/* Email Modal */}
-      <EmailModal
-        candidateId={candidate.id}
-        candidateEmail={candidate.email}
-        candidateName={candidate.name}
-        isOpen={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-      />
+    {/* Email Modal */}
+    <EmailModal
+      candidateId={candidate.id}
+      candidateEmail={candidate.email}
+      candidateName={candidate.name}
+      isOpen={isEmailModalOpen}
+      onClose={() => setIsEmailModalOpen(false)}
+    />
 
-      {/* Archive Modal */}
-      <ArchiveCandidateModal
+    {/* Archive Modal */}
+    <ArchiveCandidateModal
+      candidateId={candidate.id}
+      candidateName={candidate.name}
+      isOpen={isArchiveModalOpen}
+      onClose={() => {
+        setIsArchiveModalOpen(false);
+        router.refresh();
+      }}
+    />
+
+    {/* Evaluation Modal */}
+    {candidate.current_stage_id && (
+      <StageEvaluationModal
         candidateId={candidate.id}
         candidateName={candidate.name}
-        isOpen={isArchiveModalOpen}
+        stageId={currentStageId}
+        stageName={STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId}
+        existingEvaluation={userId ? evaluations
+          .filter(e => e.stage_id === currentStageId)
+          .find(e => e.evaluator_id === userId) : undefined}
+        isOpen={isEvaluationModalOpen}
         onClose={() => {
-          setIsArchiveModalOpen(false);
+          setIsEvaluationModalOpen(false);
+          loadEvaluations();
           router.refresh();
         }}
       />
+    )}
 
-      {/* Evaluation Modal */}
-      {candidate.current_stage_id && (
-        <StageEvaluationModal
-          candidateId={candidate.id}
-          candidateName={candidate.name}
-          stageId={currentStageId}
-          stageName={STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId}
-          existingEvaluation={userId ? evaluations
-            .filter(e => e.stage_id === currentStageId)
-            .find(e => e.evaluator_id === userId) : undefined}
-          isOpen={isEvaluationModalOpen}
-          onClose={() => {
-            setIsEvaluationModalOpen(false);
-            loadEvaluations();
-            router.refresh();
-          }}
-        />
-      )}
-
-      {/* Document Preview Modal */}
-      <DocumentPreviewModal
-        file={selectedDocument ? {
-          id: selectedDocument.id,
-          file_url: selectedDocument.file_url,
-          file_type: selectedDocument.file_type,
-        } : null}
-        isOpen={isDocumentPreviewOpen}
-        onClose={() => {
-          setIsDocumentPreviewOpen(false);
-          setSelectedDocument(null);
-        }}
-      />
-    </div>
+    {/* Document Preview Modal */}
+    <DocumentPreviewModal
+      file={selectedDocument ? {
+        id: selectedDocument.id,
+        file_url: selectedDocument.file_url,
+        file_type: selectedDocument.file_type,
+      } : null}
+      isOpen={isDocumentPreviewOpen}
+      onClose={() => {
+        setIsDocumentPreviewOpen(false);
+        setSelectedDocument(null);
+      }}
+    />
+    </>
   );
 }
