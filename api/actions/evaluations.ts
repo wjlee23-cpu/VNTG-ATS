@@ -211,14 +211,16 @@ export async function approveStageEvaluation(candidateId: string, currentStageId
       throw new Error('다음 전형이 없습니다.');
     }
 
-    // 다음 단계 이름 찾기
+    // 다음 단계 이름 찾기 (영문 이름 우선)
     let nextStageName: string;
-    if (customStages) {
+    // STAGE_ID_TO_NAME_MAP을 우선 사용하여 영문 이름으로 통일
+    if (STAGE_ID_TO_NAME_MAP[nextStageId]) {
+      nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId];
+    } else if (customStages) {
       const nextStage = customStages.find(s => s.id === nextStageId);
-      nextStageName = nextStage?.name || STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+      nextStageName = nextStage?.name || nextStageId;
     } else {
-      // custom_stages가 null이면 기본 매핑 사용
-      nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+      nextStageName = nextStageId;
     }
 
     // 후보자 전형 업데이트
@@ -236,13 +238,16 @@ export async function approveStageEvaluation(candidateId: string, currentStageId
       throw new Error(`전형 이동 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트 생성
+    // 타임라인 이벤트 생성 (영문 이름 우선)
     let currentStageName: string;
-    if (customStages) {
+    // STAGE_ID_TO_NAME_MAP을 우선 사용하여 영문 이름으로 통일
+    if (STAGE_ID_TO_NAME_MAP[currentStageId]) {
+      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId];
+    } else if (customStages) {
       const currentStage = customStages.find(s => s.id === currentStageId);
-      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+      currentStageName = currentStage?.name || currentStageId;
     } else {
-      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+      currentStageName = currentStageId;
     }
     await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
@@ -373,14 +378,16 @@ export async function skipStage(candidateId: string, currentStageId: string) {
       throw new Error('다음 전형이 없습니다.');
     }
 
-    // 다음 단계 이름 찾기
+    // 다음 단계 이름 찾기 (영문 이름 우선)
     let nextStageName: string;
-    if (customStages) {
+    // STAGE_ID_TO_NAME_MAP을 우선 사용하여 영문 이름으로 통일
+    if (STAGE_ID_TO_NAME_MAP[nextStageId]) {
+      nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId];
+    } else if (customStages) {
       const nextStage = customStages.find(s => s.id === nextStageId);
-      nextStageName = nextStage?.name || STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+      nextStageName = nextStage?.name || nextStageId;
     } else {
-      // custom_stages가 null이면 기본 매핑 사용
-      nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId] || nextStageId;
+      nextStageName = nextStageId;
     }
 
     // 후보자 전형 업데이트
@@ -398,13 +405,16 @@ export async function skipStage(candidateId: string, currentStageId: string) {
       throw new Error(`전형 스킵 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트 생성
+    // 타임라인 이벤트 생성 (영문 이름 우선)
     let currentStageName: string;
-    if (customStages) {
+    // STAGE_ID_TO_NAME_MAP을 우선 사용하여 영문 이름으로 통일
+    if (STAGE_ID_TO_NAME_MAP[currentStageId]) {
+      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId];
+    } else if (customStages) {
       const currentStage = customStages.find(s => s.id === currentStageId);
-      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+      currentStageName = currentStage?.name || currentStageId;
     } else {
-      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+      currentStageName = currentStageId;
     }
     await supabase.from('timeline_events').insert({
       candidate_id: candidateId,
@@ -532,17 +542,21 @@ export async function moveToStage(candidateId: string, targetStageId: string) {
     // Job의 커스텀 단계 정보 조회 (단계 이름을 찾기 위해)
     const { customStages } = await getJobProcessInfo(candidate.job_post_id, isAdmin);
 
-    // 현재 단계 이름 찾기
+    // 현재 단계 이름 찾기 (영문 이름 우선)
     let currentStageName: string;
-    if (customStages) {
+    // STAGE_ID_TO_NAME_MAP을 우선 사용하여 영문 이름으로 통일
+    if (STAGE_ID_TO_NAME_MAP[currentStageId]) {
+      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId];
+    } else if (customStages) {
       const currentStage = customStages.find(s => s.id === currentStageId);
-      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+      currentStageName = currentStage?.name || currentStageId;
     } else {
-      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
+      currentStageName = currentStageId;
     }
 
-    // 목표 단계 이름 찾기
-    const targetStageName = targetStage.name;
+    // 목표 단계 이름 찾기 (영문 이름 우선)
+    // STAGE_ID_TO_NAME_MAP을 우선 사용하여 영문 이름으로 통일
+    const targetStageName = STAGE_ID_TO_NAME_MAP[targetStageId] || targetStage.name || targetStageId;
 
     // 후보자 전형 업데이트
     const { data, error } = await supabase

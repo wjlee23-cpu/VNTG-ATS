@@ -37,15 +37,23 @@ export function getStageNameById(id: string): string | null {
 /**
  * Process Stage ID를 단계 이름으로 매핑
  * 데이터베이스의 stage ID("stage-1", "stage-2" 등)를 사용자가 정의한 단계 이름으로 변환
+ * 채용 프로세스:
+ * 1. New Application (stage-1)
+ * 2. Application Review (stage-2)
+ * 3. Competency Assessment (stage-3)
+ * 4. Technical Test (stage-4)
+ * 5. 1st Interview (stage-5)
+ * 6. Reference Check (stage-6)
+ * 7. 2nd Interview (stage-7)
  */
 export const STAGE_ID_TO_NAME_MAP: Record<string, string> = {
   'stage-1': 'New Application',
-  'stage-3': 'Application Review',
-  'stage-4': 'Competency Assessment',
-  'stage-5': 'Technical Test',
-  'stage-6': '1st Interview',
-  'stage-7': 'Reference Check',
-  'stage-8': '2nd Interview',
+  'stage-2': 'Application Review',
+  'stage-3': 'Competency Assessment',
+  'stage-4': 'Technical Test',
+  'stage-5': '1st Interview',
+  'stage-6': 'Reference Check',
+  'stage-7': '2nd Interview',
 };
 
 /**

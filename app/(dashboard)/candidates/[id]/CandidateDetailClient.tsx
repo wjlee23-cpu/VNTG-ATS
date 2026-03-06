@@ -657,7 +657,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           </div>
         );
       case 'stage_evaluation':
-        const stageName = event.content?.stage_name || STAGE_ID_TO_NAME_MAP[event.content?.stage_id || ''] || '전형 평가';
+        // stage_id가 있으면 STAGE_ID_TO_NAME_MAP에서 영문 이름을 우선 사용
+        const stageName = event.content?.stage_id 
+          ? (STAGE_ID_TO_NAME_MAP[event.content.stage_id] || event.content?.stage_name || '전형 평가')
+          : (event.content?.stage_name || '전형 평가');
         return (
           <div className="space-y-3">
             <p className="text-sm font-semibold text-foreground">{stageName} 평가</p>
@@ -871,7 +874,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       case 'archive':
         return '아카이브';
       case 'stage_evaluation':
-        const stageName = event.content?.stage_name || STAGE_ID_TO_NAME_MAP[event.content?.stage_id || ''] || '전형 평가';
+        // stage_id가 있으면 STAGE_ID_TO_NAME_MAP에서 영문 이름을 우선 사용
+        const stageName = event.content?.stage_id 
+          ? (STAGE_ID_TO_NAME_MAP[event.content.stage_id] || event.content?.stage_name || '전형 평가')
+          : (event.content?.stage_name || '전형 평가');
         return `${stageName} 평가`;
       default:
         return event.type;
@@ -1127,23 +1133,23 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   };
 
   // 현재 전형 단계 이름 가져오기
-  // 1순위: candidate.job_posts.processes.stages에서 찾기
-  // 2순위: STAGE_ID_TO_NAME_MAP에서 찾기
+  // 1순위: STAGE_ID_TO_NAME_MAP에서 찾기 (영문 이름 우선)
+  // 2순위: candidate.job_posts.processes.stages에서 찾기 (fallback)
   // 3순위: currentStageId 그대로 사용
   const getCurrentStageName = (): string => {
-    if (!currentStageId) return 'Unknown';
+    if (!currentStageId) return 'New Application';
     
-    // processes.stages 배열에서 현재 단계 찾기
+    // STAGE_ID_TO_NAME_MAP에서 찾기 (영문 이름 우선)
+    if (STAGE_ID_TO_NAME_MAP[currentStageId]) {
+      return STAGE_ID_TO_NAME_MAP[currentStageId];
+    }
+    
+    // processes.stages 배열에서 현재 단계 찾기 (fallback)
     if (candidate.job_posts?.processes?.stages && Array.isArray(candidate.job_posts.processes.stages)) {
       const stage = candidate.job_posts.processes.stages.find(s => s.id === currentStageId);
       if (stage && stage.name) {
         return stage.name;
       }
-    }
-    
-    // STAGE_ID_TO_NAME_MAP에서 찾기 (fallback)
-    if (STAGE_ID_TO_NAME_MAP[currentStageId]) {
-      return STAGE_ID_TO_NAME_MAP[currentStageId];
     }
     
     // 모두 실패하면 currentStageId 그대로 반환
@@ -1658,7 +1664,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         candidateId={candidate.id}
         candidateName={candidate.name}
         stageId={currentStageId}
-        stageName={STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId}
+        stageName={currentStageName}
         existingEvaluation={userId ? evaluations
           .filter(e => e.stage_id === currentStageId)
           .find(e => e.evaluator_id === userId) : undefined}
