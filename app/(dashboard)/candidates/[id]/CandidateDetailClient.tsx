@@ -165,6 +165,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     }
   }, [candidate.id]);
 
+  // 파일이 로드되면 첫 번째 파일을 기본 선택으로 설정
+  useEffect(() => {
+    if (resumeFiles.length > 0 && !selectedDocument) {
+      setSelectedDocument(resumeFiles[0]);
+    }
+  }, [resumeFiles]);
+
   const loadEvaluations = async () => {
     setIsLoadingEvaluations(true);
     try {
@@ -998,10 +1005,66 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     }
   };
 
-  // 문서 열기 핸들러
+  // 문서 열기 핸들러 (모달용)
   const handleDocumentClick = (file: ResumeFile) => {
     setSelectedDocument(file);
     setIsDocumentPreviewOpen(true);
+  };
+
+  // 문서 선택 핸들러 (인라인 미리보기용)
+  const handleDocumentSelect = (file: ResumeFile) => {
+    setSelectedDocument(file);
+  };
+
+  // 인라인 미리보기 렌더링 함수
+  const renderInlinePreview = (file: ResumeFile | null) => {
+    if (!file) {
+      return (
+        <div className="w-full h-[calc(100vh-400px)] min-h-[600px] flex flex-col items-center justify-center p-8 bg-muted/30 border border-border rounded-lg">
+          <FileIcon className="w-16 h-16 text-muted-foreground/30 mb-4" />
+          <p className="text-sm text-muted-foreground">파일을 선택하면 미리보기가 표시됩니다.</p>
+        </div>
+      );
+    }
+
+    if (file.file_type === 'pdf') {
+      return (
+        <div className="w-full h-[calc(100vh-400px)] min-h-[700px] border border-border rounded-lg overflow-hidden bg-muted/30">
+          <iframe
+            src={`${file.file_url}#toolbar=0&navpanes=0&scrollbar=0`}
+            className="w-full h-full min-h-[700px]"
+            title="PDF Preview"
+          />
+        </div>
+      );
+    }
+
+    // DOC, DOCX 파일은 다운로드만 제공
+    const fileName = getFileName(file.file_url);
+    return (
+      <div className="w-full h-[calc(100vh-400px)] min-h-[600px] flex flex-col items-center justify-center p-8 bg-muted/30 border border-border rounded-lg">
+        <FileIcon className="w-16 h-16 text-muted-foreground mb-4" />
+        <p className="text-sm text-foreground mb-2 text-center font-medium">
+          {file.file_type.toUpperCase()} 파일은 브라우저에서 미리보기를 지원하지 않습니다.
+        </p>
+        <p className="text-xs text-muted-foreground mb-6 text-center">
+          파일을 다운로드하여 확인해주세요.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const link = document.createElement('a');
+            link.href = file.file_url;
+            link.download = fileName;
+            link.click();
+          }}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          다운로드
+        </Button>
+      </div>
+    );
   };
 
   // 이메일 동기화 핸들러
@@ -1064,7 +1127,30 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   };
 
   // 현재 전형 단계 이름 가져오기
-  const currentStageName = currentStageId ? STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId : 'Unknown';
+  // 1순위: candidate.job_posts.processes.stages에서 찾기
+  // 2순위: STAGE_ID_TO_NAME_MAP에서 찾기
+  // 3순위: currentStageId 그대로 사용
+  const getCurrentStageName = (): string => {
+    if (!currentStageId) return 'Unknown';
+    
+    // processes.stages 배열에서 현재 단계 찾기
+    if (candidate.job_posts?.processes?.stages && Array.isArray(candidate.job_posts.processes.stages)) {
+      const stage = candidate.job_posts.processes.stages.find(s => s.id === currentStageId);
+      if (stage && stage.name) {
+        return stage.name;
+      }
+    }
+    
+    // STAGE_ID_TO_NAME_MAP에서 찾기 (fallback)
+    if (STAGE_ID_TO_NAME_MAP[currentStageId]) {
+      return STAGE_ID_TO_NAME_MAP[currentStageId];
+    }
+    
+    // 모두 실패하면 currentStageId 그대로 반환
+    return currentStageId;
+  };
+  
+  const currentStageName = getCurrentStageName();
 
   return (
     <>
@@ -1125,8 +1211,8 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             {/* Email 버튼 */}
             <Button
               onClick={() => setIsEmailModalOpen(true)}
-              variant="ghost"
-              className="text-foreground hover:bg-muted/80 hover:text-primary transition-all duration-200"
+              variant="outline"
+              className="border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 shadow-sm hover:shadow-md transition-all duration-200"
               size="default"
             >
               <Mail className="w-4 h-4 mr-2" />
@@ -1218,7 +1304,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             <Button
               onClick={() => setIsArchiveModalOpen(true)}
               variant="outline"
-              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 shadow-sm hover:shadow-md transition-all duration-200"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               size="default"
             >
               <Archive className="w-4 h-4 mr-2" />
@@ -1361,7 +1447,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           </Card>
         )}
 
-        {/* Documents - 여러 파일 지원 */}
+        {/* Documents - 여러 파일 지원 + 인라인 미리보기 */}
         <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1386,31 +1472,64 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {resumeFiles.map((file) => {
-                  const fileName = getFileName(file.file_url);
-                  const fileSize = file.parsed_data?.file_size;
-                  return (
-                    <div
-                      key={file.id}
-                      onClick={() => handleDocumentClick(file)}
-                      className="flex items-start gap-3 p-4 border border-border rounded-lg hover:bg-accent/50 cursor-pointer transition-all duration-200 hover:shadow-md group"
-                    >
-                      {file.file_type === 'pdf' ? (
-                        <FileText className="w-6 h-6 text-primary flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform duration-200" />
-                      ) : (
-                        <Folder className="w-6 h-6 text-muted-foreground flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform duration-200" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground break-words group-hover:text-primary transition-colors duration-200">{fileName}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {fileSize ? formatFileSize(fileSize) : 'Unknown size'} • {formatDate(file.created_at)}
-                        </p>
-                      </div>
-                      <Download className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-1 group-hover:text-primary transition-colors duration-200" />
-                    </div>
-                  );
-                })}
+              <div className="flex flex-col gap-4">
+                {/* 파일 목록 (상단 - 가로 스크롤) */}
+                <div className="overflow-x-auto pb-2">
+                  <div className="flex gap-3 min-w-max">
+                    {resumeFiles.map((file) => {
+                      const fileName = getFileName(file.file_url);
+                      const fileSize = file.parsed_data?.file_size;
+                      const isSelected = selectedDocument?.id === file.id;
+                      return (
+                        <div
+                          key={file.id}
+                          onClick={() => handleDocumentSelect(file)}
+                          className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-all duration-200 group whitespace-nowrap ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 shadow-md'
+                              : 'border-border hover:bg-accent/50 hover:shadow-md'
+                          }`}
+                        >
+                          {file.file_type === 'pdf' ? (
+                            <FileText className={`w-4 h-4 flex-shrink-0 transition-colors duration-200 ${
+                              isSelected ? 'text-primary' : 'text-primary'
+                            }`} />
+                          ) : (
+                            <Folder className={`w-4 h-4 flex-shrink-0 transition-colors duration-200 ${
+                              isSelected ? 'text-primary' : 'text-muted-foreground'
+                            }`} />
+                          )}
+                          <div className="flex flex-col min-w-0">
+                            <p className={`text-xs font-medium truncate max-w-[200px] transition-colors duration-200 ${
+                              isSelected ? 'text-primary font-semibold' : 'text-foreground group-hover:text-primary'
+                            }`}>
+                              {fileName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {fileSize ? formatFileSize(fileSize) : 'Unknown size'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDocumentClick(file);
+                            }}
+                            className="flex-shrink-0 p-1 hover:bg-accent rounded transition-colors duration-200"
+                            title="새 창에서 열기"
+                          >
+                            <Download className={`w-4 h-4 transition-colors duration-200 ${
+                              isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
+                            }`} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* 미리보기 영역 (하단 - 전체 너비) */}
+                <div className="w-full">
+                  {renderInlinePreview(selectedDocument)}
+                </div>
               </div>
             )}
           </CardContent>
