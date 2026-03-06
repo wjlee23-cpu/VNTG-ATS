@@ -79,6 +79,16 @@ export async function GET(request: Request) {
       const isFirstUser = (totalUsers || 0) === 0;
       const userRole = (isFirstUser || isVNTGEmail) ? 'admin' : 'recruiter';
 
+      // 사용자 표시 이름/아바타 URL (OAuth 메타데이터 기반)
+      const avatarUrl =
+        (data.session.user.user_metadata as any)?.avatar_url ||
+        (data.session.user.user_metadata as any)?.picture ||
+        null;
+      const displayName =
+        (data.session.user.user_metadata as any)?.full_name ||
+        (data.session.user.user_metadata as any)?.name ||
+        (userEmail ? userEmail.split('@')[0] : 'User');
+
       // 사용자 생성 (Service Role Client 사용하여 RLS 정책 우회)
       const { data: newUser, error: createError } = await serviceClient
         .from('users')
@@ -87,6 +97,8 @@ export async function GET(request: Request) {
           email: userEmail,
           organization_id: organization.id,
           role: userRole,
+          name: displayName,
+          avatar_url: avatarUrl,
         })
         .select('id, email, organization_id, role')
         .single();

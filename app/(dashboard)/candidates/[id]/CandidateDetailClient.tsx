@@ -13,13 +13,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScheduleInterviewAutomatedModal } from '@/components/candidates/ScheduleInterviewAutomatedModal';
 import { EmailModal } from '@/components/candidates/EmailModal';
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
+import { CommentModal } from '@/components/candidates/CommentModal';
 import { DocumentPreviewModal } from '@/components/candidates/DocumentPreviewModal';
 import { getStageEvaluations } from '@/api/queries/evaluations';
 import { getResumeFilesByCandidate } from '@/api/queries/resume-files';
@@ -134,6 +135,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
+  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [isDocumentPreviewOpen, setIsDocumentPreviewOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<ResumeFile | null>(null);
   const [evaluations, setEvaluations] = useState<any[]>([]);
@@ -1565,17 +1567,28 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   </Button>
                 )}
               </div>
-              {currentStageId && (
+              <div className="flex gap-2">
                 <Button
-                  onClick={() => setIsEvaluationModalOpen(true)}
+                  onClick={() => setIsCommentModalOpen(true)}
                   variant="outline"
                   size="sm"
-                  className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200"
+                  className="border-blue-500/30 text-blue-600 hover:bg-blue-50 transition-all duration-200"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Evaluation
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Add Comment
                 </Button>
-              )}
+                {currentStageId && (
+                  <Button
+                    onClick={() => setIsEvaluationModalOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Evaluation
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -1596,9 +1609,35 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                     <div key={event.id} className="relative flex gap-4 group">
                       {/* 아이콘 - 개선된 스타일 */}
                       <div className="relative z-10 flex-shrink-0">
-                        <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200 ${getTimelineEventIconBg(event.type)}`}>
-                          {getTimelineEventIcon(event.type)}
-                        </div>
+                        {/* 코멘트/평가/이메일 같은 사용자 작성 이벤트는 작성자 프로필(아바타)을 표시 */}
+                        {(
+                          (event.type === 'comment' ||
+                            event.type === 'comment_created' ||
+                            event.type === 'comment_updated' ||
+                            event.type === 'email' ||
+                            event.type === 'email_received' ||
+                            event.type === 'stage_evaluation' ||
+                            event.type === 'scorecard' ||
+                            event.type === 'scorecard_created') &&
+                          event.created_by_user
+                        ) ? (
+                          <Avatar className="w-12 h-12 border-2 shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200">
+                            <AvatarImage
+                              src={(event.created_by_user as any)?.avatar_url || undefined}
+                              alt={(event.created_by_user as any)?.name || (event.created_by_user as any)?.email || 'user'}
+                            />
+                            <AvatarFallback className="text-xs font-semibold">
+                              {(((event.created_by_user as any)?.name || (event.created_by_user as any)?.email || '?') as string)
+                                .trim()
+                                .slice(0, 1)
+                                .toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200 ${getTimelineEventIconBg(event.type)}`}>
+                            {getTimelineEventIcon(event.type)}
+                          </div>
+                        )}
                       </div>
                       
                       {/* 내용 - 카드 스타일 */}
@@ -1613,7 +1652,18 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground mb-3">
-                            {event.created_by_user?.name || event.created_by_user?.email || 'System'} • {formatDate(event.created_at)} {new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                            {/* 'System' 문구는 제거: 작성자 정보가 없으면 날짜만 표시 */}
+                            {(event.created_by_user?.name || event.created_by_user?.email)
+                              ? (
+                                <>
+                                  {event.created_by_user?.name || event.created_by_user?.email} • {formatDate(event.created_at)} {new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                </>
+                              )
+                              : (
+                                <>
+                                  {formatDate(event.created_at)} {new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                </>
+                              )}
                           </p>
                           <div className="text-sm text-foreground">
                             {renderTimelineContent(event)}
@@ -1654,6 +1704,17 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       isOpen={isArchiveModalOpen}
       onClose={() => {
         setIsArchiveModalOpen(false);
+        router.refresh();
+      }}
+    />
+
+    {/* Comment Modal */}
+    <CommentModal
+      candidateId={candidate.id}
+      candidateName={candidate.name}
+      isOpen={isCommentModalOpen}
+      onClose={() => {
+        setIsCommentModalOpen(false);
         router.refresh();
       }}
     />

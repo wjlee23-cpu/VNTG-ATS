@@ -54,7 +54,10 @@ export async function createStageEvaluation(
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
     const candidate = await verifyCandidateAccess(candidateId);
-    const supabase = await createClient();
+    
+    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+    // verifyCandidateAccess에서 이미 권한 확인을 완료했으므로 안전합니다.
+    const supabase = createServiceClient();
 
     // 기존 평가가 있는지 확인
     const { data: existingEvaluation } = await supabase
@@ -101,6 +104,71 @@ export async function createStageEvaluation(
       created_by: user.userId,
     });
 
+    // 관리자/리크루터/하이어링 매니저가 합격 평가를 남긴 경우 자동으로 다음 전형으로 이동
+    if (result === 'pass' && (user.role === 'admin' || user.role === 'recruiter' || user.role === 'hiring_manager')) {
+      try {
+        // Job의 커스텀 단계 정보 조회
+        // 중요: 여기서 createClient(anon key)를 쓰면 프로덕션에서 RLS로 막혀 자동 이동이 조용히 실패할 수 있습니다.
+        // 이미 verifyCandidateAccess로 권한 확인을 끝냈으니 Service Role로 안전하게 조회합니다.
+        const { customStages } = await getJobProcessInfo(candidate.job_post_id, true);
+
+        // 다음 전형 찾기
+        const nextStageId = getNextStageId(stageId, customStages);
+
+        if (nextStageId) {
+          // 다음 단계 이름 찾기
+          let nextStageName: string;
+          if (STAGE_ID_TO_NAME_MAP[nextStageId]) {
+            nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId];
+          } else if (customStages) {
+            const nextStage = customStages.find(s => s.id === nextStageId);
+            nextStageName = nextStage?.name || nextStageId;
+          } else {
+            nextStageName = nextStageId;
+          }
+
+          // 현재 단계 이름 찾기
+          let currentStageName: string;
+          if (STAGE_ID_TO_NAME_MAP[stageId]) {
+            currentStageName = STAGE_ID_TO_NAME_MAP[stageId];
+          } else if (customStages) {
+            const currentStage = customStages.find(s => s.id === stageId);
+            currentStageName = currentStage?.name || stageId;
+          } else {
+            currentStageName = stageId;
+          }
+
+          // 후보자 전형 업데이트
+          const { error: updateError } = await supabase
+            .from('candidates')
+            .update({
+              current_stage_id: nextStageId,
+              status: 'in_progress',
+            })
+            .eq('id', candidateId);
+
+          if (!updateError) {
+            // 타임라인 이벤트 생성 (전형 이동)
+            await supabase.from('timeline_events').insert({
+              candidate_id: candidateId,
+              type: 'stage_changed',
+              content: {
+                message: `${user.role === 'admin' ? '관리자' : user.role === 'recruiter' ? '리크루터' : '하이어링 매니저'}의 합격 평가로 인해 ${currentStageName}에서 ${nextStageName}로 자동 이동했습니다.`,
+                from_stage: currentStageName,
+                to_stage: nextStageName,
+                stage_id: nextStageId,
+                auto_advanced: true,
+              },
+              created_by: user.userId,
+            });
+          }
+        }
+      } catch (error) {
+        // 자동 이동 실패해도 평가 생성은 성공한 것으로 처리
+        console.error('자동 전형 이동 실패:', error);
+      }
+    }
+
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');
     revalidatePath(`/dashboard/candidates/${candidateId}`);
@@ -122,7 +190,9 @@ export async function updateStageEvaluation(
 ) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    
+    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+    const supabase = createServiceClient();
 
     // 평가 조회 및 권한 확인
     const { data: evaluation, error: fetchError } = await supabase
@@ -135,6 +205,7 @@ export async function updateStageEvaluation(
       throw new Error('평가를 찾을 수 없습니다.');
     }
 
+    // verifyCandidateAccess에서 권한 확인 (Service Role Client 사용)
     await verifyCandidateAccess(evaluation.candidate_id);
 
     // 평가 수정
@@ -166,6 +237,77 @@ export async function updateStageEvaluation(
       },
       created_by: user.userId,
     });
+
+    // 관리자/리크루터/하이어링 매니저가 합격 평가로 "수정"한 경우에도 자동으로 다음 전형으로 이동
+    if (result === 'pass' && (user.role === 'admin' || user.role === 'recruiter' || user.role === 'hiring_manager')) {
+      try {
+        // 후보자 현재 단계/채용공고 ID 조회
+        const { data: candidateRow, error: candidateError } = await supabase
+          .from('candidates')
+          .select('id, job_post_id, current_stage_id')
+          .eq('id', evaluation.candidate_id)
+          .single();
+
+        if (!candidateError && candidateRow) {
+          // 이미 다른 단계로 이동된 경우에는 중복 자동 이동을 하지 않습니다.
+          if (candidateRow.current_stage_id === evaluation.stage_id) {
+            // 커스텀 단계 정보 조회는 Service Role로 안전하게 수행
+            const { customStages } = await getJobProcessInfo(candidateRow.job_post_id, true);
+            const nextStageId = getNextStageId(evaluation.stage_id, customStages);
+
+            if (nextStageId) {
+              // 다음 단계 이름 찾기
+              let nextStageName: string;
+              if (STAGE_ID_TO_NAME_MAP[nextStageId]) {
+                nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId];
+              } else if (customStages) {
+                const nextStage = customStages.find(s => s.id === nextStageId);
+                nextStageName = nextStage?.name || nextStageId;
+              } else {
+                nextStageName = nextStageId;
+              }
+
+              // 현재 단계 이름 찾기
+              let currentStageName: string;
+              if (STAGE_ID_TO_NAME_MAP[evaluation.stage_id]) {
+                currentStageName = STAGE_ID_TO_NAME_MAP[evaluation.stage_id];
+              } else if (customStages) {
+                const currentStage = customStages.find(s => s.id === evaluation.stage_id);
+                currentStageName = currentStage?.name || evaluation.stage_id;
+              } else {
+                currentStageName = evaluation.stage_id;
+              }
+
+              // 후보자 전형 업데이트
+              const { error: updateError } = await supabase
+                .from('candidates')
+                .update({
+                  current_stage_id: nextStageId,
+                  status: 'in_progress',
+                })
+                .eq('id', evaluation.candidate_id);
+
+              if (!updateError) {
+                await supabase.from('timeline_events').insert({
+                  candidate_id: evaluation.candidate_id,
+                  type: 'stage_changed',
+                  content: {
+                    message: `${user.role === 'admin' ? '관리자' : user.role === 'recruiter' ? '리크루터' : '하이어링 매니저'}의 합격 평가로 인해 ${currentStageName}에서 ${nextStageName}로 자동 이동했습니다.`,
+                    from_stage: currentStageName,
+                    to_stage: nextStageName,
+                    stage_id: nextStageId,
+                    auto_advanced: true,
+                  },
+                  created_by: user.userId,
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('자동 전형 이동 실패(평가 수정):', error);
+      }
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');

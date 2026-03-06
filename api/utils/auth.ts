@@ -49,7 +49,8 @@ export async function getCurrentUser() {
   // users 테이블에서 organization_id 가져오기
   let { data: userData, error: userError } = await supabase
     .from('users')
-    .select('id, email, organization_id, role')
+    // name/avatar_url은 Activity Timeline에서 작성자 표시(프로필 이미지)에 사용됩니다.
+    .select('id, email, organization_id, role, name, avatar_url')
     .eq('id', user.id)
     .single();
 
@@ -107,6 +108,17 @@ export async function getCurrentUser() {
     const isFirstUser = (totalUsers || 0) === 0;
     const userRole = (isFirstUser || isVNTGEmail) ? 'admin' : 'recruiter';
 
+    // 사용자 표시 이름/아바타 URL (OAuth 메타데이터 기반)
+    // - 구글 로그인이라면 보통 avatar_url 또는 picture가 들어옵니다.
+    const avatarUrl =
+      (user.user_metadata as any)?.avatar_url ||
+      (user.user_metadata as any)?.picture ||
+      null;
+    const displayName =
+      (user.user_metadata as any)?.full_name ||
+      (user.user_metadata as any)?.name ||
+      (userEmail ? userEmail.split('@')[0] : 'User');
+
     // 사용자 생성 (Service Role Client 사용하여 RLS 정책 우회)
     const { data: newUser, error: createError } = await serviceClient
       .from('users')
@@ -115,8 +127,10 @@ export async function getCurrentUser() {
         email: userEmail,
         organization_id: organization.id,
         role: userRole,
+        name: displayName,
+        avatar_url: avatarUrl,
       })
-      .select('id, email, organization_id, role')
+      .select('id, email, organization_id, role, name, avatar_url')
       .single();
 
     if (createError) {
@@ -125,7 +139,7 @@ export async function getCurrentUser() {
         // 재시도: users 테이블에서 다시 조회
         const { data: retryUserData, error: retryError } = await serviceClient
           .from('users')
-          .select('id, email, organization_id, role')
+          .select('id, email, organization_id, role, name, avatar_url')
           .eq('id', user.id)
           .single();
 
@@ -170,6 +184,39 @@ export async function getCurrentUser() {
       throw new Error('사용자 정보 생성에 실패했습니다: 응답 데이터가 없습니다. 관리자에게 문의하세요.');
     } else {
       userData = newUser;
+    }
+  }
+
+  // 기존 사용자도 OAuth 메타데이터(이름/아바타)가 들어오면 users 테이블에 채워둡니다.
+  // - 타임라인에서 작성자 프로필 사진을 보여주기 위한 목적
+  try {
+    const avatarUrl =
+      (user.user_metadata as any)?.avatar_url ||
+      (user.user_metadata as any)?.picture ||
+      null;
+    const displayName =
+      (user.user_metadata as any)?.full_name ||
+      (user.user_metadata as any)?.name ||
+      (userData.email ? userData.email.split('@')[0] : 'User');
+
+    const nextName = (userData as any).name ?? displayName;
+    const nextAvatarUrl = (userData as any).avatar_url ?? avatarUrl;
+
+    // 둘 다 이미 채워져 있으면 업데이트 생략
+    if ((userData as any).name !== nextName || (userData as any).avatar_url !== nextAvatarUrl) {
+      const serviceClient = createServiceClient();
+      await serviceClient
+        .from('users')
+        .update({
+          name: nextName,
+          avatar_url: nextAvatarUrl,
+        })
+        .eq('id', userData.id);
+    }
+  } catch (error) {
+    // 프로필 업데이트 실패는 치명적이지 않으므로 무시합니다.
+    if (process.env.NODE_ENV === 'development') {
+      console.error('사용자 프로필(name/avatar_url) 업데이트 실패:', error);
     }
   }
 

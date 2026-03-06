@@ -16,10 +16,11 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
     // 접근 권한 확인
     await verifyCandidateAccess(candidateId);
     const user = await getCurrentUser();
-    const isAdmin = user.role === 'admin';
     
-    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
-    const supabase = isAdmin ? createServiceClient() : await createClient();
+    // 중요: 타임라인은 created_by_user(=users 테이블 조인)를 항상 포함합니다.
+    // 프로덕션에서는 anon key 기반 createClient가 RLS 정책에 의해 조인이 누락되어 UI가 'System'으로 보일 수 있습니다.
+    // 이미 verifyCandidateAccess로 권한 확인을 끝냈으니 Service Role로 안전하게 조회합니다.
+    const supabase = createServiceClient();
 
     // 먼저 단순 조회로 테스트
     const { data: simpleData, error: simpleError } = await supabase
@@ -43,7 +44,8 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
         created_by_user:users!created_by (
           id,
           email,
-          name
+          name,
+          avatar_url
         )
       `)
       .eq('candidate_id', candidateId)

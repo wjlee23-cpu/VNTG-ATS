@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateRequired, validateUUID } from '@/api/utils/validation';
@@ -23,7 +23,10 @@ export async function createComment(
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
     await verifyCandidateAccess(candidateId);
-    const supabase = await createClient();
+    
+    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+    // verifyCandidateAccess에서 이미 권한 확인을 완료했으므로 안전합니다.
+    const supabase = createServiceClient();
 
     // 입력값 검증
     const validatedContent = validateRequired(content, '코멘트 내용');
@@ -101,7 +104,9 @@ export async function createComment(
 export async function updateComment(commentId: string, content: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    
+    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+    const supabase = createServiceClient();
 
     // 입력값 검증
     const validatedCommentId = validateUUID(commentId, '코멘트 ID');
@@ -175,7 +180,9 @@ export async function updateComment(commentId: string, content: string) {
 export async function deleteComment(commentId: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    
+    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+    const supabase = createServiceClient();
 
     // 입력값 검증
     const validatedCommentId = validateUUID(commentId, '코멘트 ID');
