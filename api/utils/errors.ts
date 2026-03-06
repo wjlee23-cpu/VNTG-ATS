@@ -71,7 +71,9 @@ export function handleError(error: unknown): string {
   // 일반 Error 인스턴스인 경우
   if (error instanceof Error) {
     // Supabase 에러인 경우 처리
-    if (error.message.includes('duplicate key')) {
+    // duplicate key 에러는 INSERT/UPDATE 시에만 발생하므로 더 정확하게 체크
+    if (error.message.includes('duplicate key') && 
+        (error.message.includes('INSERT') || error.message.includes('UPDATE'))) {
       return '이미 존재하는 데이터입니다.';
     }
     if (error.message.includes('foreign key')) {

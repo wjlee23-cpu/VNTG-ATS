@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     const scopes = [
       'https://www.googleapis.com/auth/calendar', // 캘린더 읽기/쓰기
       'https://www.googleapis.com/auth/gmail.send', // Gmail 발송
+      'https://www.googleapis.com/auth/gmail.readonly', // Gmail 읽기 권한 (이메일 동기화용)
       'https://www.googleapis.com/auth/userinfo.email', // 이메일 정보
       'https://www.googleapis.com/auth/userinfo.profile', // 프로필 정보
     ];

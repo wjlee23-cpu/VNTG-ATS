@@ -16,11 +16,25 @@ import { CustomStage } from '@/types/job';
  */
 export async function getAvailableStagesAction(jobPostId: string, currentStageId: string) {
   return withErrorHandling(async () => {
+    // 입력값 검증
+    if (!jobPostId || jobPostId.trim() === '') {
+      throw new Error('채용 공고 ID가 필요합니다.');
+    }
+    
+    if (!currentStageId || currentStageId.trim() === '') {
+      throw new Error('현재 전형 단계 ID가 필요합니다.');
+    }
+
     const user = await getCurrentUser();
     const isAdmin = user.role === 'admin';
     
-    const stages = await getAvailableStages(jobPostId, currentStageId, isAdmin);
-    return stages;
+    try {
+      const stages = await getAvailableStages(jobPostId, currentStageId, isAdmin);
+      return stages;
+    } catch (error) {
+      console.error('getAvailableStages error:', error);
+      throw error;
+    }
   });
 }
 
@@ -488,13 +502,13 @@ export async function moveToStage(candidateId: string, targetStageId: string) {
       throw new Error('후보자와 연결된 채용 공고를 찾을 수 없습니다.');
     }
 
-    // 현재 단계 확인
-    if (!candidate.current_stage_id) {
-      throw new Error('현재 전형 정보를 찾을 수 없습니다.');
-    }
+    // 현재 단계 확인 (null이면 기본값 설정)
+    const currentStageId = candidate.current_stage_id && candidate.current_stage_id.trim() !== ''
+      ? candidate.current_stage_id
+      : 'stage-1';
 
     // 목표 단계가 현재 단계와 같으면 에러
-    if (candidate.current_stage_id === targetStageId) {
+    if (currentStageId === targetStageId) {
       throw new Error('이미 해당 단계에 있습니다.');
     }
 
@@ -505,7 +519,7 @@ export async function moveToStage(candidateId: string, targetStageId: string) {
     // 사용 가능한 단계 목록 조회
     const availableStages = await getAvailableStages(
       candidate.job_post_id,
-      candidate.current_stage_id,
+      currentStageId,
       isAdmin
     );
 
@@ -521,10 +535,10 @@ export async function moveToStage(candidateId: string, targetStageId: string) {
     // 현재 단계 이름 찾기
     let currentStageName: string;
     if (customStages) {
-      const currentStage = customStages.find(s => s.id === candidate.current_stage_id);
-      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id;
+      const currentStage = customStages.find(s => s.id === currentStageId);
+      currentStageName = currentStage?.name || STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
     } else {
-      currentStageName = STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id;
+      currentStageName = STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId;
     }
 
     // 목표 단계 이름 찾기

@@ -37,6 +37,7 @@ export async function createCandidate(formData: FormData) {
       email,
       phone,
       status: 'pending',
+      current_stage_id: 'stage-1', // 기본값: New Application 단계로 시작
       token: crypto.randomUUID(), // 비로그인 접근용 토큰 생성
     };
 

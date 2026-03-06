@@ -2,16 +2,20 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
+import { getCurrentUser, verifyCandidateAccess, requireRecruiterOrAdmin } from '@/api/utils/auth';
 import { withErrorHandling } from '@/api/utils/errors';
 
 /**
  * 후보자 아카이브 처리
+ * 관리자와 리크루터만 사용 가능
  * @param id 후보자 ID
  * @param reason 아카이브 사유
  */
 export async function archiveCandidate(id: string, reason: string) {
   return withErrorHandling(async () => {
+    // 관리자 또는 리크루터 권한 확인
+    await requireRecruiterOrAdmin();
+    
     const user = await getCurrentUser();
     const candidate = await verifyCandidateAccess(id);
     const supabase = await createClient();
@@ -52,10 +56,14 @@ export async function archiveCandidate(id: string, reason: string) {
 
 /**
  * 후보자 아카이브 해제
+ * 관리자와 리크루터만 사용 가능
  * @param id 후보자 ID
  */
 export async function unarchiveCandidate(id: string) {
   return withErrorHandling(async () => {
+    // 관리자 또는 리크루터 권한 확인
+    await requireRecruiterOrAdmin();
+    
     const user = await getCurrentUser();
     await verifyCandidateAccess(id);
     const supabase = await createClient();

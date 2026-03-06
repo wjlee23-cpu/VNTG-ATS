@@ -40,17 +40,52 @@ async function getTokenScopes(accessToken: string): Promise<string[]> {
  * @param refreshToken Google OAuth refresh token (토큰 갱신용)
  * @returns Gmail API 클라이언트
  */
-export async function getGmailClient(accessToken: string, refreshToken: string) {
+export async function getGmailClient(accessToken: string, refreshToken: string, requireReadScope: boolean = false) {
+  // 환경 변수 확인
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.error('[Gmail API] ❌ 환경 변수 미설정:', {
+      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+    });
+    throw new Error('Gmail API를 사용하려면 GOOGLE_CLIENT_ID와 GOOGLE_CLIENT_SECRET 환경 변수가 필요합니다. .env 파일을 확인하세요.')
+  }
+  
+  console.log('[Gmail API] 환경 변수 확인 완료');
+  
   // 토큰이 만료되었을 수 있으므로 먼저 갱신 확인
   const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
   
   // 토큰 스코프 확인
   const scopes = await getTokenScopes(token)
-  const hasGmailScope = scopes.some(scope => 
+  console.log('[Gmail API] 토큰 스코프:', scopes);
+  
+  const hasGmailSendScope = scopes.some(scope => 
     scope.includes('gmail.send') || scope === 'https://www.googleapis.com/auth/gmail.send'
   )
+  const hasGmailReadScope = scopes.some(scope => 
+    scope.includes('gmail.readonly') || 
+    scope === 'https://www.googleapis.com/auth/gmail.readonly' ||
+    scope === 'https://www.googleapis.com/auth/gmail'
+  )
+  
+  console.log('[Gmail API] 스코프 확인:', {
+    hasGmailSendScope,
+    hasGmailReadScope,
+    requireReadScope,
+  });
 
-  if (!hasGmailScope) {
+  // 읽기 권한이 필요한 경우 확인
+  if (requireReadScope && !hasGmailReadScope) {
+    console.error('[Gmail API] ❌ Gmail 읽기 권한이 없습니다.');
+    console.error('[Gmail API] 현재 스코프:', scopes);
+    console.error('[Gmail API] 필요한 스코프: gmail.readonly 또는 gmail');
+    throw new Error('GMAIL_READ_SCOPE_MISSING: 토큰에 Gmail 읽기 권한이 없습니다. 구글 캘린더를 재연동하여 Gmail 읽기 권한을 승인해주세요. (필요한 스코프: gmail.readonly 또는 gmail)')
+  }
+
+  // 발송 권한 확인 (읽기만 필요한 경우는 체크하지 않음)
+  if (!requireReadScope && !hasGmailSendScope) {
+    console.error('[Gmail API] ❌ Gmail 발송 권한이 없습니다.');
+    console.error('[Gmail API] 현재 스코프:', scopes);
     throw new Error('GMAIL_SCOPE_MISSING: 토큰에 Gmail 발송 권한이 없습니다. 구글 캘린더를 재연동해주세요.')
   }
   
@@ -203,11 +238,11 @@ export function generateScheduleSelectionUrl(candidateId: string, token: string,
 }
 
 /**
- * Gmail에서 메시지 목록 조회
+ * Gmail에서 메시지 목록 조회 (페이지네이션 지원)
  * @param accessToken Google OAuth access token
  * @param refreshToken Google OAuth refresh token
  * @param query 검색 쿼리 (예: 'from:example@gmail.com' 또는 'to:example@gmail.com')
- * @param maxResults 최대 결과 수 (기본값: 50)
+ * @param maxResults 최대 결과 수 (기본값: 50, 최대 500)
  * @returns 메시지 ID 목록
  */
 export async function listMessages(
@@ -217,18 +252,146 @@ export async function listMessages(
   maxResults: number = 50
 ): Promise<string[]> {
   try {
-    const gmail = await getGmailClient(accessToken, refreshToken)
+    // 읽기 권한이 필요하므로 requireReadScope를 true로 설정
+    const gmail = await getGmailClient(accessToken, refreshToken, true)
     
-    const response = await gmail.users.messages.list({
-      userId: 'me',
-      q: query,
-      maxResults,
-    })
+    // Gmail API는 한 번에 최대 500개까지 조회 가능
+    const pageSize = Math.min(maxResults, 500);
+    console.log(`[Gmail API] 검색 쿼리 실행: ${query}, maxResults: ${maxResults}, pageSize: ${pageSize}`);
     
-    return response.data.messages?.map(msg => msg.id || '') || []
+    const allMessageIds: string[] = [];
+    let nextPageToken: string | undefined = undefined;
+    let pageCount = 0;
+    const maxPages = Math.ceil(maxResults / pageSize); // 최대 페이지 수 계산
+    
+    do {
+      pageCount++;
+      console.log(`[Gmail API] 페이지 ${pageCount} 조회 중... (이미 조회된 메시지: ${allMessageIds.length}개)`);
+      
+      const response = await gmail.users.messages.list({
+        userId: 'me',
+        q: query,
+        maxResults: pageSize,
+        pageToken: nextPageToken,
+      })
+      
+      const pageMessageIds = response.data.messages?.map(msg => msg.id || '').filter(id => id) || [];
+      allMessageIds.push(...pageMessageIds);
+      
+      nextPageToken = response.data.nextPageToken;
+      
+      // 상세 로깅 (resultSizeEstimate 포함)
+      const resultSizeEstimate = response.data.resultSizeEstimate || 0;
+      console.log(`[Gmail API] 페이지 ${pageCount} 결과: ${pageMessageIds.length}개 메시지 조회`);
+      console.log(`[Gmail API] 페이지 ${pageCount} 응답 정보:`, {
+        resultSizeEstimate: resultSizeEstimate,
+        actualMessages: pageMessageIds.length,
+        nextPageToken: nextPageToken ? '있음' : '없음',
+        totalCollected: allMessageIds.length,
+      });
+      
+      // resultSizeEstimate 분석 및 경고
+      if (resultSizeEstimate > 0 && pageMessageIds.length === 0) {
+        console.warn(`[Gmail API] ⚠️ resultSizeEstimate(${resultSizeEstimate})가 있지만 실제 메시지가 없습니다.`);
+        console.warn(`[Gmail API] ⚠️ 이는 Gmail API가 예상하는 결과 수와 실제 반환된 결과가 다를 수 있음을 의미합니다.`);
+      } else if (resultSizeEstimate > pageMessageIds.length) {
+        console.log(`[Gmail API] ℹ️ resultSizeEstimate(${resultSizeEstimate})가 실제 메시지 수(${pageMessageIds.length})보다 큽니다.`);
+        console.log(`[Gmail API] ℹ️ 더 많은 메시지가 있을 수 있지만 현재 페이지에서는 일부만 반환되었습니다.`);
+      } else if (resultSizeEstimate === pageMessageIds.length) {
+        console.log(`[Gmail API] ✅ resultSizeEstimate(${resultSizeEstimate})와 실제 메시지 수(${pageMessageIds.length})가 일치합니다.`);
+      }
+      
+      // 최대 결과 수에 도달하면 중단
+      if (allMessageIds.length >= maxResults) {
+        console.log(`[Gmail API] 최대 결과 수(${maxResults})에 도달하여 조회 중단`);
+        break;
+      }
+      
+      // 최대 페이지 수에 도달하면 중단
+      if (pageCount >= maxPages) {
+        console.log(`[Gmail API] 최대 페이지 수(${maxPages})에 도달하여 조회 중단`);
+        break;
+      }
+      
+    } while (nextPageToken);
+    
+    // 최대 결과 수만큼만 반환
+    const finalMessageIds = allMessageIds.slice(0, maxResults);
+    
+    // 전체 resultSizeEstimate 요약 (첫 페이지의 값 사용)
+    const firstPageEstimate = allMessageIds.length > 0 ? (allMessageIds.length > 0 ? '첫 페이지에서 확인됨' : '없음') : '없음';
+    
+    console.log(`[Gmail API] 검색 완료: 총 ${finalMessageIds.length}개의 메시지 ID 조회 성공 (${pageCount}페이지)`);
+    console.log(`[Gmail API] 검색 요약:`, {
+      query,
+      totalMessages: finalMessageIds.length,
+      pages: pageCount,
+      resultSizeEstimate: firstPageEstimate,
+    });
+    
+    // 검색 결과가 없을 때 추가 정보 로깅
+    if (finalMessageIds.length === 0) {
+      console.warn(`[Gmail API] ⚠️ 검색 결과가 없습니다. 쿼리: ${query}`);
+      console.warn(`[Gmail API] ⚠️ 가능한 원인:`);
+      console.warn(`[Gmail API]   1. Gmail에 해당 검색 조건에 맞는 이메일이 없을 수 있습니다.`);
+      console.warn(`[Gmail API]   2. 검색 쿼리 형식이 잘못되었을 수 있습니다.`);
+      console.warn(`[Gmail API]   3. Gmail 인덱싱 지연으로 최근 이메일이 아직 검색되지 않을 수 있습니다.`);
+      console.warn(`[Gmail API] ⚠️ 해결 방법: Gmail 웹 인터페이스에서 직접 같은 검색 쿼리를 시도해보세요.`);
+    }
+    
+    return finalMessageIds;
   } catch (error: any) {
-    console.error('Gmail 메시지 목록 조회 실패:', error)
-    throw new Error(`메시지 목록 조회 실패: ${error.message || '알 수 없는 오류'}`)
+    console.error('[Gmail API] 메시지 목록 조회 실패:', error);
+    console.error('[Gmail API] 에러 상세:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      response: error.response?.data,
+      query: query, // 검색 쿼리도 로깅
+    });
+    
+    // Gmail API 에러 응답 상세 분석
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      console.error('[Gmail API] 에러 응답 상세 분석:', {
+        error: errorData.error,
+        error_description: errorData.error_description,
+        error_details: errorData.error_details,
+        message: errorData.message,
+      });
+      
+      // 에러 코드별 상세 정보
+      if (errorData.error) {
+        console.error('[Gmail API] 에러 코드:', errorData.error.code || errorData.error.status || 'N/A');
+        console.error('[Gmail API] 에러 메시지:', errorData.error.message || errorData.message || 'N/A');
+        if (errorData.error.errors) {
+          console.error('[Gmail API] 에러 세부사항:', JSON.stringify(errorData.error.errors, null, 2));
+        }
+      }
+    }
+    
+    // 권한 부족 에러인 경우 명확한 메시지 반환
+    if (error.message && error.message.includes('GMAIL_READ_SCOPE_MISSING')) {
+      throw new Error('Gmail 읽기 권한이 없습니다. 구글 캘린더를 재연동하여 Gmail 읽기 권한을 승인해주세요.')
+    }
+    
+    // 스코프 부족 에러 확인
+    const errorMessage = error.response?.data?.error?.message || error.message || '알 수 없는 오류'
+    if (errorMessage.includes('insufficient authentication scopes') || 
+        errorMessage.includes('insufficient') ||
+        errorMessage.toLowerCase().includes('scope')) {
+      throw new Error('Gmail 읽기 권한이 부족합니다. Google Cloud Console에서 Gmail API를 활성화하고, OAuth 동의 화면에 gmail.readonly 스코프를 추가한 후 구글 캘린더를 재연동해주세요.')
+    }
+    
+    // 400 Bad Request 에러 (검색 쿼리 형식 오류 가능성)
+    if (error.response?.status === 400) {
+      console.error('[Gmail API] ⚠️ 400 Bad Request: 검색 쿼리 형식이 잘못되었을 수 있습니다.');
+      console.error('[Gmail API] ⚠️ 시도한 검색 쿼리:', query);
+      console.error('[Gmail API] ⚠️ Gmail 웹 인터페이스에서 다음 쿼리를 직접 테스트해보세요:', query);
+    }
+    
+    throw new Error(`메시지 목록 조회 실패: ${errorMessage}`)
   }
 }
 
@@ -254,7 +417,8 @@ export async function getMessage(
   receivedAt?: string
 }> {
   try {
-    const gmail = await getGmailClient(accessToken, refreshToken)
+    // 읽기 권한이 필요하므로 requireReadScope를 true로 설정
+    const gmail = await getGmailClient(accessToken, refreshToken, true)
     
     const response = await gmail.users.messages.get({
       userId: 'me',
@@ -304,6 +468,20 @@ export async function getMessage(
     }
   } catch (error: any) {
     console.error('Gmail 메시지 조회 실패:', error)
-    throw new Error(`메시지 조회 실패: ${error.message || '알 수 없는 오류'}`)
+    
+    // 권한 부족 에러인 경우 명확한 메시지 반환
+    if (error.message && error.message.includes('GMAIL_READ_SCOPE_MISSING')) {
+      throw new Error('Gmail 읽기 권한이 없습니다. 구글 캘린더를 재연동하여 Gmail 읽기 권한을 승인해주세요.')
+    }
+    
+    // 스코프 부족 에러 확인
+    const errorMessage = error.response?.data?.error?.message || error.message || '알 수 없는 오류'
+    if (errorMessage.includes('insufficient authentication scopes') || 
+        errorMessage.includes('insufficient') ||
+        errorMessage.toLowerCase().includes('scope')) {
+      throw new Error('Gmail 읽기 권한이 부족합니다. Google Cloud Console에서 Gmail API를 활성화하고, OAuth 동의 화면에 gmail.readonly 스코프를 추가한 후 구글 캘린더를 재연동해주세요.')
+    }
+    
+    throw new Error(`메시지 조회 실패: ${errorMessage}`)
   }
 }

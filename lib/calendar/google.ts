@@ -109,6 +109,7 @@ export function getGoogleAuthUrl(): string {
   const scopes = [
     'https://www.googleapis.com/auth/calendar', // 읽기/쓰기 권한으로 변경
     'https://www.googleapis.com/auth/gmail.send', // Gmail 이메일 발송 권한
+    'https://www.googleapis.com/auth/gmail.readonly', // Gmail 읽기 권한 (이메일 동기화용)
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
   ]

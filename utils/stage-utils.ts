@@ -158,6 +158,15 @@ export async function getAvailableStages(
   currentStageId: string,
   isAdmin: boolean = false
 ): Promise<Array<{ id: string; name: string; order: number; isCurrent: boolean }>> {
+  // 입력값 검증
+  if (!jobPostId || jobPostId.trim() === '') {
+    throw new Error('채용 공고 ID가 필요합니다.');
+  }
+  
+  if (!currentStageId || currentStageId.trim() === '') {
+    throw new Error('현재 전형 단계 ID가 필요합니다.');
+  }
+
   const { customStages } = await getJobProcessInfo(jobPostId, isAdmin);
 
   // custom_stages가 null이면 기본 8단계 모두 활성화로 간주

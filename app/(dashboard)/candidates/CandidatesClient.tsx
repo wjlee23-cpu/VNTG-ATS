@@ -397,7 +397,10 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">CANDIDATE</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">POSITION</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STAGE</th>
+                    {/* All Stages를 선택했을 때만 Stage 컬럼 표시 */}
+                    {selectedStage === 'all' && (
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STAGE</th>
+                    )}
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">MATCH</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">APPLIED</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STATUS</th>
@@ -436,12 +439,14 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                             <div className="text-muted-foreground text-xs mt-1">Seoul, Korea</div>
                           </div>
                         </td>
-                        {/* STAGE */}
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
-                            {stageName}
-                          </span>
-                        </td>
+                        {/* STAGE - All Stages를 선택했을 때만 표시 */}
+                        {selectedStage === 'all' && (
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
+                              {stageName}
+                            </span>
+                          </td>
+                        )}
                         {/* MATCH */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">

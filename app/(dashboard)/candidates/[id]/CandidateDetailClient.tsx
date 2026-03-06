@@ -6,7 +6,7 @@ import {
   X, Mail, Phone, MapPin, Star, FileText, Download, Calendar, 
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
-  CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown
+  CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -21,6 +21,7 @@ import { getResumeFilesByCandidate } from '@/api/queries/resume-files';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { getUserProfile } from '@/api/queries/auth';
 import { skipStage, moveToStage, getAvailableStagesAction } from '@/api/actions/evaluations';
+import { syncCandidateEmails } from '@/api/actions/emails';
 import { toast } from 'sonner';
 
 interface Candidate {
@@ -29,7 +30,7 @@ interface Candidate {
   email: string;
   phone: string | null;
   status: 'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue';
-  current_stage_id: string;
+  current_stage_id: string | null;
   token: string;
   resume_file_url: string | null;
   ai_summary?: string | null;
@@ -137,9 +138,18 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [showCompensation, setShowCompensation] = useState(false);
+
+  // current_stage_id가 null이거나 빈 문자열인 경우 기본값 설정 (방어적 코딩)
+  const currentStageId = (candidate.current_stage_id && candidate.current_stage_id.trim() !== '') 
+    ? candidate.current_stage_id 
+    : 'stage-1';
   const [isStagePopoverOpen, setIsStagePopoverOpen] = useState(false);
   const [availableStages, setAvailableStages] = useState<Array<{ id: string; name: string; order: number; isCurrent: boolean }>>([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
+  // 이메일 확장 상태 관리 (이벤트 ID -> 확장 여부)
+  const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
+  // 이메일 동기화 상태
+  const [isSyncingEmails, setIsSyncingEmails] = useState(false);
 
   // 평가 데이터 및 파일 로드
   useEffect(() => {
@@ -156,11 +166,15 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       const result = await getStageEvaluations(candidate.id);
       if (result.error) {
         console.error('Failed to load evaluations:', result.error);
+        // 에러가 발생해도 빈 배열로 설정하여 UI가 깨지지 않도록 함
+        setEvaluations([]);
       } else {
         setEvaluations(result.data || []);
       }
     } catch (error) {
       console.error('Load evaluations error:', error);
+      // 에러가 발생해도 빈 배열로 설정
+      setEvaluations([]);
     } finally {
       setIsLoadingEvaluations(false);
     }
@@ -328,6 +342,38 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     return formatDate(dateString);
   };
 
+  // HTML 태그 제거 및 텍스트 정리 헬퍼 함수
+  const stripHtml = (html: string | undefined | null): string => {
+    if (!html) return '';
+    // HTML 태그 제거
+    const text = html.replace(/<[^>]*>/g, '');
+    // HTML 엔티티 디코딩
+    const decoded = text
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+    // 연속된 공백 정리
+    return decoded.replace(/\s+/g, ' ').trim();
+  };
+
+  // 이메일 내용 포맷팅 (HTML 처리 및 줄바꿈 처리)
+  const formatEmailBody = (body: string | undefined | null): string => {
+    if (!body) return '';
+    const text = stripHtml(body);
+    // 줄바꿈을 유지하면서 표시
+    return text.replace(/\n/g, '\n');
+  };
+
+  // 이메일 본문이 긴지 확인 (200자 이상)
+  const isLongEmail = (body: string | undefined | null): boolean => {
+    if (!body) return false;
+    const text = stripHtml(body);
+    return text.length > 200;
+  };
+
   // 타임라인 이벤트 내용 렌더링
   const renderTimelineContent = (event: TimelineEvent) => {
     switch (event.type) {
@@ -340,15 +386,79 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           </div>
         );
       case 'email':
+      case 'email_received':
+        const emailDirection = event.content?.direction || (event.type === 'email_received' ? 'inbound' : 'outbound');
+        const emailBody = formatEmailBody(event.content?.body);
+        const emailSubject = event.content?.subject || '제목 없음';
+        const isLong = isLongEmail(event.content?.body);
+        const isExpanded = expandedEmails.has(event.id);
+        
+        // 긴 이메일의 경우 처음 200자만 표시
+        const truncatedBody = isLong && !isExpanded 
+          ? emailBody.substring(0, 200) + '...' 
+          : emailBody;
+        
+        const toggleEmailExpansion = () => {
+          setExpandedEmails(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(event.id)) {
+              newSet.delete(event.id);
+            } else {
+              newSet.add(event.id);
+            }
+            return newSet;
+          });
+        };
+        
         return (
-          <div className="space-y-1">
-            <p className="text-sm text-gray-700">{event.content?.body || event.content?.message || '이메일이 발송되었습니다.'}</p>
-            {event.content?.from_email && event.content?.to_email && (
-              <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600 space-y-1">
-                <p>From: {event.content.from_email}</p>
-                <p>To: {event.content.to_email}</p>
-                {event.content?.subject && (
-                  <p>Subject: {event.content.subject}</p>
+          <div className="space-y-3">
+            {/* 방향 배지 및 제목 */}
+            <div className="flex items-start gap-2">
+              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
+                emailDirection === 'outbound' 
+                  ? 'bg-blue-100 text-blue-800' 
+                  : 'bg-green-100 text-green-800'
+              }`}>
+                {emailDirection === 'outbound' ? '📤 발신' : '📥 수신'}
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-900">{emailSubject}</p>
+              </div>
+            </div>
+            
+            {/* 이메일 본문 */}
+            {emailBody && (
+              <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{truncatedBody}</p>
+                {isLong && (
+                  <button
+                    onClick={toggleEmailExpansion}
+                    className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ArrowUp className="w-3 h-3" />
+                        접기
+                      </>
+                    ) : (
+                      <>
+                        <ArrowDown className="w-3 h-3" />
+                        더 보기
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+            
+            {/* 이메일 메타데이터 */}
+            {(event.content?.from_email || event.content?.to_email) && (
+              <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600 space-y-1 border border-gray-100">
+                {event.content?.from_email && (
+                  <p><span className="font-medium">From:</span> {event.content.from_email}</p>
+                )}
+                {event.content?.to_email && (
+                  <p><span className="font-medium">To:</span> {event.content.to_email}</p>
                 )}
               </div>
             )}
@@ -527,21 +637,6 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             )}
           </div>
         );
-      case 'email_received':
-        return (
-          <div className="space-y-1">
-            <p className="text-sm text-gray-700">{event.content?.message || '이메일을 수신했습니다.'}</p>
-            {event.content?.from_email && event.content?.to_email && (
-              <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600 space-y-1">
-                <p>From: {event.content.from_email}</p>
-                <p>To: {event.content.to_email}</p>
-                {event.content?.subject && (
-                  <p>Subject: {event.content.subject}</p>
-                )}
-              </div>
-            )}
-          </div>
-        );
       case 'comment_created':
       case 'comment_updated':
         return (
@@ -631,28 +726,53 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const canManageCandidate = userRole === 'admin' || userRole === 'recruiter';
 
   // Schedule Interview 버튼 표시 조건 (1차 면접 또는 2차 면접 단계에서만)
-  const canScheduleInterview = candidate.current_stage_id === 'stage-6' || candidate.current_stage_id === 'stage-8';
+  const canScheduleInterview = currentStageId === 'stage-6' || currentStageId === 'stage-8';
 
   // 전형 이동 관련 상태
   const [isMovingStage, setIsMovingStage] = useState(false);
 
   // Popover 열릴 때 사용 가능한 단계 목록 로드
   const loadAvailableStages = async () => {
-    if (!candidate.job_posts?.id || !candidate.current_stage_id) {
+    // 디버깅: 현재 상태 확인
+    console.log('loadAvailableStages - candidate:', {
+      id: candidate.id,
+      current_stage_id: currentStageId,
+      job_post_id: candidate.job_posts?.id,
+    });
+
+    if (!candidate.job_posts?.id) {
+      toast.error('채용 공고 정보를 찾을 수 없습니다.');
+      setIsStagePopoverOpen(false);
+      return;
+    }
+
+    // currentStageId는 이미 기본값이 설정되어 있으므로 항상 유효해야 함
+    // 하지만 방어적으로 한 번 더 체크
+    if (!currentStageId || currentStageId.trim() === '') {
+      console.error('current_stage_id is missing after default value assignment:', {
+        original: candidate.current_stage_id,
+        computed: currentStageId,
+      });
+      toast.error('현재 전형 정보를 찾을 수 없습니다. 후보자의 전형 단계가 설정되지 않았습니다.');
+      setIsStagePopoverOpen(false);
       return;
     }
 
     setIsLoadingStages(true);
     try {
-      const result = await getAvailableStagesAction(candidate.job_posts.id, candidate.current_stage_id);
+      const result = await getAvailableStagesAction(candidate.job_posts.id, currentStageId);
       if (result.error) {
-        toast.error('단계 목록을 불러오는데 실패했습니다.');
+        console.error('getAvailableStagesAction error:', result.error);
+        toast.error(result.error || '단계 목록을 불러오는데 실패했습니다.');
+        setIsStagePopoverOpen(false);
       } else {
+        console.log('Available stages loaded:', result.data);
         setAvailableStages(result.data || []);
       }
     } catch (error) {
       console.error('Load available stages error:', error);
       toast.error('단계 목록을 불러오는데 실패했습니다.');
+      setIsStagePopoverOpen(false);
     } finally {
       setIsLoadingStages(false);
     }
@@ -668,12 +788,26 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
 
   // 특정 단계로 이동 핸들러
   const handleMoveToStage = async (targetStageId: string) => {
-    if (!candidate.current_stage_id) {
-      toast.error('현재 전형 정보를 찾을 수 없습니다.');
+    // 디버깅: 현재 상태 확인
+    console.log('handleMoveToStage - candidate:', {
+      id: candidate.id,
+      current_stage_id: currentStageId,
+      targetStageId,
+      job_post_id: candidate.job_posts?.id,
+    });
+
+    if (!currentStageId || currentStageId.trim() === '') {
+      console.error('current_stage_id is missing in handleMoveToStage');
+      toast.error('현재 전형 정보를 찾을 수 없습니다. 후보자의 전형 단계가 설정되지 않았습니다.');
       return;
     }
 
-    if (candidate.current_stage_id === targetStageId) {
+    if (!candidate.job_posts?.id) {
+      toast.error('채용 공고 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    if (currentStageId === targetStageId) {
       toast.error('이미 해당 단계에 있습니다.');
       return;
     }
@@ -710,6 +844,65 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const handleDocumentClick = (file: ResumeFile) => {
     setSelectedDocument(file);
     setIsDocumentPreviewOpen(true);
+  };
+
+  // 이메일 동기화 핸들러
+  const handleSyncEmails = async () => {
+    setIsSyncingEmails(true);
+    try {
+      console.log('[클라이언트] 이메일 동기화 시작:', candidate.id, candidate.email);
+      const result = await syncCandidateEmails(candidate.id, 90); // 최근 90일 이메일 동기화
+      
+      // 디버깅 정보를 브라우저 콘솔에 출력
+      console.log('[클라이언트] 이메일 동기화 결과:', result);
+      if (result.debug) {
+        console.log('[클라이언트] 디버깅 정보:', result.debug);
+        console.log('[클라이언트] 시도한 검색 쿼리 수:', result.debug.totalQueriesTried);
+        console.log('[클라이언트] 성공한 검색 쿼리 수:', result.debug.successfulQueries);
+        if (result.debug.queryResults) {
+          console.log('[클라이언트] 검색 쿼리별 결과:');
+          result.debug.queryResults.forEach((q: any, i: number) => {
+            console.log(`  ${i + 1}. ${q.query} → ${q.count}개`);
+          });
+        }
+      }
+      
+      if (result.error) {
+        console.error('[클라이언트] 이메일 동기화 에러:', result.error);
+        toast.error(result.error);
+      } else {
+        const syncedCount = result.synced || 0;
+        if (syncedCount > 0) {
+          toast.success(`${syncedCount}개의 이메일을 동기화했습니다.`);
+        } else {
+          // 디버깅 정보가 있으면 더 자세한 메시지 표시
+          if (result.debug) {
+            console.warn('[클라이언트] 동기화할 이메일이 없습니다. 디버깅 정보:', result.debug);
+            toast.info(`동기화할 이메일이 없습니다. (시도한 검색: ${result.debug.totalQueriesTried}개, 성공: ${result.debug.successfulQueries}개)`, {
+              duration: 5000,
+            });
+          } else {
+            toast.info('동기화할 이메일이 없습니다.');
+          }
+        }
+        // 타임라인 새로고침
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('[클라이언트] 이메일 동기화 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : '이메일 동기화 중 오류가 발생했습니다.';
+      
+      // Gmail 권한 관련 에러인 경우 특별 처리
+      if (errorMessage.includes('Gmail 읽기 권한') || errorMessage.includes('GMAIL_READ_SCOPE_MISSING')) {
+        toast.error('Gmail 읽기 권한이 필요합니다. 구글 캘린더를 재연동하여 Gmail 읽기 권한을 승인해주세요.', {
+          duration: 5000,
+        });
+      } else {
+        toast.error(errorMessage);
+      }
+    } finally {
+      setIsSyncingEmails(false);
+    }
   };
 
   return (
@@ -766,6 +959,28 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
               Email
             </Button>
           )}
+          {/* 이메일 동기화 버튼: 관리자/리크루터만 표시 */}
+          {canManageCandidate && (
+            <Button
+              onClick={handleSyncEmails}
+              variant="outline"
+              className="border-blue-300 bg-white hover:bg-blue-50"
+              size="default"
+              disabled={isSyncingEmails}
+            >
+              {isSyncingEmails ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  동기화 중...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  이메일 동기화
+                </>
+              )}
+            </Button>
+          )}
           {/* 전형 이동 버튼: 관리자/리크루터만 표시 */}
           {canManageCandidate && (
             <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
@@ -774,7 +989,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   variant="outline"
                   className="border-green-300 text-green-700 hover:bg-green-50"
                   size="default"
-                  disabled={isMovingStage || !candidate.current_stage_id}
+                  disabled={isMovingStage || !currentStageId || !candidate.job_posts?.id}
                 >
                   <ArrowRight className="w-4 h-4 mr-2" />
                   {isMovingStage ? '이동 중...' : '전형 이동'}
@@ -789,6 +1004,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   {isLoadingStages ? (
                     <div className="p-4 text-center text-sm text-gray-500">
                       로딩 중...
+                    </div>
+                  ) : !currentStageId ? (
+                    <div className="p-4 text-center text-sm text-red-500">
+                      현재 전형 정보가 없습니다.
                     </div>
                   ) : availableStages.length === 0 ? (
                     <div className="p-4 text-center text-sm text-gray-500">
@@ -845,6 +1064,18 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 </div>
               </PopoverContent>
             </Popover>
+          )}
+          {/* 아카이브 버튼: 관리자/리크루터만 표시 */}
+          {canManageCandidate && (
+            <Button
+              onClick={() => setIsArchiveModalOpen(true)}
+              variant="outline"
+              className="border-orange-300 text-orange-700 hover:bg-orange-50"
+              size="default"
+            >
+              <Archive className="w-4 h-4 mr-2" />
+              아카이브
+            </Button>
           )}
         </div>
 
@@ -1016,7 +1247,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Activity Timeline</h2>
-                {candidate.current_stage_id && (
+                {currentStageId && (
                   <Button
                     onClick={() => setIsEvaluationModalOpen(true)}
                     variant="outline"
@@ -1100,10 +1331,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         <StageEvaluationModal
           candidateId={candidate.id}
           candidateName={candidate.name}
-          stageId={candidate.current_stage_id}
-          stageName={STAGE_ID_TO_NAME_MAP[candidate.current_stage_id] || candidate.current_stage_id}
+          stageId={currentStageId}
+          stageName={STAGE_ID_TO_NAME_MAP[currentStageId] || currentStageId}
           existingEvaluation={userId ? evaluations
-            .filter(e => e.stage_id === candidate.current_stage_id)
+            .filter(e => e.stage_id === currentStageId)
             .find(e => e.evaluator_id === userId) : undefined}
           isOpen={isEvaluationModalOpen}
           onClose={() => {

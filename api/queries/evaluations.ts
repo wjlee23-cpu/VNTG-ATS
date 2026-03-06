@@ -31,6 +31,13 @@ export async function getStageEvaluations(candidateId: string) {
       .order('created_at', { ascending: false });
 
     if (error) {
+      console.error('[평가 조회] Supabase 에러:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        candidateId,
+      });
       throw new Error(`평가 조회 실패: ${error.message}`);
     }
 

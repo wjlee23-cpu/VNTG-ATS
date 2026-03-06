@@ -109,6 +109,11 @@ export async function getCandidateById(id: string) {
       throw new Error(`후보자 조회 실패: ${error.message}`);
     }
 
+    // current_stage_id가 null인 경우 기본값 설정 (New Application)
+    if (data && !data.current_stage_id) {
+      data.current_stage_id = 'stage-1';
+    }
+
     return data;
   });
 }
