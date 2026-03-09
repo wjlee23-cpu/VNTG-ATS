@@ -744,7 +744,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         }
       }
 
-      // 공통 가능 일정 찾기 (AI 사용)
+      // 공통 가능 일정 찾기
       const availableSlots = await findAvailableTimeSlots({
         candidateName: candidate.name,
         stageName: stageId,
@@ -1212,7 +1212,7 @@ async function regenerateScheduleOptions(scheduleId: string) {
       }
     }
 
-    // 공통 가능 일정 찾기 (AI 사용)
+    // 공통 가능 일정 찾기
     const availableSlots = await findAvailableTimeSlots({
       candidateName: candidate.name,
       stageName: schedule.stage_id,
