@@ -13,6 +13,7 @@ import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gma
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
+import { getStageNameByStageId } from '@/constants/stages';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -886,6 +887,9 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     // 면접관들에게 일정 확인 안내 메일 발송
     const organizer = interviewersWithCalendar[0];
     if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
+      // stage ID를 프로세스 이름으로 변환
+      const stageName = getStageNameByStageId(stageId) || stageId;
+      
       // 일정 옵션 목록을 HTML로 포맷팅
       const optionsListHtml = scheduleOptions.map((opt, index) => {
         const date = new Date(opt.scheduled_at);
@@ -936,7 +940,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
                 <strong>후보자:</strong> ${candidate.name}
               </p>
               <p style="margin: 5px 0; font-size: 14px;">
-                <strong>면접 단계:</strong> ${stageId}
+                <strong>면접 단계:</strong> ${stageName}
               </p>
               <p style="margin: 5px 0; font-size: 14px;">
                 <strong>면접 시간:</strong> ${durationMinutes}분
@@ -1347,6 +1351,9 @@ async function regenerateScheduleOptions(scheduleId: string) {
   // 면접관들에게 새로운 일정 확인 안내 메일 발송
   const organizer = interviewersWithCalendar[0];
   if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
+    // stage ID를 프로세스 이름으로 변환
+    const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+    
     const optionsListHtml = scheduleOptions.map((opt, index) => {
       const date = new Date(opt.scheduled_at);
       const endTime = new Date(date);
@@ -1396,7 +1403,7 @@ async function regenerateScheduleOptions(scheduleId: string) {
               <strong>후보자:</strong> ${candidate.name}
             </p>
             <p style="margin: 5px 0; font-size: 14px;">
-              <strong>면접 단계:</strong> ${schedule.stage_id}
+              <strong>면접 단계:</strong> ${stageName}
             </p>
             <p style="margin: 5px 0; font-size: 14px;">
               <strong>면접 시간:</strong> ${schedule.duration_minutes}분
@@ -2634,6 +2641,9 @@ export async function sendReminderEmailsToInterviewers() {
 
         // 응답하지 않은 면접관들에게 리마인드 메일 발송
         if (interviewersNeedingReminder.size > 0) {
+          // stage ID를 프로세스 이름으로 변환
+          const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+          
           // 일정 옵션 목록을 HTML로 포맷팅
           const optionsListHtml = options.map((opt, index) => {
             const date = new Date(opt.scheduled_at);
@@ -2681,7 +2691,7 @@ export async function sendReminderEmailsToInterviewers() {
                     <strong>후보자:</strong> ${candidate.name}
                   </p>
                   <p style="margin: 5px 0; font-size: 14px;">
-                    <strong>면접 단계:</strong> ${schedule.stage_id}
+                    <strong>면접 단계:</strong> ${stageName}
                   </p>
                   <p style="margin: 5px 0; font-size: 14px;">
                     <strong>면접 시간:</strong> ${schedule.duration_minutes}분

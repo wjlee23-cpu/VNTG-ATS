@@ -1,0 +1,9 @@
+[Refactor] 면접 일정 자동화에서 AI 호출 로직 제거 및 규칙 기반 로직으로 정리
+
+- lib/ai/schedule.ts에서 AI 관련 import 및 함수 호출 제거
+- findAvailableTimeSlots 함수에서 provider 파라미터 제거
+- generateScheduleMessage 함수 제거 (사용되지 않음)
+- 사용하지 않는 import 정리
+- 중복 로직 제거 및 코드 개선
+- 주석에서 AI 사용 언급 제거
+- 순수 규칙 기반 로직만 사용하도록 변경

@@ -11,6 +11,7 @@ export const RECRUITMENT_STAGES = [
   { id: '1st_interview', name: '1st Interview', label: '1st Interview' },
   { id: 'reference_check', name: 'Reference Check', label: 'Reference Check' },
   { id: '2nd_interview', name: '2nd Interview', label: '2nd Interview' },
+  { id: 'offer', name: 'Offer', label: 'Offer' },
 ] as const;
 
 /**
@@ -45,6 +46,7 @@ export function getStageNameById(id: string): string | null {
  * 5. 1st Interview (stage-5)
  * 6. Reference Check (stage-6)
  * 7. 2nd Interview (stage-7)
+ * 8. Offer (stage-8)
  */
 export const STAGE_ID_TO_NAME_MAP: Record<string, string> = {
   'stage-1': 'New Application',
@@ -54,6 +56,7 @@ export const STAGE_ID_TO_NAME_MAP: Record<string, string> = {
   'stage-5': '1st Interview',
   'stage-6': 'Reference Check',
   'stage-7': '2nd Interview',
+  'stage-8': 'Offer',
 };
 
 /**

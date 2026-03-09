@@ -186,11 +186,12 @@ export async function getCandidatesByStage() {
 
     const jobPostIds = jobPosts.map(jp => jp.id);
 
-    // 모든 후보자 조회 (current_stage_id 포함)
+    // 모든 후보자 조회 (current_stage_id 포함, 아카이브되지 않은 후보자만)
     const { data: candidates } = await supabase
       .from('candidates')
       .select('current_stage_id')
-      .in('job_post_id', jobPostIds);
+      .in('job_post_id', jobPostIds)
+      .eq('archived', false); // 아카이브되지 않은 후보자만 조회
 
     // 단계별 카운트 (current_stage_id를 단계 이름으로 매핑)
     const byStage: Record<string, number> = {};
@@ -205,6 +206,7 @@ export async function getCandidatesByStage() {
       '1st Interview',
       'Reference Check',
       '2nd Interview',
+      'Offer',
     ];
 
     // 각 단계별로 초기값 설정
@@ -363,5 +365,86 @@ export async function getArchivedCandidates(jobPostId?: string) {
     }
 
     return data || [];
+  });
+}
+
+/**
+ * 입사확정된 후보자 조회 (offers 테이블에서 offer_status='accepted'인 후보자)
+ * @param jobPostId 특정 채용 공고의 후보자만 조회 (선택)
+ * @returns 입사확정된 후보자 목록
+ */
+export async function getConfirmedCandidates(jobPostId?: string) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // 관리자일 경우 모든 job_posts 조회, 일반 사용자는 자신의 organization_id로 필터링
+    let jobPostsQuery = supabase
+      .from('job_posts')
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+
+    const { data: jobPosts } = await jobPostsQuery;
+
+    if (!jobPosts || jobPosts.length === 0) {
+      return [];
+    }
+
+    const jobPostIds = jobPostId
+      ? [validateUUID(jobPostId, '채용 공고 ID')]
+      : jobPosts.map(jp => jp.id);
+
+    // 1단계: offers 테이블에서 offer_status='accepted'인 candidate_id 목록 조회
+    const { data: offers, error: offersError } = await supabase
+      .from('offers')
+      .select('candidate_id')
+      .eq('offer_status', 'accepted');
+
+    if (offersError) {
+      throw new Error(`입사확정 후보자 조회 실패: ${offersError.message}`);
+    }
+
+    if (!offers || offers.length === 0) {
+      return [];
+    }
+
+    const candidateIds = offers.map(offer => offer.candidate_id).filter(Boolean);
+
+    if (candidateIds.length === 0) {
+      return [];
+    }
+
+    // 2단계: candidates 테이블에서 해당 candidate_id들로 조회
+    const { data: confirmedCandidates, error: candidatesError } = await supabase
+      .from('candidates')
+      .select(`
+        *,
+        job_posts!inner (
+          id,
+          title,
+          organization_id,
+          process_id,
+          processes (
+            id,
+            name,
+            stages
+          )
+        )
+      `)
+      .in('id', candidateIds)
+      .in('job_post_id', jobPostIds)
+      .eq('archived', false); // 아카이브되지 않은 후보자만
+
+    if (candidatesError) {
+      throw new Error(`입사확정 후보자 조회 실패: ${candidatesError.message}`);
+    }
+
+    return confirmedCandidates || [];
   });
 }

@@ -7,7 +7,7 @@ import {
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
   CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown, RefreshCw,
-  ArrowUpRight, ArrowDownLeft
+  ArrowUpRight, ArrowDownLeft, Trash2, Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,7 +28,11 @@ import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { getUserProfile } from '@/api/queries/auth';
 import { skipStage, moveToStage, getAvailableStagesAction } from '@/api/actions/evaluations';
 import { syncCandidateEmails } from '@/api/actions/emails';
+import { updateCandidate } from '@/api/actions/candidates';
+import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface Candidate {
   id: string;
@@ -157,6 +161,17 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
   // 이메일 동기화 상태
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
+  // 수정 모드 상태
+  const [isEditMode, setIsEditMode] = useState(false);
+  // 수정 폼 데이터
+  const [editFormData, setEditFormData] = useState({
+    email: candidate.email,
+    phone: candidate.phone || '',
+    current_salary: candidate.current_salary || '',
+    expected_salary: candidate.expected_salary || '',
+  });
+  // 파일 업로드 상태
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // 평가 데이터 및 파일 로드
   useEffect(() => {
@@ -1160,6 +1175,87 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   
   const currentStageName = getCurrentStageName();
 
+  // 수정 핸들러
+  const handleSaveEdit = async () => {
+    try {
+      const formData = new FormData();
+      formData.append('name', candidate.name);
+      formData.append('email', editFormData.email);
+      formData.append('phone', editFormData.phone);
+      if (editFormData.current_salary !== null) {
+        formData.append('current_salary', editFormData.current_salary);
+      }
+      if (editFormData.expected_salary !== null) {
+        formData.append('expected_salary', editFormData.expected_salary);
+      }
+
+      const result = await updateCandidate(candidate.id, formData);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('후보자 정보가 수정되었습니다.');
+        setIsEditMode(false);
+        // 페이지 새로고침
+        router.refresh();
+      }
+    } catch (error: any) {
+      toast.error(error.message || '수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditFormData({
+      email: candidate.email,
+      phone: candidate.phone || '',
+      current_salary: candidate.current_salary || '',
+      expected_salary: candidate.expected_salary || '',
+    });
+    setIsEditMode(false);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const result = await uploadResumeFile(candidate.id, formData);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('파일이 업로드되었습니다.');
+        // 파일 목록 새로고침
+        loadResumeFiles();
+      }
+    } catch (error: any) {
+      toast.error(error.message || '파일 업로드 중 오류가 발생했습니다.');
+    } finally {
+      setIsUploadingFile(false);
+      // input 초기화
+      event.target.value = '';
+    }
+  };
+
+  const handleFileDelete = async (fileId: string) => {
+    if (!confirm('정말 이 파일을 삭제하시겠습니까?')) return;
+
+    try {
+      const result = await deleteResumeFile(fileId);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('파일이 삭제되었습니다.');
+        // 파일 목록 새로고침
+        loadResumeFiles();
+      }
+    } catch (error: any) {
+      toast.error(error.message || '파일 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   return (
     <>
     <div className={`h-full overflow-auto ${isSidebar ? 'bg-background' : 'bg-gradient-to-b from-gray-50 to-background'}`}>
@@ -1358,18 +1454,100 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         {/* Contact */}
         <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold">Contact</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold">Contact</CardTitle>
+              {canManageCandidate && (
+                <div className="flex gap-2">
+                  {isEditMode ? (
+                    <>
+                      <Button
+                        onClick={handleSaveEdit}
+                        size="sm"
+                        className="bg-primary hover:bg-primary/90 text-white"
+                      >
+                        저장
+                      </Button>
+                      <Button
+                        onClick={handleCancelEdit}
+                        size="sm"
+                        variant="outline"
+                      >
+                        취소
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      onClick={() => setIsEditMode(true)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      수정
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
-              <Mail className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-              <span className="text-sm text-foreground break-all">{candidate.email}</span>
-            </div>
-            {candidate.phone && (
-              <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
-                <Phone className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm text-foreground break-all">{candidate.phone}</span>
-              </div>
+            {isEditMode ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">이메일</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editFormData.email}
+                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">전화번호</Label>
+                  <Input
+                    id="edit-phone"
+                    type="tel"
+                    value={editFormData.phone}
+                    onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                  />
+                </div>
+                {canViewCompensation && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-current-salary">현재 연봉</Label>
+                      <Input
+                        id="edit-current-salary"
+                        type="text"
+                        value={editFormData.current_salary}
+                        onChange={(e) => setEditFormData({ ...editFormData, current_salary: e.target.value })}
+                        placeholder="예: 5000만원"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-expected-salary">희망 연봉</Label>
+                      <Input
+                        id="edit-expected-salary"
+                        type="text"
+                        value={editFormData.expected_salary}
+                        onChange={(e) => setEditFormData({ ...editFormData, expected_salary: e.target.value })}
+                        placeholder="예: 6000만원"
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+                  <Mail className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm text-foreground break-all">{candidate.email}</span>
+                </div>
+                {candidate.phone && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+                    <Phone className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm text-foreground break-all">{candidate.phone}</span>
+                  </div>
+                )}
+              </>
             )}
             {location && (
               <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
@@ -1460,11 +1638,37 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold">Documents</CardTitle>
-              {resumeFiles.length > 0 && (
-                <Badge variant="outline" className="text-xs">
-                  {resumeFiles.length} files
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {resumeFiles.length > 0 && (
+                  <Badge variant="outline" className="text-xs">
+                    {resumeFiles.length} files
+                  </Badge>
+                )}
+                {canManageCandidate && (
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx"
+                      onChange={handleFileUpload}
+                      disabled={isUploadingFile}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={isUploadingFile}
+                      className="cursor-pointer"
+                      asChild
+                    >
+                      <span>
+                        <Upload className="w-4 h-4 mr-2" />
+                        {isUploadingFile ? '업로드 중...' : '파일 추가'}
+                      </span>
+                    </Button>
+                  </label>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -1517,18 +1721,34 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                               {fileSize ? formatFileSize(fileSize) : 'Unknown size'}
                             </p>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDocumentClick(file);
-                            }}
-                            className="flex-shrink-0 p-1 hover:bg-accent rounded transition-colors duration-200"
-                            title="새 창에서 열기"
-                          >
-                            <Download className={`w-4 h-4 transition-colors duration-200 ${
-                              isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
-                            }`} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDocumentClick(file);
+                              }}
+                              className="flex-shrink-0 p-1 hover:bg-accent rounded transition-colors duration-200"
+                              title="새 창에서 열기"
+                            >
+                              <Download className={`w-4 h-4 transition-colors duration-200 ${
+                                isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
+                              }`} />
+                            </button>
+                            {canManageCandidate && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFileDelete(file.id);
+                                }}
+                                className="flex-shrink-0 p-1 hover:bg-destructive/10 rounded transition-colors duration-200"
+                                title="파일 삭제"
+                              >
+                                <Trash2 className={`w-4 h-4 transition-colors duration-200 ${
+                                  isSelected ? 'text-destructive' : 'text-muted-foreground group-hover:text-destructive'
+                                }`} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal, Archive } from 'lucide-react';
-import { RECRUITMENT_STAGES, getStageNameByStageId } from '@/constants/stages';
-import { getCandidateById, getArchivedCandidates } from '@/api/queries/candidates';
+import { RECRUITMENT_STAGES, getStageNameByStageId, getStageNameById } from '@/constants/stages';
+import { getCandidateById, getArchivedCandidates, getConfirmedCandidates } from '@/api/queries/candidates';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { getTimelineEvents } from '@/api/queries/timeline';
 import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
@@ -50,12 +50,14 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
+  const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'confirmed'>('active');
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
   const [selectedCandidateForArchive, setSelectedCandidateForArchive] = useState<{ id: string; name: string } | null>(null);
   const [addCandidateModalOpen, setAddCandidateModalOpen] = useState(false);
   const [archivedCandidates, setArchivedCandidates] = useState<Candidate[]>([]);
+  const [confirmedCandidates, setConfirmedCandidates] = useState<Candidate[]>([]);
   const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+  const [isLoadingConfirmed, setIsLoadingConfirmed] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   // 클라이언트 마운트 확인 (Hydration 에러 방지)
@@ -63,10 +65,12 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     setIsMounted(true);
   }, []);
 
-  // 아카이브 필터 변경 시 아카이브된 후보자 로드
+  // 필터 변경 시 해당 후보자 로드
   useEffect(() => {
     if (archiveFilter === 'archived' && isMounted) {
       loadArchivedCandidates();
+    } else if (archiveFilter === 'confirmed' && isMounted) {
+      loadConfirmedCandidates();
     }
   }, [archiveFilter, isMounted]);
 
@@ -83,6 +87,22 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
       console.error('Load archived candidates error:', error);
     } finally {
       setIsLoadingArchived(false);
+    }
+  };
+
+  const loadConfirmedCandidates = async () => {
+    setIsLoadingConfirmed(true);
+    try {
+      const result = await getConfirmedCandidates();
+      if (result.error) {
+        console.error('Failed to load confirmed candidates:', result.error);
+      } else {
+        setConfirmedCandidates(result.data || []);
+      }
+    } catch (error) {
+      console.error('Load confirmed candidates error:', error);
+    } finally {
+      setIsLoadingConfirmed(false);
     }
   };
 
@@ -191,14 +211,13 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     return 'New Application';
   };
 
-  // stage.id를 단계 이름으로 변환
-  const getStageNameById = (stageId: string): string => {
-    const stage = RECRUITMENT_STAGES.find(s => s.id === stageId);
-    return stage?.name || '';
-  };
+  // getStageNameById는 constants/stages에서 import하여 사용
 
-  // 아카이브 필터에 따라 후보자 목록 선택
-  const candidatesToFilter = archiveFilter === 'archived' ? archivedCandidates : initialCandidates;
+  // 필터에 따라 후보자 목록 선택
+  const candidatesToFilter = 
+    archiveFilter === 'archived' ? archivedCandidates :
+    archiveFilter === 'confirmed' ? confirmedCandidates :
+    initialCandidates;
 
   // 검색 및 단계 필터링
   const filteredCandidates = candidatesToFilter.filter(candidate => {
@@ -206,7 +225,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     if (selectedStage !== 'all') {
       const candidateStage = getStageName(candidate.current_stage_id);
       const selectedStageName = getStageNameById(selectedStage);
-      if (candidateStage !== selectedStageName) {
+      // null 체크 추가: 둘 다 null이 아니고 같은 경우만 통과
+      if (!candidateStage || !selectedStageName || candidateStage !== selectedStageName) {
         return false;
       }
     }
@@ -250,6 +270,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   // Hydration 에러 방지를 위해 초기 렌더링에서는 항상 initialCandidates 사용
   const activeCandidatesCount = isMounted && archiveFilter === 'archived'
     ? archivedCandidates.length 
+    : isMounted && archiveFilter === 'confirmed'
+    ? confirmedCandidates.length
     : initialCandidates.length;
 
   // Candidate 클릭 핸들러
@@ -273,7 +295,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             <p className="text-muted-foreground">{activeCandidatesCount} active candidates</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* 아카이브 필터 */}
+            {/* 필터 */}
             <div className="flex gap-2">
               <button
                 onClick={() => setArchiveFilter('active')}
@@ -294,6 +316,16 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 }`}
               >
                 Archived
+              </button>
+              <button
+                onClick={() => setArchiveFilter('confirmed')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  archiveFilter === 'confirmed'
+                    ? 'bg-primary text-white'
+                    : 'bg-background text-foreground border border-border hover:bg-muted'
+                }`}
+              >
+                입사확정
               </button>
             </div>
             {/* 후보자 추가 버튼 */}
@@ -366,7 +398,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         )}
 
         {/* Candidates List */}
-        {isLoadingArchived && archiveFilter === 'archived' ? (
+        {(isLoadingArchived && archiveFilter === 'archived') || (isLoadingConfirmed && archiveFilter === 'confirmed') ? (
           <div className="card-modern p-12 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">아카이브된 후보자를 불러오는 중...</p>

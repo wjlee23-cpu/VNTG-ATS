@@ -51,7 +51,6 @@ export function Sidebar() {
     { icon: FileEdit, label: 'JD Requests', view: 'jd-requests' as AppView, path: '/jd-requests' },
     { icon: Calendar, label: 'Calendar', view: 'calendar' as AppView, path: '/calendar' },
     { icon: BarChart3, label: 'Analytics', view: 'analytics' as AppView, path: '/analytics' },
-    { icon: Gift, label: 'Offers', view: 'offers' as AppView, path: '/offers' },
     { icon: UserCircle, label: 'Team', view: 'team' as AppView, path: '/team' },
     { icon: FileText, label: 'Templates', view: 'templates' as AppView, path: '/templates' },
     // 관리자만 표시되는 메뉴

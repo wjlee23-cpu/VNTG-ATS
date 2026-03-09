@@ -1,7 +1,7 @@
 ---
 alwaysApply: true
 ---
-description: 프론트엔드 개발 규칙 (Next.js 16, UI, CSS, 반응형)
+description: 프론트엔드 개발 규칙 (Next.js 16, UI, CSS, 트렌디한 디자인 시스템 적용)
 
 # 기술 스택 (Tech Stack)
 - **Framework**: Next.js 16 (App Router 방식)
@@ -9,25 +9,25 @@ description: 프론트엔드 개발 규칙 (Next.js 16, UI, CSS, 반응형)
 - **Styling**: Tailwind CSS
 - **State**: Zustand (전역 상태), React Hooks (로컬 상태)
 
-# UI/UX 구현 규칙
-1. **서버 컴포넌트 우선 (Server Components First)**:
+# UI/UX 구현 규칙 (VNTG Design System 필수 적용)
+
+1. **디자인 시스템 절대 엄수 (가장 중요)**:
+   - 모든 UI를 구성할 때 **반드시 루트 경로의 `design-system.md` 파일을 우선적으로 참고**하세요.
+   - **Shadcn의 기본 무채색(Muted, 기본 회색 테두리 등)에 의존하지 마세요.**
+   - 브랜드 아이덴티티를 살리기 위해 VNTG Brand Colors(`--brand-main`, `--accent`)와 `ATS Status Colors`(부드러운 파스텔톤 배경)를 적극적으로 활용하세요.
+
+2. **트렌디한 인터랙션 & 디테일 (Micro-interactions)**:
+   - **테이블 및 리스트**: 지원자 목록 등의 리스트 아이템은 단순한 표가 아니라 마우스를 올렸을 때(Hover) 부드러운 그라데이션 배경(`hover:bg-blue-50/50`)이 적용되도록 하세요.
+   - **사이드 패널(Drawer/Modal)**: 우측 패널이나 모달이 열릴 때는 뒷배경에 반드시 블러 효과(`backdrop-blur-sm`)를 주고 패널 자체에 넉넉한 그림자(`shadow-2xl` 또는 `shadow-blue-lg`)를 부여하여 공간감을 형성하세요.
+   - **컴포넌트 변형(Override)**: Shadcn 기본 컴포넌트가 디자인 시스템에 비해 너무 투박하다면, Tailwind 클래스를 덧붙여(예: 테두리 둥글게 `rounded-xl`, 여백 추가) 모던하게 변형하세요.
+
+3. **서버 컴포넌트 우선 (Server Components First)**:
    - 기본적으로 모든 컴포넌트는 서버 컴포넌트로 작성하세요.
    - `useState`, `useEffect`, `onClick` 같은 기능이 필요할 때만 파일 최상단에 `'use client'`를 추가하세요.
 
-2. **디자인 시스템 엄수**:
-   - 새로운 CSS 파일을 만들거나 `<style>` 태그를 쓰지 마세요.
-   - 오직 **Tailwind CSS 클래스**와 **Shadcn UI 컴포넌트**만 조합해서 디자인하세요.
-   - 색상이나 간격이 고민되면 Shadcn의 기본 설정(`primary`, `secondary`, `muted` 등)을 따르세요.
-
-3. **반응형 디자인 필수 (Mobile/Tablet Responsive)**:
+4. **반응형 디자인 필수 (Mobile/Tablet Responsive)**:
    - **모바일 퍼스트(Mobile First)**: 항상 모바일 화면을 기본으로 잡고, 태블릿(`md:`)과 데스크탑(`lg:`) 스타일을 추가하세요.
-   - **레이아웃**: 모바일에서는 **세로 배치(flex-col)**, 큰 화면에서는 **가로 배치(flex-row)**가 되도록 `flex`와 `grid`를 활용하세요.
-   - **오버플로우 방지**: 테이블(Table)이나 긴 텍스트는 모바일 화면 밖으로 튀어 나가지 않게 `overflow-x-auto` (가로 스크롤) 또는 `truncate` 처리를 반드시 해야 합니다.
-   - **터치 영역**: 모바일 사용자를 위해 버튼과 입력창의 크기는 충분히 확보하세요.
+   - **오버플로우 방지**: 복잡한 ATS 테이블이나 긴 데이터는 모바일 화면 밖으로 튀어 나가지 않게 `overflow-x-auto` (가로 스크롤) 처리를 반드시 적용하세요.
 
-4. **에러 처리 (UX)**:
-   - 에러가 발생하면 콘솔에만 찍지 말고, 사용자가 알 수 있게 `toast`(토스트 메시지)나 알림창을 띄워주세요.
-   - 예: `toast.error("저장에 실패했습니다. 다시 시도해주세요.")`
-
-5. **SEO 무시**:
-   - 이 서비스는 사내 도구/커뮤니티이므로 복잡한 SEO 설정(Open Graph, Metadata)에 시간을 쓰지 마세요. 기능 구현에 집중하세요.
+5. **에러 처리 (UX)**:
+   - 에러나 성공 상태 변경 시 콘솔에만 찍지 말고, 사용자가 알 수 있게 `toast`(토스트 메시지)를 띄워주세요. (예: `toast.success("합격 처리되었습니다.")`)

@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import { getCurrentUser, verifyJobPostAccess, verifyCandidateAccess } from '@/api/utils/auth';
+import { getCurrentUser, verifyJobPostAccess, verifyCandidateAccess, requireRecruiterOrAdmin } from '@/api/utils/auth';
 import { validateRequired, validateEmail, validatePhone, validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
@@ -85,6 +85,8 @@ export async function createCandidate(formData: FormData) {
  */
 export async function updateCandidate(id: string, formData: FormData) {
   return withErrorHandling(async () => {
+    // 리크루터 이상 권한 확인
+    await requireRecruiterOrAdmin();
     // 후보자 접근 권한 확인
     await verifyCandidateAccess(id);
     const supabase = await createClient();
@@ -95,6 +97,8 @@ export async function updateCandidate(id: string, formData: FormData) {
     const phone = validatePhone(formData.get('phone') as string | null);
     const status = formData.get('status') as string | null;
     const currentStageId = formData.get('current_stage_id') as string | null;
+    const currentSalary = formData.get('current_salary') as string | null;
+    const expectedSalary = formData.get('expected_salary') as string | null;
 
     // 수정할 데이터 구성
     const updateData: CandidateUpdate = {
@@ -102,6 +106,14 @@ export async function updateCandidate(id: string, formData: FormData) {
       email,
       phone,
     };
+
+    // 연봉 정보 추가 (선택적)
+    if (currentSalary !== null) {
+      updateData.current_salary = currentSalary || null;
+    }
+    if (expectedSalary !== null) {
+      updateData.expected_salary = expectedSalary || null;
+    }
 
     // 선택적 필드 추가
     if (status) {
