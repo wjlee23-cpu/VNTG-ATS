@@ -11,6 +11,7 @@ import {
   Loader2,
   Filter,
   Calendar as CalendarIcon,
+  CalendarDays,
   User,
   Users,
   Mail,
@@ -20,7 +21,8 @@ import {
   Edit,
   Plus,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  TrendingUp
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
@@ -28,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate, deleteSchedule, cancelSchedule, rescheduleInterview, forceConfirmSchedule, addManualScheduleOption, updateScheduleWithManualOverride } from '@/api/actions/schedules';
 import { getAllScheduleProgress } from '@/api/queries/schedules';
 import { ManualScheduleEditor } from '@/components/admin/ManualScheduleEditor';
@@ -516,55 +519,119 @@ export function SchedulesClient({
   };
 
   return (
-    <div className="h-full overflow-auto bg-gray-50">
+    <div className="h-full overflow-auto bg-slate-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* 헤더 */}
         <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">면접 일정 관리</h1>
-          <p className="text-sm sm:text-base text-gray-600">모든 면접 일정의 진행상황을 확인하고 관리할 수 있습니다.</p>
+          <div className="flex items-center gap-3 mb-2">
+            <CalendarDays className="w-6 h-6 sm:w-7 sm:h-7 text-brand-main" />
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">면접 일정 관리</h1>
+          </div>
+          <p className="text-sm sm:text-base text-slate-500 ml-9 sm:ml-10">모든 면접 일정의 진행상황을 확인하고 관리할 수 있습니다.</p>
         </div>
 
-        {/* 탭 구조 */}
+        {/* 탭 구조 - Segmented Control 스타일 */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
-            <TabsTrigger value="management">
-              <CalendarIcon className="w-4 h-4 mr-2" />
+          <div className="bg-slate-200/50 p-1 rounded-xl inline-flex gap-1">
+            <button
+              onClick={() => setActiveTab('management')}
+              className={`
+                px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2
+                ${activeTab === 'management'
+                  ? 'bg-white shadow-sm text-foreground'
+                  : 'text-slate-600 hover:bg-slate-50/50'
+                }
+              `}
+            >
+              <CalendarIcon className="w-4 h-4" />
               일정 관리
-            </TabsTrigger>
-            <TabsTrigger value="manual">
-              <Settings className="w-4 h-4 mr-2" />
+            </button>
+            <button
+              onClick={() => setActiveTab('manual')}
+              className={`
+                px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 relative
+                ${activeTab === 'manual'
+                  ? 'bg-white shadow-sm text-foreground'
+                  : 'text-slate-600 hover:bg-slate-50/50'
+                }
+              `}
+            >
+              <Settings className="w-4 h-4" />
               수동 조율
               {needsRescheduling.length > 0 && (
-                <Badge variant="destructive" className="ml-2">
+                <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                  activeTab === 'manual' 
+                    ? 'bg-rose-100 text-rose-700' 
+                    : 'bg-rose-200 text-rose-600'
+                }`}>
                   {needsRescheduling.length}
-                </Badge>
+                </span>
               )}
-            </TabsTrigger>
-          </TabsList>
+            </button>
+          </div>
 
           {/* 일정 관리 탭 */}
           <TabsContent value="management" className="space-y-6">
-            {/* 통계 카드 */}
+            {/* 통계 카드 - card-modern 스타일 적용 */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="text-2xl font-bold text-gray-900 mb-1">{stats.all}</div>
-                <div className="text-xs sm:text-sm text-gray-600">전체</div>
+              {/* 전체 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <CalendarIcon className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="text-3xl font-bold text-gray-900 mb-1">{stats.all}</div>
+                <div className="text-xs sm:text-sm text-slate-600">전체</div>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="text-2xl font-bold text-yellow-600 mb-1">{stats.pending_interviewers}</div>
-                <div className="text-xs sm:text-sm text-gray-600">면접관 대기</div>
+              
+              {/* 면접관 대기 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="text-3xl font-bold text-amber-600 mb-1">{stats.pending_interviewers}</div>
+                <div className="text-xs sm:text-sm text-slate-600">면접관 대기</div>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="text-2xl font-bold text-blue-600 mb-1">{stats.pending_candidate}</div>
-                <div className="text-xs sm:text-sm text-gray-600">후보자 대기</div>
+              
+              {/* 후보자 대기 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <User className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="text-3xl font-bold text-blue-600 mb-1">{stats.pending_candidate}</div>
+                <div className="text-xs sm:text-sm text-slate-600">후보자 대기</div>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="text-2xl font-bold text-green-600 mb-1">{stats.confirmed}</div>
-                <div className="text-xs sm:text-sm text-gray-600">확정됨</div>
+              
+              {/* 확정됨 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="text-3xl font-bold text-emerald-600 mb-1">{stats.confirmed}</div>
+                <div className="text-xs sm:text-sm text-slate-600">확정됨</div>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="text-2xl font-bold text-gray-600 mb-1">{stats.cancelled}</div>
-                <div className="text-xs sm:text-sm text-gray-600">취소됨</div>
+              
+              {/* 취소됨 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <XCircle className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="text-3xl font-bold text-slate-600 mb-1">{stats.cancelled}</div>
+                <div className="text-xs sm:text-sm text-slate-600">취소됨</div>
               </div>
             </div>
 
@@ -626,9 +693,16 @@ export function SchedulesClient({
 
             {/* 일정 목록 */}
             {filteredSchedules.length === 0 ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-                <CalendarIcon className="mx-auto text-gray-400 mb-4" size={48} />
-                <p className="text-gray-600">일정이 없습니다.</p>
+              <div className="card-modern p-16 sm:p-20 text-center">
+                <CalendarDays className="mx-auto text-slate-300 mb-6" size={64} />
+                <p className="text-slate-500 text-base sm:text-lg mb-6">예정된 면접 일정이 없습니다</p>
+                <Button 
+                  className="gradient-blue text-white hover:opacity-90"
+                  onClick={() => router.push('/candidates')}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  새 일정 조율하기
+                </Button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -640,36 +714,39 @@ export function SchedulesClient({
                 ref={(el) => {
                   scheduleRefs.current[schedule.id] = el;
                 }}
-                className={`bg-white rounded-lg border p-4 sm:p-6 hover:shadow-md transition-shadow ${
+                className={`card-modern p-4 sm:p-6 hover:shadow-md hover:border-blue-100 transition-all ${
                   isSelectedCandidate 
                     ? 'border-blue-500 border-2 shadow-lg ring-2 ring-blue-200' 
-                    : 'border-gray-200'
+                    : ''
                 }`}
               >
-                <div className="flex flex-col lg:flex-row gap-4">
+                <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
                   {/* 왼쪽: 후보자 정보 */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                        {schedule.candidates.name.charAt(0).toUpperCase()}
-                      </div>
+                    <div className="flex items-center gap-3 mb-4">
+                      {/* Avatar 컴포넌트 사용 */}
+                      <Avatar className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0">
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-base sm:text-lg">
+                          {schedule.candidates.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="flex-1 min-w-0">
                         <h3 
                           onClick={(e) => {
                             e.stopPropagation();
                             handleCandidateClick(schedule.candidates.id);
                           }}
-                          className="text-base sm:text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                          className="text-base sm:text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-brand-main transition-colors"
                         >
                           {schedule.candidates.name}
                         </h3>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <div className="flex items-center gap-1 text-sm text-slate-600">
                             <Mail className="w-3 h-3" />
                             <span className="truncate">{schedule.candidates.email}</span>
                           </div>
                           {schedule.candidates.job_posts?.title && (
-                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
                               {schedule.candidates.job_posts.title}
                             </span>
                           )}
@@ -677,20 +754,49 @@ export function SchedulesClient({
                       </div>
                     </div>
 
-                    {/* 워크플로우 상태 */}
-                    <div className="mb-3">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getWorkflowStatusColor(schedule.workflow_status)}`}>
-                        {getWorkflowStatusText(schedule.workflow_status)}
-                      </span>
+                    {/* 워크플로우 상태 - Soft Badge 스타일 */}
+                    <div className="mb-4">
+                      {schedule.workflow_status === 'confirmed' ? (
+                        <span className="inline-flex items-center bg-emerald-100 text-emerald-700 rounded-full px-3 py-1 text-sm font-medium">
+                          {getWorkflowStatusText(schedule.workflow_status)}
+                        </span>
+                      ) : schedule.workflow_status === 'pending_interviewers' ? (
+                        <span className="inline-flex items-center bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-sm font-medium">
+                          {getWorkflowStatusText(schedule.workflow_status)}
+                        </span>
+                      ) : schedule.workflow_status === 'pending_candidate' ? (
+                        <span className="inline-flex items-center bg-blue-100 text-blue-700 rounded-full px-3 py-1 text-sm font-medium">
+                          {getWorkflowStatusText(schedule.workflow_status)}
+                        </span>
+                      ) : schedule.workflow_status === 'cancelled' ? (
+                        <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">
+                          {getWorkflowStatusText(schedule.workflow_status)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">
+                          {getWorkflowStatusText(schedule.workflow_status)}
+                        </span>
+                      )}
                     </div>
 
                     {/* 일정 옵션별 면접관 응답 */}
                     {schedule.schedule_options && schedule.schedule_options.length > 0 && (
                       <div className="space-y-3 mt-4">
-                        <h4 className="text-sm font-semibold text-gray-900">일정 옵션별 면접관 응답</h4>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-3">일정 옵션별 면접관 응답</h4>
                         {schedule.schedule_options.map((option) => {
                           const date = new Date(option.scheduled_at);
                           const responses = option.interviewer_responses || {};
+
+                          // 부분적 충돌 정보 확인
+                          const metadata = (responses as any)?._metadata;
+                          const isPartialConflict = metadata?.isPartialConflict || false;
+                          const missingInterviewerIds = metadata?.missingInterviewers || [];
+                          const missingInterviewers = missingInterviewerIds
+                            .map((id: string) => {
+                              const interviewer = schedule.interviewers?.find(inv => inv.id === id);
+                              return interviewer?.email || id;
+                            })
+                            .filter(Boolean);
 
                           // 면접관 응답 상태에 따라 옵션 상태 결정
                           const getOptionStatus = () => {
@@ -723,14 +829,49 @@ export function SchedulesClient({
                           };
 
                           return (
-                            <div key={option.id} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="mb-2">
-                                <p className="text-sm font-medium text-gray-900">
-                                  {format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  상태: {getOptionStatus()}
-                                </p>
+                            <div key={option.id} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                              <div className="mb-3">
+                                {/* 미니 캘린더/시계 블록 UI */}
+                                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 mb-3">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <CalendarIcon className="w-4 h-4 text-brand-main" />
+                                    <p className="text-sm font-semibold text-gray-900">
+                                      {format(date, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-brand-main" />
+                                    <p className="text-sm font-medium text-gray-700">
+                                      {format(date, 'HH:mm', { locale: ko })}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <p className="text-xs text-slate-500">
+                                      상태: {getOptionStatus()}
+                                    </p>
+                                  </div>
+                                  {isPartialConflict && missingInterviewers.length > 0 && (
+                                    <Badge 
+                                      variant="outline" 
+                                      className="bg-amber-100 text-amber-700 border-amber-300 text-xs font-medium whitespace-nowrap"
+                                    >
+                                      일부 면접관 제외
+                                    </Badge>
+                                  )}
+                                </div>
+                                {isPartialConflict && missingInterviewers.length > 0 && (
+                                  <div className="mt-2 p-2 bg-amber-50/50 rounded border border-amber-200/50">
+                                    <p className="text-xs text-amber-700 font-medium mb-1">
+                                      참석 불가능한 면접관:
+                                    </p>
+                                    <p className="text-xs text-amber-600">
+                                      {missingInterviewers.join(', ')}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                               <div className="space-y-1.5">
                                 {schedule.interviewer_ids.map((interviewerId) => {
@@ -739,12 +880,12 @@ export function SchedulesClient({
 
                                   return (
                                     <div key={interviewerId} className="flex items-center justify-between text-xs sm:text-sm">
-                                      <span className="text-gray-700 truncate">
+                                      <span className="text-slate-700 truncate">
                                         {interviewer?.email || interviewerId}
                                       </span>
                                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                                         {getStatusIcon(response)}
-                                        <span className="text-gray-600">{getStatusText(response)}</span>
+                                        <span className="text-slate-600">{getStatusText(response)}</span>
                                       </div>
                                     </div>
                                   );
@@ -758,14 +899,14 @@ export function SchedulesClient({
                   </div>
 
                   {/* 오른쪽: 액션 버튼 */}
-                  <div className="flex flex-col gap-2 lg:min-w-[140px]">
+                  <div className="flex flex-col gap-2 lg:min-w-[140px] lg:items-end">
                     {schedule.workflow_status === 'pending_interviewers' && (
                       <Button
                         onClick={() => handleCheckResponse(schedule.id)}
                         disabled={checkingScheduleId === schedule.id}
                         size="sm"
-                        variant="outline"
-                        className="w-full"
+                        variant="ghost"
+                        className="w-full lg:w-auto"
                       >
                         {checkingScheduleId === schedule.id ? (
                           <>
@@ -785,8 +926,8 @@ export function SchedulesClient({
                         onClick={() => handleResendEmail(schedule.id)}
                         disabled={checkingScheduleId === schedule.id}
                         size="sm"
-                        variant="outline"
-                        className="w-full"
+                        variant="ghost"
+                        className="w-full lg:w-auto"
                       >
                         {checkingScheduleId === schedule.id ? (
                           <>
@@ -808,8 +949,8 @@ export function SchedulesClient({
                         onClick={() => handleCancelSchedule(schedule.id)}
                         disabled={cancellingScheduleId === schedule.id || deletingScheduleId === schedule.id || schedule.workflow_status === 'cancelled'}
                         size="sm"
-                        variant="outline"
-                        className="flex-1 text-yellow-600 border-yellow-300 hover:bg-yellow-50"
+                        variant="ghost"
+                        className="flex-1 text-yellow-600 hover:bg-yellow-50"
                         title="초기화 (취소)"
                       >
                         {cancellingScheduleId === schedule.id ? (
@@ -822,8 +963,8 @@ export function SchedulesClient({
                         onClick={() => handleDeleteSchedule(schedule.id)}
                         disabled={deletingScheduleId === schedule.id || cancellingScheduleId === schedule.id}
                         size="sm"
-                        variant="outline"
-                        className="flex-1 text-red-600 border-red-300 hover:bg-red-50"
+                        variant="ghost"
+                        className="flex-1 text-red-600 hover:bg-red-50"
                         title="삭제"
                       >
                         {deletingScheduleId === schedule.id ? (
@@ -834,7 +975,7 @@ export function SchedulesClient({
                       </Button>
                     </div>
                     
-                    <div className="text-xs text-gray-500 mt-2">
+                    <div className="text-xs text-slate-500 mt-2">
                       <div className="flex items-center gap-1">
                         <User className="w-3 h-3" />
                         <span>면접관 {schedule.interviewer_ids.length}명</span>
@@ -858,32 +999,43 @@ export function SchedulesClient({
 
           {/* 수동 조율 탭 */}
           <TabsContent value="manual" className="space-y-6">
-            {/* 수동 조율 통계 */}
+            {/* 수동 조율 통계 - card-modern 스타일 적용 */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-gray-600">재조율 필요</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600">{needsRescheduling.length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-gray-600">수동 조율 이력</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">{manualSchedules.length}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-gray-600">확정 일정</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{confirmedSchedules.length}</div>
-                </CardContent>
-              </Card>
+              {/* 재조율 필요 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-rose-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-rose-400" />
+                </div>
+                <div className="text-3xl font-bold text-rose-600 mb-1">{needsRescheduling.length}</div>
+                <div className="text-xs sm:text-sm text-slate-600">재조율 필요</div>
+              </div>
+              
+              {/* 수동 조율 이력 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <Settings className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="text-3xl font-bold text-slate-600 mb-1">{manualSchedules.length}</div>
+                <div className="text-xs sm:text-sm text-slate-600">수동 조율 이력</div>
+              </div>
+              
+              {/* 확정 일정 */}
+              <div className="card-modern p-4 sm:p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="text-3xl font-bold text-emerald-600 mb-1">{confirmedSchedules.length}</div>
+                <div className="text-xs sm:text-sm text-slate-600">확정 일정</div>
+              </div>
             </div>
 
             {/* 재조율 필요 일정 */}
@@ -927,12 +1079,17 @@ export function SchedulesClient({
 
             {/* 일정이 없는 경우 */}
             {needsRescheduling.length === 0 && manualSchedules.length === 0 && confirmedSchedules.length === 0 && (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Settings className="mx-auto text-gray-400 mb-4" size={48} />
-                  <p className="text-gray-600">수동 조율이 필요한 일정이 없습니다.</p>
-                </CardContent>
-              </Card>
+              <div className="card-modern p-16 sm:p-20 text-center">
+                <CalendarDays className="mx-auto text-slate-300 mb-6" size={64} />
+                <p className="text-slate-500 text-base sm:text-lg mb-6">수동 조율이 필요한 일정이 없습니다</p>
+                <Button 
+                  className="gradient-blue text-white hover:opacity-90"
+                  onClick={() => router.push('/candidates')}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  새 일정 조율하기
+                </Button>
+              </div>
             )}
           </TabsContent>
         </Tabs>
@@ -1039,7 +1196,7 @@ export function SchedulesClient({
     </div>
   );
 
-  // 수동 조율 일정 카드 렌더링 함수
+  // 수동 조율 일정 카드 렌더링 함수 - 트렌디한 스타일로 통일
   function renderManualScheduleCard(schedule: ManualSchedule, showActions: boolean = true) {
     const candidate = schedule.candidates;
     if (!candidate) return null;
@@ -1048,116 +1205,159 @@ export function SchedulesClient({
     const endTime = new Date(scheduledDate);
     endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
 
+    // 워크플로우 상태에 따른 Soft Badge 스타일
     const getWorkflowStatusBadge = (status: string | null) => {
       switch (status) {
         case 'pending_interviewers':
-          return <Badge variant="outline">면접관 대기</Badge>;
+          return <span className="inline-flex items-center bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-sm font-medium">면접관 대기</span>;
         case 'pending_candidate':
-          return <Badge variant="outline">후보자 대기</Badge>;
+          return <span className="inline-flex items-center bg-blue-100 text-blue-700 rounded-full px-3 py-1 text-sm font-medium">후보자 대기</span>;
         case 'confirmed':
-          return <Badge variant="default">확정</Badge>;
+          return <span className="inline-flex items-center bg-emerald-100 text-emerald-700 rounded-full px-3 py-1 text-sm font-medium">확정</span>;
         case 'cancelled':
-          return <Badge variant="secondary">취소</Badge>;
+          return <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">취소</span>;
         case 'needs_rescheduling':
-          return <Badge variant="destructive">재조율 필요</Badge>;
+          return <span className="inline-flex items-center bg-rose-100 text-rose-700 rounded-full px-3 py-1 text-sm font-medium">재조율 필요</span>;
         default:
-          return <Badge variant="outline">알 수 없음</Badge>;
+          return <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">알 수 없음</span>;
       }
     };
 
     return (
-      <Card key={schedule.id} className="hover:shadow-md transition-shadow">
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div>
-              <CardTitle className="text-lg">{candidate.name}</CardTitle>
-              <CardDescription>{candidate.email}</CardDescription>
+      <div key={schedule.id} className="card-modern p-4 sm:p-6 hover:shadow-md hover:border-blue-100 transition-all">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+          {/* 왼쪽: 후보자 정보 */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-4">
+              {/* Avatar 컴포넌트 사용 */}
+              <Avatar className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0">
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-base sm:text-lg">
+                  {candidate.name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                  {candidate.name}
+                </h3>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <div className="flex items-center gap-1 text-sm text-slate-600">
+                    <Mail className="w-3 h-3" />
+                    <span className="truncate">{candidate.email}</span>
+                  </div>
+                  {candidate.job_posts?.title && (
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
+                      {candidate.job_posts.title}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2">
+
+            {/* 워크플로우 상태 */}
+            <div className="mb-4 flex items-center gap-2 flex-wrap">
               {getWorkflowStatusBadge(schedule.workflow_status)}
               {schedule.manual_override && (
-                <Badge variant="outline" className="bg-yellow-50">수동 조율</Badge>
+                <span className="inline-flex items-center bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-sm font-medium">
+                  수동 조율
+                </span>
               )}
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <CalendarIcon className="w-4 h-4 text-gray-500" />
-              <span>
-                {format(scheduledDate, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} -{' '}
-                {format(endTime, 'HH:mm')}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Clock className="w-4 h-4 text-gray-500" />
-              <span>{schedule.duration_minutes}분</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Users className="w-4 h-4 text-gray-500" />
-              <span>면접관 {schedule.interviewer_ids.length}명</span>
-            </div>
-            {schedule.rescheduling_reason && (
-              <div className="flex items-start gap-2 text-sm text-orange-600">
-                <AlertTriangle className="w-4 h-4 mt-0.5" />
-                <span>재조율 사유: {schedule.rescheduling_reason}</span>
+
+            {/* 미니 캘린더/시계 블록 UI */}
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 mb-3">
+              <div className="flex items-center gap-2 mb-1">
+                <CalendarIcon className="w-4 h-4 text-brand-main" />
+                <p className="text-sm font-semibold text-gray-900">
+                  {format(scheduledDate, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
+                </p>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-brand-main" />
+                <p className="text-sm font-medium text-gray-700">
+                  {format(scheduledDate, 'HH:mm', { locale: ko })} - {format(endTime, 'HH:mm', { locale: ko })}
+                </p>
+              </div>
+            </div>
+
+            {/* 추가 정보 */}
+            <div className="space-y-2 text-sm text-slate-600">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                <span>{schedule.duration_minutes}분</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                <span>면접관 {schedule.interviewer_ids.length}명</span>
+              </div>
+              {schedule.rescheduling_reason && (
+                <div className="flex items-start gap-2 text-sm text-rose-600 mt-3 p-2 bg-rose-50 rounded-lg border border-rose-100">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>재조율 사유: {schedule.rescheduling_reason}</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          {showActions && (
-            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setEditingScheduleId(schedule.id)}
-              >
-                <Edit className="w-4 h-4 mr-1" />
-                수정
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAddingOptionScheduleId(schedule.id)}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                옵션 추가
-              </Button>
-              {(schedule.workflow_status === 'pending_interviewers' || schedule.workflow_status === 'pending_candidate') && (
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={() => {
-                    setForceConfirmScheduleId(schedule.id);
-                    setForceConfirmOptionId(undefined);
-                  }}
-                >
-                  <CheckCircle className="w-4 h-4 mr-1" />
-                  강제 확정
-                </Button>
-              )}
-              {schedule.needs_rescheduling && (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => handleReschedule(schedule.id)}
-                  disabled={isRescheduling && reschedulingScheduleId === schedule.id}
-                >
-                  {isRescheduling && reschedulingScheduleId === schedule.id ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                      재조율 중...
-                    </>
-                  ) : (
-                    '재조율'
-                  )}
-                </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* 오른쪽: 액션 버튼 */}
+          <div className="flex flex-col gap-2 lg:min-w-[140px] lg:items-end">
+            {showActions && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditingScheduleId(schedule.id)}
+                    className="w-full lg:w-auto"
+                  >
+                    <Edit className="w-4 h-4 mr-1" />
+                    수정
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setAddingOptionScheduleId(schedule.id)}
+                    className="w-full lg:w-auto"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    옵션 추가
+                  </Button>
+                </div>
+                {(schedule.workflow_status === 'pending_interviewers' || schedule.workflow_status === 'pending_candidate') && (
+                  <Button
+                    size="sm"
+                    className="gradient-blue text-white hover:opacity-90 w-full lg:w-auto"
+                    onClick={() => {
+                      setForceConfirmScheduleId(schedule.id);
+                      setForceConfirmOptionId(undefined);
+                    }}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    강제 확정
+                  </Button>
+                )}
+                {schedule.needs_rescheduling && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleReschedule(schedule.id)}
+                    disabled={isRescheduling && reschedulingScheduleId === schedule.id}
+                    className="w-full lg:w-auto"
+                  >
+                    {isRescheduling && reschedulingScheduleId === schedule.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        재조율 중...
+                      </>
+                    ) : (
+                      '재조율'
+                    )}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     );
   }
 
