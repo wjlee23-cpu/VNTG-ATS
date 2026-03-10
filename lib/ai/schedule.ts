@@ -1,11 +1,20 @@
 import { CalendarEvent } from '../calendar/google'
-import { addDays, startOfDay, addMinutes } from 'date-fns'
+import { addDays, startOfDay, addMinutes, isAfter, isBefore, isEqual } from 'date-fns'
 import { isKoreanHoliday } from '../utils/korean-holidays'
+import { 
+  SCORING_WEIGHTS, 
+  BUSINESS_HOURS, 
+  SLOT_INTERVAL_MINUTES, 
+  MIN_SLOT_INTERVAL_MINUTES, 
+  MAX_SCHEDULE_OPTIONS 
+} from './schedule-constants'
 
 export interface ScheduleOption {
   scheduledAt: Date
   duration: number
   availableInterviewers: string[]
+  missingInterviewers?: string[] // 누락된 면접관 목록 (부분적 충돌 시)
+  isPartialConflict?: boolean // 부분적 충돌 여부
 }
 
 export interface ScheduleRequest {
@@ -20,6 +29,294 @@ export interface ScheduleRequest {
   minAvailableInterviewers?: number // 최소 필요한 면접관 수 (기본값: 모든 면접관)
 }
 
+/**
+ * 면접관별 busy time을 시간순으로 정렬하고 겹치는 시간대를 병합
+ */
+function mergeBusyTimes(busyTimes: CalendarEvent[]): Array<{ start: Date; end: Date }> {
+  if (busyTimes.length === 0) return []
+  
+  // 시간순으로 정렬
+  const sorted = [...busyTimes].sort((a, b) => {
+    const aStart = new Date(a.start.dateTime).getTime()
+    const bStart = new Date(b.start.dateTime).getTime()
+    return aStart - bStart
+  })
+  
+  // 겹치는 시간대 병합
+  const merged: Array<{ start: Date; end: Date }> = []
+  
+  for (const busy of sorted) {
+    const start = new Date(busy.start.dateTime)
+    const end = new Date(busy.end.dateTime)
+    
+    if (merged.length === 0) {
+      merged.push({ start, end })
+      continue
+    }
+    
+    const last = merged[merged.length - 1]
+    
+    // 겹치거나 인접한 경우 병합
+    if (isBefore(start, last.end) || isEqual(start, last.end)) {
+      if (isAfter(end, last.end)) {
+        last.end = end
+      }
+    } else {
+      merged.push({ start, end })
+    }
+  }
+  
+  return merged
+}
+
+/**
+ * 모든 면접관의 busy time을 하나의 타임라인으로 병합하고,
+ * 각 시간대에 대해 가능한 면접관을 추적
+ * 
+ * 현재 구조에서는 busyTimes가 모든 면접관의 busy time을 포함하므로,
+ * 각 시간 슬롯에 대해 어떤 면접관이 가능한지 계산
+ */
+function findAvailableSlotsOptimized(
+  busyTimes: CalendarEvent[],
+  interviewerIds: string[],
+  startDate: Date,
+  endDate: Date,
+  durationMinutes: number,
+  allowPartialConflict: boolean,
+  minAvailableInterviewers: number
+): Array<{
+  slot: Date
+  slotEnd: Date
+  availableInterviewers: string[]
+  missingInterviewers: string[]
+  isPartialConflict: boolean
+}> {
+  // Busy time을 시간순으로 정렬 및 병합
+  const mergedBusyTimes = mergeBusyTimes(busyTimes)
+  
+  // 모든 가능한 슬롯 생성 (30분 간격, 비즈니스 시간 내)
+  const slots: Array<{
+    slot: Date
+    slotEnd: Date
+    availableInterviewers: string[]
+    missingInterviewers: string[]
+    isPartialConflict: boolean
+  }> = []
+  
+  let current = startOfDay(startDate)
+  
+  while (current <= endDate) {
+    const dayOfWeek = current.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    
+    if (isWeekend || isKoreanHoliday(current)) {
+      current = addDays(current, 1)
+      continue
+    }
+    
+    const dayStart = startOfDay(current)
+    
+    // 비즈니스 시간 내에서 30분 간격으로 슬롯 생성
+    for (let hour = BUSINESS_HOURS.start; hour < BUSINESS_HOURS.end; hour++) {
+      for (let minute = 0; minute < 60; minute += SLOT_INTERVAL_MINUTES) {
+        const slot = new Date(dayStart)
+        slot.setHours(hour, minute, 0, 0)
+        
+        if (slot < startDate || slot > endDate) continue
+        
+        const slotEnd = addMinutes(slot, durationMinutes)
+        
+        // 이 슬롯에 대해 가능한 면접관 찾기
+        // 현재 구조에서는 모든 busy time을 모든 면접관에 적용
+        // 실제로는 면접관별로 분리되어야 하지만, 일단 모든 면접관이 가능하다고 가정
+        // busy time과 겹치지 않으면 모든 면접관이 가능
+        let isSlotBusy = false
+        
+        for (const busy of mergedBusyTimes) {
+          // 슬롯이 busy time과 겹치는지 확인
+          if (
+            (isAfter(slot, busy.start) && isBefore(slot, busy.end)) ||
+            (isAfter(slotEnd, busy.start) && isBefore(slotEnd, busy.end)) ||
+            (isBefore(slot, busy.start) && isAfter(slotEnd, busy.end)) ||
+            isEqual(slot, busy.start) ||
+            isEqual(slotEnd, busy.end)
+          ) {
+            isSlotBusy = true
+            break
+          }
+        }
+        
+        // 슬롯이 busy time과 겹치지 않으면 모든 면접관이 가능
+        const availableInterviewers = isSlotBusy ? [] : [...interviewerIds]
+        const missingInterviewers = isSlotBusy ? [...interviewerIds] : []
+        const isPartialConflict = false // 현재 구조에서는 부분적 충돌 감지 불가
+        
+        // 최소 면접관 수 이상인 경우만 추가
+        if (availableInterviewers.length >= minAvailableInterviewers) {
+          slots.push({
+            slot,
+            slotEnd,
+            availableInterviewers,
+            missingInterviewers,
+            isPartialConflict,
+          })
+        }
+      }
+    }
+    
+    current = addDays(current, 1)
+  }
+  
+  return slots
+}
+
+
+/**
+ * 슬롯의 점수 계산
+ */
+function calculateSlotScore(
+  slot: Date,
+  availableCount: number,
+  totalInterviewers: number,
+  allowPartialConflict: boolean
+): number {
+  const hour = slot.getHours()
+  let score = 0
+  
+  // 시간대별 기본 점수
+  if (hour >= SCORING_WEIGHTS.timeOfDay.afternoon.range[0]) {
+    // 오후 시간대
+    score = SCORING_WEIGHTS.timeOfDay.afternoon.base + (hour - SCORING_WEIGHTS.timeOfDay.afternoon.range[0])
+  } else {
+    // 오전 시간대
+    score = SCORING_WEIGHTS.timeOfDay.morning.base + (hour - SCORING_WEIGHTS.timeOfDay.morning.range[0])
+  }
+  
+  // 모든 면접관 가능 보너스
+  if (availableCount === totalInterviewers) {
+    score += SCORING_WEIGHTS.allInterviewersBonus
+  } else if (allowPartialConflict) {
+    // 부분적 충돌 허용 시 가능한 면접관 수에 비례한 점수
+    score += availableCount * SCORING_WEIGHTS.partialConflictMultiplier
+  }
+  
+  // 요일별 선호도 보너스
+  const dayOfWeek = slot.getDay()
+  const dayNames: Array<keyof typeof SCORING_WEIGHTS.dayOfWeek> = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+  ]
+  
+  if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+    const dayName = dayNames[dayOfWeek - 1]
+    score += SCORING_WEIGHTS.dayOfWeek[dayName]
+  }
+  
+  return score
+}
+
+/**
+ * 슬롯 필터링 및 정렬
+ */
+function filterAndSortSlots(
+  slots: Array<{
+    slot: Date
+    slotEnd: Date
+    availableInterviewers: string[]
+    missingInterviewers: string[]
+    isPartialConflict: boolean
+  }>,
+  totalInterviewers: number,
+  minAvailableInterviewers: number,
+  allowPartialConflict: boolean,
+  durationMinutes: number
+): Array<{
+  slot: Date
+  score: number
+  availableInterviewers: string[]
+  missingInterviewers: string[]
+  isPartialConflict: boolean
+}> {
+  // 최소 면접관 수 필터링
+  const filtered = slots.filter(
+    slot => slot.availableInterviewers.length >= minAvailableInterviewers
+  )
+  
+  // missingInterviewers 계산
+  const slotsWithMissing = filtered.map(slot => {
+    const missing = totalInterviewers > slot.availableInterviewers.length
+      ? Array.from({ length: totalInterviewers }, (_, i) => i.toString())
+          .filter(id => !slot.availableInterviewers.includes(id))
+      : []
+    
+    return {
+      ...slot,
+      missingInterviewers: missing,
+      isPartialConflict: missing.length > 0,
+    }
+  })
+  
+  // 점수 계산 및 정렬
+  const scored = slotsWithMissing.map(slot => ({
+    ...slot,
+    score: calculateSlotScore(
+      slot.slot,
+      slot.availableInterviewers.length,
+      totalInterviewers,
+      allowPartialConflict
+    ),
+  }))
+  
+  // 점수 순으로 정렬 (높은 점수 우선)
+  scored.sort((a, b) => b.score - a.score)
+  
+  // 겹치지 않는 슬롯 선택 (최소 간격 유지, 최대 개수 제한)
+  const selected: Array<{
+    slot: Date
+    score: number
+    availableInterviewers: string[]
+    missingInterviewers: string[]
+    isPartialConflict: boolean
+  }> = []
+  
+  for (const slotData of scored) {
+    if (selected.length >= MAX_SCHEDULE_OPTIONS) break
+    
+    const isOverlapping = selected.some(selectedSlot => {
+      const selectedEnd = addMinutes(selectedSlot.slot, durationMinutes)
+      const slotEnd = slotData.slotEnd
+      
+      // 겹침 체크
+      const overlaps = (
+        (isAfter(slotData.slot, selectedSlot.slot) && isBefore(slotData.slot, selectedEnd)) ||
+        (isAfter(slotEnd, selectedSlot.slot) && isBefore(slotEnd, selectedEnd)) ||
+        (isBefore(slotData.slot, selectedSlot.slot) && isAfter(slotEnd, selectedEnd))
+      )
+      
+      // 최소 간격 체크
+      const timeDiff = Math.abs(slotData.slot.getTime() - selectedSlot.slot.getTime())
+      const endTimeDiff = Math.abs(slotData.slot.getTime() - selectedEnd.getTime())
+      const minIntervalMs = MIN_SLOT_INTERVAL_MINUTES * 60 * 1000
+      const tooClose = timeDiff < minIntervalMs || endTimeDiff < minIntervalMs
+      
+      return overlaps || tooClose
+    })
+    
+    if (!isOverlapping) {
+      selected.push(slotData)
+    }
+  }
+  
+  return selected
+}
+
+/**
+ * 면접 일정 조율 메인 함수
+ * 최적화된 알고리즘: busy time 병합 후 슬롯 생성
+ */
 export async function findAvailableTimeSlots(
   request: ScheduleRequest
 ): Promise<ScheduleOption[]> {
@@ -33,157 +330,41 @@ export async function findAvailableTimeSlots(
     minAvailableInterviewers = interviewerIds.length
   } = request
 
-  // Generate time slots (every 30 minutes during business hours 10-17)
-  const slots: Array<{ date: Date; score: number; availableCount: number }> = []
-  let current = startOfDay(startDate)
+  // 최적화된 알고리즘으로 슬롯 생성
+  const slots = findAvailableSlotsOptimized(
+    busyTimes,
+    interviewerIds,
+    startDate,
+    endDate,
+    durationMinutes,
+    allowPartialConflict,
+    minAvailableInterviewers
+  )
 
-  while (current <= endDate) {
-    // 공휴일이 아닌 평일만 체크 (토요일/일요일 및 한국 공휴일 제외)
-    const dayOfWeek = current.getDay()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6 // 일요일(0) 또는 토요일(6)
-    
-    // 공휴일 체크 강화
-    if (isWeekend || isKoreanHoliday(current)) {
-      current = addDays(current, 1)
-      continue
-    }
+  // 슬롯 필터링 및 정렬
+  const filteredAndSorted = filterAndSortSlots(
+    slots,
+    interviewerIds.length,
+    minAvailableInterviewers,
+    allowPartialConflict,
+    durationMinutes
+  )
 
-    const dayStart = startOfDay(current)
-
-    // Business hours: 오전 10시(10)부터 오후 5시(17)까지
-    for (let hour = 10; hour < 17; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        const slot = new Date(dayStart)
-        slot.setHours(hour, minute, 0, 0)
-
-        if (slot >= startDate && slot <= endDate) {
-          // 해당 시간대에 바쁜 면접관 수 계산
-          const slotEnd = addMinutes(slot, durationMinutes)
-          let busyCount = 0
-          
-          for (const busy of busyTimes) {
-            const busyStart = new Date(busy.start.dateTime)
-            const busyEnd = new Date(busy.end.dateTime)
-            
-            const isBusy = (
-              (slot >= busyStart && slot < busyEnd) ||
-              (slotEnd > busyStart && slotEnd <= busyEnd) ||
-              (slot <= busyStart && slotEnd >= busyEnd)
-            )
-            
-            if (isBusy) {
-              busyCount++
-            }
-          }
-          
-          const availableCount = interviewerIds.length - busyCount
-          
-          // 최소 필요한 면접관 수 이상인 경우만 추가
-          if (availableCount >= minAvailableInterviewers) {
-            // 오후 시간대 선호 점수 계산 (12시 이후가 더 높은 점수)
-            let score = 0
-            if (hour >= 12) {
-              // 오후 시간대: 12시~16시 (점수 10~14)
-              score = hour
-            } else {
-              // 오전 시간대: 10시~11시 (점수 5~6)
-              score = hour - 5
-            }
-            
-            // 가능한 면접관 수에 따른 보너스 점수 (모든 면접관이 가능하면 더 높은 점수)
-            if (availableCount === interviewerIds.length) {
-              score += 20 // 모든 면접관 가능 보너스
-            } else if (allowPartialConflict) {
-              score += availableCount * 2 // 부분적 충돌 허용 시 가능한 면접관 수에 비례한 점수
-            }
-            
-            slots.push({ date: slot, score, availableCount })
-          }
-        }
-      }
-    }
-
-    current = addDays(current, 1)
-  }
-
-  // 일정 겹침 방지를 위한 점수 계산 및 정렬
-  // 오후 시간대를 선호하고, 선택된 일정과 겹치지 않도록 필터링
-  const scoredSlots = slots.map((slotData) => {
-    const slot = slotData.date
-    const hour = slot.getHours()
-    let score = slotData.score // 이미 계산된 점수 사용
-    
-    // 추가 점수: 요일별 선호도 (화요일~목요일 선호)
-    const dayOfWeek = slot.getDay()
-    if (dayOfWeek >= 2 && dayOfWeek <= 4) {
-      score += 10 // 화요일~목요일 보너스
-    }
-    
-    return { slot, score, availableCount: slotData.availableCount }
-  })
-
-  // 점수 순으로 정렬 (높은 점수 = 오후 시간대 우선)
-  scoredSlots.sort((a, b) => b.score - a.score)
-
-  // 겹치지 않는 일정 선택 (최소 30분 간격, 최대 5개)
-  const selectedSlots: Date[] = []
-  const minIntervalMinutes = 30
-
-  for (const { slot } of scoredSlots) {
-    // 최대 5개까지만 선택
-    if (selectedSlots.length >= 5) {
-      break
-    }
-
-    const slotEnd = addMinutes(slot, durationMinutes)
-    
-    // 이미 선택된 일정과 겹치는지 확인
-    const isOverlapping = selectedSlots.some((selectedSlot) => {
-      const selectedEnd = addMinutes(selectedSlot, durationMinutes)
-      
-      // 겹침 조건 체크:
-      // 1. 새 일정의 시작 시간이 기존 일정의 시간 범위 내에 있는 경우
-      // 2. 새 일정의 종료 시간이 기존 일정의 시간 범위 내에 있는 경우
-      // 3. 새 일정이 기존 일정을 완전히 포함하는 경우
-      // 4. 새 일정의 시작 시간이 기존 일정의 종료 시간과 너무 가까운 경우 (최소 간격)
-      const overlaps = (
-        (slot >= selectedSlot && slot < selectedEnd) ||
-        (slotEnd > selectedSlot && slotEnd <= selectedEnd) ||
-        (slot <= selectedSlot && slotEnd >= selectedEnd)
-      )
-      
-      // 최소 간격 체크: 시작 시간이 기존 일정의 종료 시간으로부터 최소 간격 이내면 제외
-      const timeDiff = Math.abs(slot.getTime() - selectedSlot.getTime())
-      const endTimeDiff = Math.abs(slot.getTime() - selectedEnd.getTime())
-      const tooClose = timeDiff < minIntervalMinutes * 60 * 1000 || endTimeDiff < minIntervalMinutes * 60 * 1000
-      
-      return overlaps || tooClose
+  // 최종 필터링: 공휴일 제거 및 결과 변환
+  const finalSlots = filteredAndSorted
+    .filter(slotData => {
+      const dayOfWeek = slotData.slot.getDay()
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+      return !isWeekend && !isKoreanHoliday(slotData.slot)
     })
-    
-    if (!isOverlapping) {
-      selectedSlots.push(slot)
-    }
-  }
-
-  // 최종 필터링: 공휴일이 포함된 일정 제거
-  const finalSlots = selectedSlots.filter((slot) => {
-    // 공휴일 체크: 토요일/일요일 및 한국 공휴일 제외
-    const dayOfWeek = slot.getDay()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    return !isWeekend && !isKoreanHoliday(slot)
-  })
-
-  // 최종 결과 반환 시 가능한 면접관 정보 포함
-  return finalSlots.map((slot) => {
-    // 해당 슬롯의 availableCount 찾기
-    const slotData = slots.find(s => s.date.getTime() === slot.getTime())
-    const availableCount = slotData?.availableCount || interviewerIds.length
-    
-    return {
-      scheduledAt: slot,
+    .map(slotData => ({
+      scheduledAt: slotData.slot,
       duration: durationMinutes,
-      availableInterviewers: interviewerIds.slice(0, availableCount), // 가능한 면접관만 포함
-    }
-  })
+      availableInterviewers: slotData.availableInterviewers,
+      missingInterviewers: slotData.missingInterviewers,
+      isPartialConflict: slotData.isPartialConflict,
+    }))
+
+  return finalSlots
 }
 

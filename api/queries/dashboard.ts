@@ -519,6 +519,7 @@ export async function getTodaySchedules() {
     const candidateIds = candidates.map(c => c.id);
 
     // 오늘 일정 조회
+    // 주의: interview_type, meeting_platform, meeting_link 컬럼은 마이그레이션이 실행되어야 사용 가능
     const { data: schedules, error } = await supabase
       .from('schedules')
       .select(`
@@ -527,9 +528,6 @@ export async function getTodaySchedules() {
         scheduled_at,
         duration_minutes,
         status,
-        interview_type,
-        meeting_platform,
-        meeting_link,
         interviewer_ids,
         candidates!inner (
           id,
@@ -587,9 +585,10 @@ export async function getTodaySchedules() {
         scheduledAt: schedule.scheduled_at,
         durationMinutes: schedule.duration_minutes,
         status: schedule.status,
-        interviewType: schedule.interview_type,
-        meetingPlatform: schedule.meeting_platform,
-        meetingLink: schedule.meeting_link,
+        // 주의: 아래 필드들은 마이그레이션 실행 후 사용 가능 (현재는 null로 처리)
+        interviewType: (schedule as any).interview_type || null,
+        meetingPlatform: (schedule as any).meeting_platform || null,
+        meetingLink: (schedule as any).meeting_link || null,
         interviewers: schedule.interviewer_ids
           ?.map((id: string) => interviewerMap.get(id))
           .filter((i): i is { id: string; email: string } => i !== undefined) || [],

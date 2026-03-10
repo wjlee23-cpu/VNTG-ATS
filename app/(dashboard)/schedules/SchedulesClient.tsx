@@ -36,7 +36,7 @@ import { getAllScheduleProgress } from '@/api/queries/schedules';
 import { ManualScheduleEditor } from '@/components/admin/ManualScheduleEditor';
 import { AddScheduleOptionModal } from '@/components/admin/AddScheduleOptionModal';
 import { ForceConfirmModal } from '@/components/admin/ForceConfirmModal';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { getCandidateById } from '@/api/queries/candidates';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { getTimelineEvents } from '@/api/queries/timeline';
@@ -1147,21 +1147,20 @@ export function SchedulesClient({
         })()}
       </div>
 
-      {/* 오른쪽 사이드 패널: Candidate Detail */}
-      <Sheet open={showCandidateDetail && !!selectedCandidateId} onOpenChange={(open) => {
+      {/* 중앙 집중형 모달: Candidate Detail */}
+      <Dialog open={showCandidateDetail && !!selectedCandidateId} onOpenChange={(open) => {
         if (!open) {
           handleCloseDetail();
         }
       }}>
-        <SheetContent 
-          side="right"
-          className="!w-full md:!w-[1000px] lg:!w-[1200px] !h-full p-0 overflow-y-auto !max-w-none sm:!max-w-none md:!max-w-none lg:!max-w-none [&>button]:hidden"
+        <DialogContent 
+          className="!w-[95vw] !max-w-5xl !max-h-[90vh] p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden"
         >
           {/* 접근성을 위한 숨겨진 제목 */}
-          <SheetTitle className="sr-only">
+          <DialogTitle className="sr-only">
             {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
-          </SheetTitle>
-          <div className="h-full">
+          </DialogTitle>
+          <div className="h-full overflow-hidden">
             {isLoadingDetail ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -1187,12 +1186,12 @@ export function SchedulesClient({
                 schedules={candidateSchedules}
                 timelineEvents={timelineEvents}
                 onClose={handleCloseDetail}
-                isSidebar={true}
+                isSidebar={false}
               />
             ) : null}
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

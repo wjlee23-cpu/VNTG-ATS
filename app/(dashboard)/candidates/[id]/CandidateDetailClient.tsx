@@ -7,7 +7,7 @@ import {
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
   CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown, RefreshCw,
-  ArrowUpRight, ArrowDownLeft, Trash2, Upload
+  ArrowUpRight, ArrowDownLeft, Trash2, Upload, Clock, Users, Loader2, AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -16,7 +16,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ScheduleInterviewAutomatedModal } from '@/components/candidates/ScheduleInterviewAutomatedModal';
 import { EmailModal } from '@/components/candidates/EmailModal';
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
@@ -30,9 +29,15 @@ import { skipStage, moveToStage, getAvailableStagesAction } from '@/api/actions/
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
+import { scheduleInterviewAutomated } from '@/api/actions/schedules';
+import { getUsers } from '@/api/queries/users';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { ko } from 'date-fns/locale/ko';
+import { cn } from '@/components/ui/utils';
 
 interface Candidate {
   id: string;
@@ -135,7 +140,8 @@ interface CandidateDetailClientProps {
 
 export function CandidateDetailClient({ candidate, schedules, timelineEvents, onClose, isSidebar = false }: CandidateDetailClientProps) {
   const router = useRouter();
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  // View 모드: 'detail' 또는 'scheduling'
+  const [viewMode, setViewMode] = useState<'detail' | 'scheduling'>('detail');
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
@@ -149,6 +155,20 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [showCompensation, setShowCompensation] = useState(false);
+  
+  // 스케줄링 폼 상태
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [users, setUsers] = useState<Array<{ id: string; email: string; role: string }>>([]);
+  const [scheduleFormData, setScheduleFormData] = useState({
+    start_date: '',
+    end_date: '',
+    duration_minutes: '60',
+    stage_id: 'stage-6',
+    interviewer_ids: [] as string[],
+    num_options: '2',
+  });
+  const [scheduleWarning, setScheduleWarning] = useState<string | null>(null);
 
   // current_stage_id가 null이거나 빈 문자열인 경우 기본값 설정 (방어적 코딩)
   const currentStageId = (candidate.current_stage_id && candidate.current_stage_id.trim() !== '') 
@@ -181,6 +201,84 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       loadResumeFiles();
     }
   }, [candidate.id]);
+
+  // 스케줄링 모드로 전환 시 사용자 목록 로드
+  useEffect(() => {
+    if (viewMode === 'scheduling') {
+      loadUsers();
+    }
+  }, [viewMode]);
+
+  // 사용자 목록 로드
+  const loadUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const result = await getUsers();
+      if (result.data) {
+        setUsers(result.data.filter(u => u.role === 'interviewer' || u.role === 'admin'));
+      }
+    } catch (error) {
+      console.error('사용자 목록 로드 실패:', error);
+      toast.error('면접관 목록을 불러올 수 없습니다.');
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  // 스케줄링 폼 제출
+  const handleScheduleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoadingSchedule(true);
+    setScheduleWarning(null);
+
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('candidate_id', candidate.id);
+      formDataToSend.append('stage_id', scheduleFormData.stage_id);
+      formDataToSend.append('start_date', scheduleFormData.start_date);
+      formDataToSend.append('end_date', scheduleFormData.end_date);
+      formDataToSend.append('duration_minutes', scheduleFormData.duration_minutes);
+      formDataToSend.append('interviewer_ids', JSON.stringify(scheduleFormData.interviewer_ids));
+      formDataToSend.append('num_options', scheduleFormData.num_options);
+
+      const result = await scheduleInterviewAutomated(formDataToSend);
+
+      if (result.error) {
+        // 스마트 대안 UI: 알고리즘이 시간을 못 찾았을 때
+        if (result.error.includes('일정을 찾을 수 없습니다') || result.error.includes('공통 가능 일정')) {
+          setScheduleWarning(result.error);
+        } else {
+          toast.error(result.error);
+        }
+      } else {
+        toast.success(result.message || '면접 일정 자동화가 시작되었습니다.');
+        setViewMode('detail');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('면접 일정 자동화에 실패했습니다.');
+      console.error(error);
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
+  // 면접관 토글
+  const toggleInterviewer = (userId: string) => {
+    setScheduleFormData(prev => ({
+      ...prev,
+      interviewer_ids: prev.interviewer_ids.includes(userId)
+        ? prev.interviewer_ids.filter(id => id !== userId)
+        : [...prev.interviewer_ids, userId],
+    }));
+  };
+
+  // 스케줄링 폼 유효성 검사
+  const isScheduleFormValid = 
+    scheduleFormData.start_date && 
+    scheduleFormData.end_date && 
+    scheduleFormData.interviewer_ids.length > 0 &&
+    !isLoadingUsers;
 
   // 파일이 로드되면 첫 번째 파일을 기본 선택으로 설정
   useEffect(() => {
@@ -1256,190 +1354,149 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     }
   };
 
+  // 면접 시간 옵션
+  const durationOptions = [
+    { value: '30', label: '30분' },
+    { value: '60', label: '60분' },
+    { value: '90', label: '90분' },
+    { value: '120', label: '120분' },
+  ];
+
+  // 일정 옵션 개수
+  const numOptionsList = [1, 2, 3, 4, 5];
+
   return (
     <>
-    <div className={`h-full overflow-auto ${isSidebar ? 'bg-background' : 'bg-gradient-to-b from-gray-50 to-background'}`}>
-      <div className={`${isSidebar ? 'px-4 sm:px-6 py-4 sm:py-6' : 'w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8'}`}>
-        {/* 헤더 섹션 - 그라데이션 배경 */}
-        <div className="relative mb-8 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pt-6 pb-8 bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 rounded-b-2xl shadow-lg">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              {/* 프로필 정보 - 모바일 반응형 */}
-              <div className="flex items-center gap-3 sm:gap-4 mb-4">
-                <Avatar className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-white/20 shadow-xl flex-shrink-0">
-                  <AvatarFallback className="bg-gradient-to-br from-white/20 to-white/10 text-white text-xl sm:text-2xl font-bold">
-                    {candidate.name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 drop-shadow-sm break-words">{candidate.name}</h1>
-                  {candidate.job_posts?.title && (
-                    <p className="text-sm sm:text-base text-slate-200 mb-2 break-words">{candidate.job_posts.title}</p>
-                  )}
-                  {/* 현재 전형 단계 배지 */}
-                  {currentStageId && (
-                    <Badge 
-                      variant="secondary" 
-                      className="bg-white/25 text-white border-white/40 hover:bg-white/35 backdrop-blur-sm text-xs sm:text-sm font-medium px-3 py-1 shadow-sm"
-                    >
-                      {currentStageName}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={handleClose}
-              className="flex-shrink-0 p-2 sm:p-2.5 hover:bg-white/20 rounded-full transition-all duration-200 text-white hover:scale-110 min-w-[44px] min-h-[44px] flex items-center justify-center"
-              aria-label="닫기"
+    {/* 닫기 버튼 - DialogContent 내부 절대 위치 */}
+    <button
+      onClick={handleClose}
+      className="absolute top-4 right-4 z-50 p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-colors text-slate-600 hover:text-slate-900"
+      aria-label="닫기"
+    >
+      <X className="w-5 h-5" />
+    </button>
+
+    {/* 완벽한 반응형 Grid 레이아웃: 모바일(세로 스택) → PC(좌우 분할) */}
+    <div className="flex flex-col md:grid md:grid-cols-12 h-full max-h-[90vh] overflow-hidden">
+      {/* 좌측 프로필 영역 - 모바일: 위쪽, PC: 왼쪽 */}
+      <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col">
+        {/* 대형 Avatar - 반응형 정렬 */}
+        <div className="flex flex-col items-center md:items-start text-center md:text-left mb-6">
+          <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-slate-200 shadow-md mb-4">
+            <AvatarFallback className="bg-primary/10 text-primary text-3xl md:text-4xl font-bold">
+              {candidate.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{candidate.name}</h1>
+          {candidate.job_posts?.title && (
+            <p className="text-sm md:text-base text-muted-foreground mb-3">{candidate.job_posts.title}</p>
+          )}
+          {currentStageId && (
+            <Badge 
+              variant="secondary" 
+              className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 text-sm font-medium px-3 py-1"
             >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+              {currentStageName}
+            </Badge>
+          )}
         </div>
 
-        {/* Action Buttons - 개선된 스타일, 모바일 반응형 */}
+        {/* Schedule Interview 버튼 - 텍스트 잘림 방지 */}
+        {canManageCandidate && canScheduleInterview && (
+          <Button
+            onClick={() => setViewMode('scheduling')}
+            className="w-full h-12 text-base whitespace-normal break-keep px-4 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white shadow-md hover:shadow-lg transition-all duration-200"
+          >
+            <Calendar className="w-5 h-5 mr-2 flex-shrink-0" />
+            <span className="break-words">Schedule Interview</span>
+          </Button>
+        )}
+
+        {/* 기타 액션 버튼들 */}
         {canManageCandidate && (
-          <div className="flex items-center gap-3 mb-8 flex-wrap">
-            {/* Schedule Interview 버튼: 관리자/리크루터만, 1차/2차 면접 단계에서만 표시 */}
-            {canScheduleInterview && (
-              <Button
-                onClick={() => setIsScheduleModalOpen(true)}
-                className="bg-primary hover:bg-primary/90 text-white shadow-sm hover:shadow-md transition-all duration-200"
-                size="default"
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Schedule Interview
-              </Button>
-            )}
-            {/* Email 버튼 */}
+          <div className="mt-4 space-y-2">
             <Button
               onClick={() => setIsEmailModalOpen(true)}
-              variant="outline"
-              className="border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 shadow-sm hover:shadow-md transition-all duration-200"
-              size="default"
+              variant="ghost"
+              className="w-full text-slate-700 hover:bg-slate-100 hover:text-slate-900"
             >
               <Mail className="w-4 h-4 mr-2" />
               Email
             </Button>
-            {/* 전형 이동 버튼 */}
-            <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 shadow-sm hover:shadow-md transition-all duration-200"
-                  size="default"
-                  disabled={isMovingStage || !currentStageId || !candidate.job_posts?.id}
-                >
-                  <ArrowRight className="w-4 h-4 mr-2" />
-                  {isMovingStage ? '이동 중...' : '전형 이동'}
-                  <ChevronDown className="w-4 h-4 ml-2" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-0 shadow-xl" align="start">
-                <div className="p-2">
-                  <div className="px-3 py-2 text-sm font-semibold text-foreground border-b">
-                    전형 단계 선택
-                  </div>
-                  {isLoadingStages ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      로딩 중...
-                    </div>
-                  ) : !currentStageId ? (
-                    <div className="p-4 text-center text-sm text-destructive">
-                      현재 전형 정보가 없습니다.
-                    </div>
-                  ) : availableStages.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      사용 가능한 단계가 없습니다.
-                    </div>
-                  ) : (
-                    <div className="max-h-64 overflow-y-auto">
-                      {availableStages.map((stage) => {
-                        const isCurrent = stage.isCurrent;
-                        const currentIndex = availableStages.findIndex(s => s.isCurrent);
-                        const stageIndex = availableStages.findIndex(s => s.id === stage.id);
-                        const isForward = stageIndex > currentIndex;
-                        const isBackward = stageIndex < currentIndex;
-
-                        return (
-                          <button
-                            key={stage.id}
-                            onClick={() => !isCurrent && handleMoveToStage(stage.id)}
-                            disabled={isCurrent}
-                            className={`
-                              w-full px-3 py-2.5 text-left text-sm transition-all duration-200
-                              flex items-center justify-between
-                              ${isCurrent
-                                ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                                : 'hover:bg-primary/5 text-foreground cursor-pointer'
-                              }
-                              ${!isCurrent && 'border-b border-border last:border-b-0'}
-                            `}
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              {isBackward && (
-                                <ArrowUp className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                              )}
-                              {isForward && (
-                                <ArrowDown className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                              )}
-                              {!isBackward && !isForward && (
-                                <div className="w-3.5 h-3.5 flex-shrink-0" />
-                              )}
-                              <span className={isCurrent ? 'font-medium' : ''}>
-                                {stage.name}
-                              </span>
-                            </div>
-                            {isCurrent && (
-                              <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
-                                (현재)
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-            {/* 아카이브 버튼 */}
             <Button
               onClick={() => setIsArchiveModalOpen(true)}
-              variant="outline"
-              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              size="default"
+              variant="ghost"
+              className="w-full text-slate-700 hover:bg-slate-100 hover:text-slate-900"
             >
               <Archive className="w-4 h-4 mr-2" />
               아카이브
             </Button>
           </div>
         )}
+      </div>
 
-        {/* Match Score - 그라데이션 카드 */}
-        {candidate.parsed_data?.match_score !== undefined && (
-          <Card className="mb-6 bg-card border-border shadow-md hover:shadow-lg transition-shadow duration-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  Match Score
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-baseline gap-2">
-                <span className="text-5xl font-bold text-primary">{candidate.parsed_data.match_score}</span>
-                <span className="text-xl text-muted-foreground">/ 100</span>
-              </div>
-              <Progress 
-                value={candidate.parsed_data.match_score} 
-                className="h-3 bg-muted"
-              />
+      {/* 우측 콘텐츠 영역 - 모바일: 아래쪽, PC: 오른쪽 (독립 스크롤) */}
+      <div className="md:col-span-8 lg:col-span-9 bg-slate-50 p-6 md:p-8 overflow-y-auto">
+        {/* View 전환 애니메이션 */}
+        <div className={cn(
+          "transition-all duration-300",
+          viewMode === 'scheduling' ? "opacity-100 translate-x-0" : viewMode === 'detail' ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4"
+        )}>
+          {viewMode === 'detail' ? (
+            <>
+              {/* Detail View - 기존 정보 카드들 */}
+                {/* Match Score - 원형 프로그레스 링 */}
+                {candidate.parsed_data?.match_score !== undefined && (
+                  <div className="mb-6 bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                    <div className="flex items-center gap-2 mb-6">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                      <h3 className="text-lg font-semibold text-foreground">Match Score</h3>
+                    </div>
+                    <div className="flex items-center justify-center gap-8">
+                      {/* 원형 프로그레스 링 */}
+                      <div className="relative w-32 h-32">
+                        <svg className="w-32 h-32 transform -rotate-90">
+                          {/* 배경 원 */}
+                          <circle
+                            cx="64"
+                            cy="64"
+                            r="56"
+                            stroke="currentColor"
+                            strokeWidth="12"
+                            fill="none"
+                            className="text-slate-200"
+                          />
+                          {/* 프로그레스 원 */}
+                          <circle
+                            cx="64"
+                            cy="64"
+                            r="56"
+                            stroke={`url(#match-score-gradient-${candidate.id})`}
+                            strokeWidth="12"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeDasharray={`${2 * Math.PI * 56}`}
+                            strokeDashoffset={`${2 * Math.PI * 56 * (1 - candidate.parsed_data.match_score / 100)}`}
+                            className="transition-all duration-500"
+                          />
+                          <defs>
+                            <linearGradient id={`match-score-gradient-${candidate.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                              <stop offset="0%" stopColor="#0248FF" />
+                              <stop offset="100%" stopColor="#5287FF" />
+                            </linearGradient>
+                          </defs>
+                        </svg>
+                        {/* 중앙 점수 */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="text-center">
+                            <span className="text-4xl font-bold text-primary">{candidate.parsed_data.match_score}</span>
+                            <span className="text-lg text-muted-foreground">/ 100</span>
+                          </div>
+                        </div>
+                      </div>
               {/* AI SUMMARY 박스 */}
               {candidate.ai_summary && (
-                <div className="mt-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
+                <div className="mt-4 p-4 bg-white rounded-lg border border-slate-100 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Sparkles className="w-4 h-4 text-primary" />
                     <h3 className="text-sm font-semibold text-foreground">AI SUMMARY</h3>
@@ -1447,49 +1504,47 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   <p className="text-sm text-foreground leading-relaxed">{candidate.ai_summary}</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
-        {/* Contact */}
-        <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold">Contact</CardTitle>
-              {canManageCandidate && (
-                <div className="flex gap-2">
-                  {isEditMode ? (
-                    <>
-                      <Button
-                        onClick={handleSaveEdit}
-                        size="sm"
-                        className="bg-primary hover:bg-primary/90 text-white"
-                      >
-                        저장
-                      </Button>
-                      <Button
-                        onClick={handleCancelEdit}
-                        size="sm"
-                        variant="outline"
-                      >
-                        취소
-                      </Button>
-                    </>
-                  ) : (
+                {/* Contact - 개별 카드 스타일 */}
+                <div className="mb-6 bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-foreground">Contact</h3>
+            {canManageCandidate && (
+              <div className="flex gap-2">
+                {isEditMode ? (
+                  <>
                     <Button
-                      onClick={() => setIsEditMode(true)}
+                      onClick={handleSaveEdit}
+                      size="sm"
+                      className="bg-primary hover:bg-primary/90 text-white"
+                    >
+                      저장
+                    </Button>
+                    <Button
+                      onClick={handleCancelEdit}
                       size="sm"
                       variant="outline"
                     >
-                      <Settings className="w-4 h-4 mr-2" />
-                      수정
+                      취소
                     </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+                  </>
+                ) : (
+                  <Button
+                    onClick={() => setIsEditMode(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    수정
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="space-y-4">
             {isEditMode ? (
               <>
                 <div className="space-y-2">
@@ -1555,29 +1610,27 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 <span className="text-sm text-foreground">{location}</span>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Compensation - 권한이 있는 경우만 표시 */}
-        {canViewCompensation && (
-          <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold">Compensation</CardTitle>
-                {showCompensation && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowCompensation(false)}
-                    className="text-muted-foreground hover:text-foreground transition-colors duration-200"
-                  >
-                    <EyeOff className="w-4 h-4 mr-2" />
-                    Hide
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
+                {/* Compensation - 권한이 있는 경우만 표시, 개별 카드 스타일 */}
+                {canViewCompensation && (
+                  <div className="mb-6 bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Compensation</h3>
+              {showCompensation && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCompensation(false)}
+                  className="text-muted-foreground hover:text-foreground transition-colors duration-200"
+                >
+                  <EyeOff className="w-4 h-4 mr-2" />
+                  Hide
+                </Button>
+              )}
+            </div>
+            <div>
               {!showCompensation ? (
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-dashed">
                   <p className="text-sm text-muted-foreground">Click to view sensitive data</p>
@@ -1607,34 +1660,29 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
-        {/* Skills */}
-        {skills.length > 0 && (
-          <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold">Skills</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {skills.map((skill, index) => (
-                  <Badge
-                    key={index}
-                    variant="secondary"
-                    className="px-3 py-1.5 text-sm font-medium hover:bg-primary/10 transition-colors duration-200"
-                  >
-                    {skill}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                {/* Skills - Soft Badge 스타일 (bg-primary/5 text-primary) */}
+                {skills.length > 0 && (
+                  <div className="mb-6 bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Skills</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {skills.map((skill, index) => (
+                        <Badge
+                          key={index}
+                          className="px-3 py-1.5 text-sm font-medium bg-primary/5 text-primary border-0 hover:bg-primary/10 transition-colors duration-200"
+                        >
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        {/* Documents - 여러 파일 지원 + 인라인 미리보기 */}
-        <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+                {/* Documents - 여러 파일 지원 + 인라인 미리보기 */}
+                <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200 card-modern">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold">Documents</CardTitle>
@@ -1763,8 +1811,8 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           </CardContent>
         </Card>
 
-        {/* Activity Timeline */}
-        <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+                {/* Activity Timeline */}
+                <Card className="shadow-md hover:shadow-lg transition-shadow duration-200 card-modern">
           <CardHeader>
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
@@ -1828,7 +1876,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                   {timelineEvents.map((event, index) => (
                     <div key={event.id} className="relative flex gap-4 group">
                       {/* 아이콘 - 개선된 스타일 */}
-                      <div className="relative z-10 flex-shrink-0">
+                      <div className="relative z-10 flex-shrink-0 flex items-center justify-center">
                         {/* 코멘트/평가/이메일 같은 사용자 작성 이벤트는 작성자 프로필(아바타)을 표시 */}
                         {(
                           (event.type === 'comment' ||
@@ -1854,15 +1902,15 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                             </AvatarFallback>
                           </Avatar>
                         ) : (
-                          <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200 ${getTimelineEventIconBg(event.type)}`}>
-                            {getTimelineEventIcon(event.type)}
+                          <div className="w-12 h-12 flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-brand-main ring-4 ring-brand-main/20" />
                           </div>
                         )}
                       </div>
                       
-                      {/* 내용 - 카드 스타일 */}
+                      {/* 내용 - 피드 형태 카드 스타일 */}
                       <div className="flex-1 pb-6 min-w-0">
-                        <div className={`border rounded-lg p-4 shadow-sm hover:shadow-md transition-all duration-200 ${getTimelineEventCardBg(event.type)}`}>
+                        <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-3 hover:shadow-md transition-all duration-200">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <span className={`text-sm font-semibold ${getTimelineEventColor(event.type)}`}>
                               {getTimelineEventTitle(event)}
@@ -1897,16 +1945,326 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             )}
           </CardContent>
         </Card>
+              </>
+            ) : (
+              <>
+                {/* Scheduling View - 스케줄링 폼 */}
+                <div className="space-y-6">
+                  {/* 뒤로 가기 버튼 */}
+                  <Button
+                    onClick={() => setViewMode('detail')}
+                    variant="ghost"
+                    className="mb-4"
+                  >
+                    <ArrowRight className="w-4 h-4 mr-2 rotate-180" />
+                    뒤로 가기
+                  </Button>
+
+                  <form onSubmit={handleScheduleSubmit} className="space-y-6">
+                    {/* 후보자 정보 카드 */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        후보자
+                      </label>
+                      <p className="text-base font-medium text-slate-900">{candidate.name}</p>
+                    </div>
+
+                    {/* 날짜 선택 카드 - PC에서 가로 배치 */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-4">
+                      <label className="block text-sm font-medium text-slate-700">
+                        <Calendar className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                        일정 검색 기간
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label htmlFor="start_date" className="block text-xs text-slate-600 mb-1.5">
+                            시작 날짜
+                          </label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                id="start_date"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm",
+                                  !scheduleFormData.start_date && "text-slate-500"
+                                )}
+                              >
+                                <Calendar className="mr-2 h-4 w-4 text-slate-500" />
+                                {scheduleFormData.start_date ? (
+                                  format(new Date(scheduleFormData.start_date), 'yyyy년 MM월 dd일', { locale: ko })
+                                ) : (
+                                  <span>날짜 선택</span>
+                                )}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <CalendarComponent
+                                mode="single"
+                                selected={scheduleFormData.start_date ? new Date(scheduleFormData.start_date) : undefined}
+                                onSelect={(date) => {
+                                  if (date) {
+                                    const dateStr = format(date, 'yyyy-MM-dd');
+                                    setScheduleFormData({ ...scheduleFormData, start_date: dateStr });
+                                    if (scheduleFormData.end_date && new Date(scheduleFormData.end_date) < date) {
+                                      setScheduleFormData(prev => ({ ...prev, start_date: dateStr, end_date: dateStr }));
+                                    }
+                                  }
+                                }}
+                                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                                initialFocus
+                                locale={ko}
+                                weekStartsOn={0}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <div>
+                          <label htmlFor="end_date" className="block text-xs text-slate-600 mb-1.5">
+                            종료 날짜
+                          </label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                id="end_date"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm",
+                                  !scheduleFormData.end_date && "text-slate-500"
+                                )}
+                              >
+                                <Calendar className="mr-2 h-4 w-4 text-slate-500" />
+                                {scheduleFormData.end_date ? (
+                                  format(new Date(scheduleFormData.end_date), 'yyyy년 MM월 dd일', { locale: ko })
+                                ) : (
+                                  <span>날짜 선택</span>
+                                )}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <CalendarComponent
+                                mode="single"
+                                selected={scheduleFormData.end_date ? new Date(scheduleFormData.end_date) : undefined}
+                                onSelect={(date) => {
+                                  if (date) {
+                                    setScheduleFormData({ ...scheduleFormData, end_date: format(date, 'yyyy-MM-dd') });
+                                  }
+                                }}
+                                disabled={(date) => {
+                                  const today = new Date(new Date().setHours(0, 0, 0, 0));
+                                  const minDate = scheduleFormData.start_date 
+                                    ? new Date(scheduleFormData.start_date) 
+                                    : today;
+                                  return date < minDate;
+                                }}
+                                initialFocus
+                                locale={ko}
+                                weekStartsOn={0}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 면접 시간 선택 - Segmented Control */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
+                      <label className="block text-sm font-medium text-slate-700">
+                        <Clock className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                        면접 시간
+                      </label>
+                      <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+                        {durationOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setScheduleFormData({ ...scheduleFormData, duration_minutes: option.value })}
+                            className={cn(
+                              "flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                              scheduleFormData.duration_minutes === option.value
+                                ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white shadow-md"
+                                : "bg-transparent text-slate-700 hover:bg-white/50"
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 면접 단계 선택 */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
+                      <label htmlFor="stage_id" className="block text-sm font-medium text-slate-700">
+                        면접 단계
+                      </label>
+                      <select
+                        id="stage_id"
+                        required
+                        value={scheduleFormData.stage_id}
+                        onChange={(e) => setScheduleFormData({ ...scheduleFormData, stage_id: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm"
+                      >
+                        {Object.entries(STAGE_ID_TO_NAME_MAP).map(([id, name]) => (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 일정 옵션 개수 - Segmented Control */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
+                      <label className="block text-sm font-medium text-slate-700">
+                        <Calendar className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                        일정 옵션 개수
+                      </label>
+                      <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+                        {numOptionsList.map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setScheduleFormData({ ...scheduleFormData, num_options: num.toString() })}
+                            className={cn(
+                              "flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                              scheduleFormData.num_options === num.toString()
+                                ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white shadow-md"
+                                : "bg-transparent text-slate-700 hover:bg-white/50"
+                            )}
+                          >
+                            {num}개
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 면접관 선택 - Avatar 토글 UI */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
+                      <label className="block text-sm font-medium text-slate-700">
+                        <Users className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                        면접관 선택
+                        <span className="text-xs font-normal text-slate-500 ml-2">
+                          (최소 1명 이상)
+                        </span>
+                      </label>
+                      {isLoadingUsers ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#5287FF]" />
+                          <span className="ml-2 text-sm text-slate-600">면접관 목록 로딩 중...</span>
+                        </div>
+                      ) : (
+                        <>
+                          {/* 면접관 선택 - 모바일: 가로 스크롤, PC: 그리드 */}
+                          <div className="flex gap-3 overflow-x-auto md:grid md:grid-cols-4 lg:grid-cols-5 md:overflow-x-visible pb-2">
+                            {users.length === 0 ? (
+                              <p className="text-sm text-slate-500 text-center py-4 w-full">
+                                면접관이 없습니다. 먼저 면접관을 등록해주세요.
+                              </p>
+                            ) : (
+                              users.map((user) => {
+                                const isSelected = scheduleFormData.interviewer_ids.includes(user.id);
+                                return (
+                                  <button
+                                    key={user.id}
+                                    type="button"
+                                    onClick={() => toggleInterviewer(user.id)}
+                                    className={cn(
+                                      "flex flex-col items-center gap-2 p-3 rounded-xl transition-all min-w-[80px] md:min-w-0",
+                                      isSelected
+                                        ? "bg-blue-50/50 ring-2 ring-[#5287FF] shadow-sm"
+                                        : "bg-slate-50 border border-slate-200 hover:bg-blue-50/30 hover:border-slate-300"
+                                    )}
+                                  >
+                                    <Avatar className={cn(
+                                      "w-12 h-12 border-2 transition-all",
+                                      isSelected ? "border-[#5287FF]" : "border-slate-200"
+                                    )}>
+                                      <AvatarFallback className={cn(
+                                        "text-sm font-medium",
+                                        isSelected 
+                                          ? "bg-[#5287FF]/10 text-[#5287FF]" 
+                                          : "bg-slate-100 text-slate-600"
+                                      )}>
+                                        {user.email.charAt(0).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="text-center">
+                                      <p className="text-xs font-medium text-slate-700 truncate max-w-[70px]">
+                                        {user.email.split('@')[0]}
+                                      </p>
+                                      {user.role === 'admin' && (
+                                        <Badge 
+                                          variant="outline" 
+                                          className="mt-1 text-[10px] px-1.5 py-0 border-slate-300 text-slate-600"
+                                        >
+                                          관리자
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                          {scheduleFormData.interviewer_ids.length === 0 && (
+                            <p className="text-xs text-rose-600 mt-2">
+                              최소 1명의 면접관을 선택해주세요.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {/* 스마트 대안 UI - Warning Card */}
+                    {scheduleWarning && (
+                      <div className="bg-amber-50 text-amber-800 rounded-xl p-4 border border-amber-200 card-modern">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="font-semibold mb-1">일정을 찾을 수 없습니다</h4>
+                            <p className="text-sm">{scheduleWarning}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 제출 버튼 */}
+                    <div className="flex gap-3 justify-end pt-4">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => setViewMode('detail')} 
+                        disabled={isLoadingSchedule}
+                        className="px-6"
+                      >
+                        취소
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={!isScheduleFormValid || isLoadingSchedule}
+                        className={cn(
+                          "px-6 transition-all",
+                          isScheduleFormValid
+                            ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white hover:opacity-90 shadow-md"
+                            : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                        )}
+                      >
+                        {isLoadingSchedule ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            처리 중...
+                          </>
+                        ) : (
+                          '자동화 시작'
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </>
+          )}
+        </div>
       </div>
     </div>
-
-    {/* Schedule Interview Automated Modal */}
-    <ScheduleInterviewAutomatedModal
-      candidateId={candidate.id}
-      candidateName={candidate.name}
-      isOpen={isScheduleModalOpen}
-      onClose={() => setIsScheduleModalOpen(false)}
-    />
 
     {/* Email Modal */}
     <EmailModal

@@ -709,8 +709,15 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     let retryCount = 0;
     let currentStartDate = new Date(startDate);
     let currentEndDate = new Date(endDate);
-    let selectedSlots: Array<{ scheduledAt: Date; duration: number; availableInterviewers: string[] }> = [];
+    let selectedSlots: Array<{ 
+      scheduledAt: Date; 
+      duration: number; 
+      availableInterviewers: string[];
+      missingInterviewers?: string[];
+      isPartialConflict?: boolean;
+    }> = [];
     let lastError: Error | null = null;
+    let allowPartialConflict = false; // 부분적 충돌 허용 플래그
 
     while (retryCount <= 5) {
       // 면접관들의 바쁜 시간 조회
@@ -746,6 +753,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       }
 
       // 공통 가능 일정 찾기
+      // 1차 시도: 모든 면접관이 가능한 일정만 찾기
+      // 2차 시도 이후: 부분적 충돌 허용 모드로 전환
       const availableSlots = await findAvailableTimeSlots({
         candidateName: candidate.name,
         stageName: stageId,
@@ -759,15 +768,43 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         startDate: currentStartDate,
         endDate: currentEndDate,
         durationMinutes,
+        allowPartialConflict: allowPartialConflict,
+        minAvailableInterviewers: allowPartialConflict ? Math.max(1, Math.floor(interviewerIds.length * 0.5)) : interviewerIds.length, // 부분적 충돌 시 최소 50% 이상
       });
 
       // 상위 N개 일정 선택 (numOptions만큼)
-      selectedSlots = availableSlots.slice(0, numOptions);
+      // 부분적 충돌이 없는 옵션을 우선 선택
+      const perfectSlots = availableSlots.filter(slot => !slot.isPartialConflict);
+      const partialSlots = availableSlots.filter(slot => slot.isPartialConflict);
+      
+      if (perfectSlots.length > 0) {
+        // 모든 면접관이 가능한 일정이 있으면 우선 선택
+        selectedSlots = perfectSlots.slice(0, numOptions);
+      } else if (partialSlots.length > 0) {
+        // 부분적 충돌 옵션만 있는 경우
+        selectedSlots = partialSlots.slice(0, numOptions);
+      } else {
+        selectedSlots = availableSlots.slice(0, numOptions);
+      }
       
       if (selectedSlots.length > 0) {
         // 일정을 찾았으면 반복문 종료
-        console.log(`일정 검색 성공: retryCount=${retryCount}, 날짜 범위=${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}`);
+        const conflictInfo = selectedSlots.some(s => s.isPartialConflict) 
+          ? ` (일부 면접관 제외 옵션 포함)` 
+          : '';
+        console.log(`일정 검색 성공: retryCount=${retryCount}, 날짜 범위=${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}${conflictInfo}`);
         break;
+      }
+
+      // 일정을 찾지 못한 경우 처리
+      if (!allowPartialConflict && retryCount >= 2) {
+        // 2회 재시도 후에도 일정이 없으면 부분적 충돌 허용 모드로 전환
+        allowPartialConflict = true;
+        retryCount = 0; // 부분적 충돌 모드에서 다시 시도
+        currentStartDate = new Date(startDate); // 날짜 범위 초기화
+        currentEndDate = new Date(endDate);
+        console.log('모든 면접관이 가능한 일정이 없습니다. 부분적 충돌 허용 모드로 전환합니다.');
+        continue;
       }
 
       // 일정을 찾지 못했고, 재시도 가능한 경우 날짜 범위 확장
@@ -779,8 +816,22 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         console.log(`일정 없음. 날짜 범위 확장 시도 ${retryCount}: ${format(currentStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(currentEndDate, 'yyyy-MM-dd', { locale: ko })}`);
       } else {
         // 최대 재시도 횟수 초과
+        // 부분적 충돌 허용 모드로 마지막 시도
+        if (!allowPartialConflict) {
+          allowPartialConflict = true;
+          retryCount = 0;
+          currentStartDate = new Date(startDate);
+          currentEndDate = new Date(endDate);
+          console.log('최대 재시도 횟수 초과. 부분적 충돌 허용 모드로 마지막 시도합니다.');
+          continue;
+        }
+        
+        // 부분적 충돌 모드에서도 실패한 경우
+        const partialConflictInfo = allowPartialConflict 
+          ? ' 부분적 충돌 허용 모드에서도' 
+          : '';
         lastError = new Error(
-          `면접관들의 공통 가능 일정을 찾을 수 없습니다. ` +
+          `면접관들의 공통 가능 일정을 찾을 수 없습니다.${partialConflictInfo} ` +
           `원본 날짜 범위(${format(originalStartDate, 'yyyy-MM-dd', { locale: ko })} ~ ${format(originalEndDate, 'yyyy-MM-dd', { locale: ko })})부터 ` +
           `총 ${retryCount + 1}회 시도했지만 가능한 일정이 없습니다. 다른 날짜 범위를 선택하거나 면접관을 변경해주세요.`
         );
@@ -838,13 +889,25 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         organizer.calendar_refresh_token!
       );
 
+      // 부분적 충돌 정보 처리
+      const missingInterviewerEmails = slot.missingInterviewers 
+        ? interviewersWithCalendar
+            .filter(inv => slot.missingInterviewers?.includes(inv.id))
+            .map(inv => inv.email)
+        : [];
+      
+      const isPartialConflict = slot.isPartialConflict || missingInterviewerEmails.length > 0;
+      const conflictNote = isPartialConflict && missingInterviewerEmails.length > 0
+        ? `\n\n⚠️ 주의: 이 일정은 일부 면접관(${missingInterviewerEmails.join(', ')})이 참석할 수 없습니다.`
+        : '';
+
       // 구글 캘린더에 block 일정 생성
       const eventId = await createCalendarEvent(
         organizerToken,
         organizer.calendar_refresh_token!,
         {
-          summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
-          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageId}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+          summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)${isPartialConflict ? ' [일부 면접관 제외]' : ''}`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageId}${conflictNote}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
           start: {
             dateTime: slot.scheduledAt.toISOString(),
             timeZone: 'Asia/Seoul',
@@ -853,21 +916,37 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             dateTime: endTime.toISOString(),
             timeZone: 'Asia/Seoul',
           },
-          attendees: interviewersWithCalendar.map(inv => ({ email: inv.email })),
+          attendees: interviewersWithCalendar
+            .filter(inv => !slot.missingInterviewers?.includes(inv.id))
+            .map(inv => ({ email: inv.email })),
           transparency: 'opaque', // block 일정이므로 불투명
         }
       );
 
       // schedule_options에 저장
+      // 부분적 충돌 정보는 interviewer_responses에 메타데이터로 저장
+      const optionData: any = {
+        schedule_id: schedule.id,
+        scheduled_at: slot.scheduledAt.toISOString(),
+        status: 'pending',
+        google_event_id: eventId,
+        interviewer_responses: {}, // 초기값: 빈 객체
+      };
+      
+      // 부분적 충돌 정보를 메타데이터로 저장 (나중에 스키마 확장 가능)
+      if (isPartialConflict && slot.missingInterviewers && slot.missingInterviewers.length > 0) {
+        optionData.interviewer_responses = {
+          _metadata: {
+            isPartialConflict: true,
+            missingInterviewers: slot.missingInterviewers,
+            availableInterviewers: slot.availableInterviewers,
+          },
+        };
+      }
+
       const { data: option, error: optionError } = await supabase
         .from('schedule_options')
-        .insert({
-          schedule_id: schedule.id,
-          scheduled_at: slot.scheduledAt.toISOString(),
-          status: 'pending',
-          google_event_id: eventId,
-          interviewer_responses: {}, // 초기값: 빈 객체
-        })
+        .insert(optionData)
         .select()
         .single();
 

@@ -11,7 +11,7 @@ import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/Candida
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { AddCandidateModal } from '@/components/candidates/AddCandidateModal';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 interface Candidate {
   id: string;
@@ -242,16 +242,16 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     );
   });
 
-  // 상태별 색상
+  // 상태별 색상 (ATS Status Colors 적용)
   const getStatusColor = (status: string) => {
     const colors = {
-      pending: 'bg-accent/10 text-accent',
-      in_progress: 'bg-primary/10 text-primary',
-      confirmed: 'bg-primary/10 text-primary',
-      rejected: 'bg-destructive/10 text-destructive',
-      issue: 'bg-accent/10 text-accent',
+      pending: 'bg-amber-100 text-amber-700',
+      in_progress: 'bg-blue-100 text-blue-700',
+      confirmed: 'bg-blue-100 text-blue-700',
+      rejected: 'bg-rose-100 text-rose-700',
+      issue: 'bg-amber-100 text-amber-700',
     };
-    return colors[status as keyof typeof colors] || 'bg-muted text-muted-foreground';
+    return colors[status as keyof typeof colors] || 'bg-slate-100 text-slate-700';
   };
 
   // 상태 텍스트
@@ -285,53 +285,53 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   };
 
   return (
-    <div className="h-full overflow-auto">
-      {/* Candidates 리스트 */}
-      <div className="px-8 py-6">
+    <div className="min-h-screen bg-slate-50/50 p-6">
+      {/* 메인 콘텐츠 영역 - 거대한 카드로 감싸기 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Candidates</h1>
-            <p className="text-muted-foreground">{activeCandidatesCount} active candidates</p>
+        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <Users className="w-8 h-8 text-foreground" />
+            <h1 className="text-3xl font-bold text-foreground">Candidates</h1>
+            <span className="bg-blue-50 text-[#5287FF] rounded-full px-3 py-1 text-sm font-medium">
+              {activeCandidatesCount} active candidates
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            {/* 필터 */}
+            {/* 필터 버튼 그룹 - 통일된 스타일 (Outline/Ghost) */}
             <div className="flex gap-2">
-              <button
+              <Button
                 onClick={() => setArchiveFilter('active')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  archiveFilter === 'active'
-                    ? 'bg-primary text-white'
-                    : 'bg-background text-foreground border border-border hover:bg-muted'
+                variant="outline"
+                className={`h-10 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 ${
+                  archiveFilter === 'active' ? 'bg-slate-50 border-slate-300' : ''
                 }`}
               >
                 Active
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setArchiveFilter('archived')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  archiveFilter === 'archived'
-                    ? 'bg-primary text-white'
-                    : 'bg-background text-foreground border border-border hover:bg-muted'
+                variant="outline"
+                className={`h-10 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 ${
+                  archiveFilter === 'archived' ? 'bg-slate-50 border-slate-300' : ''
                 }`}
               >
                 Archived
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setArchiveFilter('confirmed')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  archiveFilter === 'confirmed'
-                    ? 'bg-primary text-white'
-                    : 'bg-background text-foreground border border-border hover:bg-muted'
+                variant="outline"
+                className={`h-10 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 ${
+                  archiveFilter === 'confirmed' ? 'bg-slate-50 border-slate-300' : ''
                 }`}
               >
                 입사확정
-              </button>
+              </Button>
             </div>
-            {/* 후보자 추가 버튼 */}
+            {/* 후보자 추가 버튼 - Primary (VNTG Gradient) */}
             <Button
               onClick={() => setAddCandidateModalOpen(true)}
-              className="bg-primary hover:bg-primary/90 text-white"
+              className="h-10 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white border-0"
             >
               <Users className="w-4 h-4 mr-2" />
               Add Candidate
@@ -339,9 +339,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           </div>
         </div>
 
-        {/* Stage Filters */}
+        {/* Stage Filters - Segmented Control 스타일 */}
         <div className="mb-6 overflow-x-auto">
-          <div className="flex gap-2 pb-2 min-w-max">
+          <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
             {RECRUITMENT_STAGES.map((stage) => {
               const count = stage.id === 'all' 
                 ? activeCandidatesCount 
@@ -353,16 +353,16 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                   key={stage.id}
                   onClick={() => setSelectedStage(stage.id)}
                   className={`
-                    px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors
+                    px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all
                     ${isSelected
-                      ? 'bg-primary text-white'
-                      : 'bg-background text-foreground border border-border hover:bg-muted'
+                      ? 'bg-white shadow-sm text-foreground'
+                      : 'text-slate-600 hover:bg-slate-50/50'
                     }
                   `}
                 >
                   {stage.label}
                   {count > 0 && (
-                    <span className={`ml-2 ${isSelected ? 'text-white' : 'text-muted-foreground'}`}>
+                    <span className={`ml-2 ${isSelected ? 'text-foreground' : 'text-slate-500'}`}>
                       ({count})
                     </span>
                   )}
@@ -381,10 +381,10 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
               placeholder="Search candidates, jobs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white"
             />
           </div>
-          <button className="px-4 py-2 border border-border rounded-xl hover:bg-muted flex items-center gap-2">
+          <button className="px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center gap-2 text-slate-600 h-10">
             <Filter size={18} />
             필터
           </button>
@@ -399,14 +399,14 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
 
         {/* Candidates List */}
         {(isLoadingArchived && archiveFilter === 'archived') || (isLoadingConfirmed && archiveFilter === 'confirmed') ? (
-          <div className="card-modern p-12 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <div className="p-12 text-center bg-slate-50 rounded-xl">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#5287FF] mx-auto mb-4"></div>
             <p className="text-muted-foreground">아카이브된 후보자를 불러오는 중...</p>
           </div>
         ) : filteredCandidates.length === 0 ? (
-          <div className="card-modern p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-              <Users className="text-muted-foreground" size={32} />
+          <div className="p-12 text-center bg-slate-50 rounded-xl">
+            <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center mx-auto mb-4">
+              <Users className="text-slate-400" size={32} />
             </div>
             <h2 className="text-xl font-semibold text-foreground mb-2">후보자가 없습니다</h2>
             <p className="text-muted-foreground mb-6">
@@ -415,31 +415,31 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             {!searchQuery && (
               <button
                 onClick={() => router.push('/jobs')}
-                className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors"
+                className="px-6 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white rounded-xl font-medium hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 transition-colors"
               >
                 채용 공고 보기
               </button>
             )}
           </div>
         ) : (
-          <div className="card-modern overflow-hidden">
+          <div className="overflow-hidden border border-slate-200 rounded-xl">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-muted border-b border-border">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">CANDIDATE</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">POSITION</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">CANDIDATE</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">POSITION</th>
                     {/* All Stages를 선택했을 때만 Stage 컬럼 표시 */}
                     {selectedStage === 'all' && (
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STAGE</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">STAGE</th>
                     )}
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">MATCH</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">APPLIED</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">STATUS</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider"></th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">MATCH</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">APPLIED</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">STATUS</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {filteredCandidates.map((candidate) => {
                     const stageName = getStageName(candidate.current_stage_id);
                     const matchScore = candidate.parsed_data?.match_score || 0;
@@ -448,14 +448,14 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                       <tr
                         key={candidate.id}
                         onClick={() => handleCandidateClick(candidate.id)}
-                        className={`hover:bg-muted cursor-pointer transition-colors ${
-                          selectedCandidateId === candidate.id ? 'bg-primary/10' : ''
+                        className={`hover:bg-blue-50/50 cursor-pointer transition-colors border-b border-slate-100/50 ${
+                          selectedCandidateId === candidate.id ? 'bg-blue-50/30' : ''
                         }`}
                       >
                         {/* CANDIDATE */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold">
+                            <div className="w-10 h-10 rounded-full bg-blue-50 text-[#5287FF] font-medium flex items-center justify-center">
                               {candidate.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -474,7 +474,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                         {/* STAGE - All Stages를 선택했을 때만 표시 */}
                         {selectedStage === 'all' && (
                           <td className="px-6 py-4">
-                            <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                               {stageName}
                             </span>
                           </td>
@@ -482,9 +482,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                         {/* MATCH */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="flex-1 bg-muted rounded-full h-2 max-w-[100px]">
+                            <div className="flex-1 bg-slate-100 rounded-full h-2 max-w-[100px]">
                               <div 
-                                className="bg-primary h-2 rounded-full transition-all"
+                                className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] h-2 rounded-full transition-all"
                                 style={{ width: `${matchScore}%` }}
                               />
                             </div>
@@ -499,22 +499,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                         </td>
                         {/* STATUS */}
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${
-                              candidate.status === 'confirmed' ? 'bg-primary' :
-                              candidate.status === 'in_progress' ? 'bg-primary' :
-                              candidate.status === 'pending' ? 'bg-accent' :
-                              candidate.status === 'rejected' ? 'bg-destructive' :
-                              'bg-accent'
-                            }`} />
-                            <span className="text-sm text-foreground capitalize">
-                              {candidate.status === 'confirmed' ? 'Active' :
-                               candidate.status === 'in_progress' ? 'Active' :
-                               candidate.status === 'pending' ? 'New' :
-                               candidate.status === 'rejected' ? 'Rejected' :
-                               'Scheduled'}
-                            </span>
-                          </div>
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(candidate.status)}`}>
+                            {getStatusText(candidate.status)}
+                          </span>
                         </td>
                         {/* Actions */}
                         <td className="px-6 py-4">
@@ -524,10 +511,10 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                               setSelectedCandidateForArchive({ id: candidate.id, name: candidate.name });
                               setArchiveModalOpen(true);
                             }}
-                            className="p-1 hover:bg-muted rounded transition-colors"
+                            className="p-1 hover:bg-slate-100 rounded transition-colors"
                             title="아카이브"
                           >
-                            <Archive size={16} className="text-muted-foreground" />
+                            <Archive size={16} className="text-slate-400" />
                           </button>
                         </td>
                       </tr>
@@ -541,27 +528,26 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
 
         {/* Summary */}
         {filteredCandidates.length > 0 && (
-          <div className="mt-4 text-sm text-muted-foreground">
+          <div className="mt-4 text-sm text-slate-600">
             총 {filteredCandidates.length}명의 후보자
           </div>
         )}
       </div>
 
-      {/* 오른쪽 사이드 패널: Candidate Detail */}
-      <Sheet open={!!selectedCandidateId} onOpenChange={(open) => {
+      {/* 중앙 집중형 모달: Candidate Detail */}
+      <Dialog open={!!selectedCandidateId} onOpenChange={(open) => {
         if (!open) {
           handleCloseDetail();
         }
       }}>
-        <SheetContent 
-          side="right"
-          className="!w-full md:!w-[1000px] lg:!w-[1200px] !h-full p-0 overflow-y-auto !max-w-none sm:!max-w-none md:!max-w-none lg:!max-w-none [&>button]:hidden"
+        <DialogContent 
+          className="!w-[95vw] !max-w-5xl !max-h-[90vh] p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden"
         >
           {/* 접근성을 위한 숨겨진 제목 */}
-          <SheetTitle className="sr-only">
+          <DialogTitle className="sr-only">
             {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
-          </SheetTitle>
-          <div className="h-full">
+          </DialogTitle>
+          <div className="h-full overflow-hidden">
             {isLoadingDetail ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -587,12 +573,12 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 schedules={schedules}
                 timelineEvents={timelineEvents}
                 onClose={handleCloseDetail}
-                isSidebar={true}
+                isSidebar={false}
               />
             ) : null}
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* 아카이브 모달 */}
       {selectedCandidateForArchive && (
