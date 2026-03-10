@@ -1,6 +1,6 @@
 'use client';
 
-import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, ArrowRight, ChevronRight, TrendingUp, UserPlus, CalendarCheck, Award, Sparkles } from 'lucide-react';
+import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, ArrowRight, ChevronRight, TrendingUp, UserPlus, CalendarCheck, Award, Sparkles, TrendingDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUserProfile } from '@/api/queries/auth';
@@ -72,6 +72,14 @@ interface OverviewClientProps {
     count: number;
   }>;
   aiInsight?: string | null | undefined;
+}
+
+// 트렌드 데이터 타입 (추후 실제 데이터로 교체 가능)
+interface TrendData {
+  newApplications?: number;
+  interviewsInProgress?: number;
+  offersSent?: number;
+  hiringCompleted?: number;
 }
 
 export function OverviewClient({ 
@@ -203,6 +211,25 @@ export function OverviewClient({
     }
   };
 
+  // 트렌드 데이터 (더미 데이터 - 추후 실제 데이터로 교체 가능)
+  const trends: TrendData = {
+    newApplications: 12,
+    interviewsInProgress: -5,
+    offersSent: 8,
+    hiringCompleted: 15,
+  };
+
+  // 진행률 바 색상 결정 함수
+  const getProgressBarColor = (progress: number) => {
+    if (progress >= 100) {
+      return 'bg-gradient-to-r from-emerald-500 to-emerald-600';
+    } else if (progress >= 50) {
+      return 'bg-gradient-to-r from-blue-500 to-indigo-600';
+    } else {
+      return 'bg-gradient-to-r from-amber-400 to-orange-500';
+    }
+  };
+
   const hasData = stats.newApplications > 0 || stats.interviewsInProgress > 0 || stats.offersSent > 0 || stats.hiringCompleted > 0;
 
   // 오늘 일정 필터링
@@ -233,25 +260,37 @@ export function OverviewClient({
     }, 0),
   };
 
-
   return (
     <div className="h-full overflow-auto bg-slate-50">
       <div className="px-4 sm:px-6 lg:px-8 py-6">
-        {/* 환영 메시지 섹션 (Hero Section) */}
+        {/* AI 인사이트 히어로 섹션 */}
         <div className="mb-8">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 sm:p-8">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-4">
-              {aiInsight || `${getGreeting()}, ${userName}님`}
-            </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 bg-blue-50 text-brand-main px-3 py-1 rounded-full text-sm font-medium">
-                오늘 면접 {todaySummary.interviews}건
-              </span>
-              {todaySummary.urgentActions > 0 && (
-                <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-sm font-medium">
-                  긴급 액션 {todaySummary.urgentActions}건
-                </span>
-              )}
+          <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 rounded-2xl shadow-sm border border-slate-100 p-6 sm:p-8">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-100/50 flex items-center justify-center">
+                <Sparkles className="text-indigo-500" size={24} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-3xl font-bold tracking-tight text-indigo-950 mb-3">
+                  {aiInsight || `${getGreeting()}, ${userName}님`}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="inline-flex items-center gap-1 bg-blue-50 text-brand-main px-3 py-1 rounded-full text-sm font-medium">
+                    오늘 면접 {todaySummary.interviews}건
+                  </span>
+                  {todaySummary.urgentActions > 0 && (
+                    <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-sm font-medium">
+                      긴급 액션 {todaySummary.urgentActions}건
+                    </span>
+                  )}
+                </div>
+                {aiInsight && (
+                  <div className="inline-flex items-center gap-1.5 bg-indigo-100/50 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                    <Sparkles size={12} className="text-indigo-500" />
+                    AI-Powered Insights
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -259,53 +298,109 @@ export function OverviewClient({
         {/* KPI 요약 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* 신규 지원 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <UserPlus className="text-primary" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+                <UserPlus className="text-teal-600" size={24} />
               </div>
             </div>
             <div className="text-sm text-slate-600 font-medium mb-1">신규 지원</div>
-            <div className="text-4xl font-extrabold text-slate-900">{stats.newApplications}</div>
+            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.newApplications}</div>
+            {trends.newApplications !== undefined && (
+              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                trends.newApplications > 0 
+                  ? 'text-emerald-600 bg-emerald-50' 
+                  : 'text-rose-600 bg-rose-50'
+              }`}>
+                {trends.newApplications > 0 ? (
+                  <TrendingUp size={12} />
+                ) : (
+                  <TrendingDown size={12} />
+                )}
+                {trends.newApplications > 0 ? '+' : ''}{trends.newApplications}% vs last week
+              </div>
+            )}
           </div>
 
           {/* 면접 진행 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <Clock className="text-primary" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Clock className="text-amber-600" size={24} />
               </div>
             </div>
             <div className="text-sm text-slate-600 font-medium mb-1">면접 진행</div>
-            <div className="text-4xl font-extrabold text-slate-900">{stats.interviewsInProgress}</div>
+            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.interviewsInProgress}</div>
+            {trends.interviewsInProgress !== undefined && (
+              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                trends.interviewsInProgress > 0 
+                  ? 'text-emerald-600 bg-emerald-50' 
+                  : 'text-rose-600 bg-rose-50'
+              }`}>
+                {trends.interviewsInProgress > 0 ? (
+                  <TrendingUp size={12} />
+                ) : (
+                  <TrendingDown size={12} />
+                )}
+                {trends.interviewsInProgress > 0 ? '+' : ''}{trends.interviewsInProgress}% vs last week
+              </div>
+            )}
           </div>
 
           {/* 오퍼 발송 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <Send className="text-primary" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Send className="text-blue-600" size={24} />
               </div>
             </div>
             <div className="text-sm text-slate-600 font-medium mb-1">오퍼 발송</div>
-            <div className="text-4xl font-extrabold text-slate-900">{stats.offersSent}</div>
+            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.offersSent}</div>
+            {trends.offersSent !== undefined && (
+              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                trends.offersSent > 0 
+                  ? 'text-emerald-600 bg-emerald-50' 
+                  : 'text-rose-600 bg-rose-50'
+              }`}>
+                {trends.offersSent > 0 ? (
+                  <TrendingUp size={12} />
+                ) : (
+                  <TrendingDown size={12} />
+                )}
+                {trends.offersSent > 0 ? '+' : ''}{trends.offersSent}% vs last week
+              </div>
+            )}
           </div>
 
           {/* 채용 완료 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <Award className="text-primary" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <Award className="text-purple-600" size={24} />
               </div>
             </div>
             <div className="text-sm text-slate-600 font-medium mb-1">채용 완료</div>
-            <div className="text-4xl font-extrabold text-slate-900">{stats.hiringCompleted}</div>
+            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.hiringCompleted}</div>
+            {trends.hiringCompleted !== undefined && (
+              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                trends.hiringCompleted > 0 
+                  ? 'text-emerald-600 bg-emerald-50' 
+                  : 'text-rose-600 bg-rose-50'
+              }`}>
+                {trends.hiringCompleted > 0 ? (
+                  <TrendingUp size={12} />
+                ) : (
+                  <TrendingDown size={12} />
+                )}
+                {trends.hiringCompleted > 0 ? '+' : ''}{trends.hiringCompleted}% vs last week
+              </div>
+            )}
           </div>
         </div>
 
         {!hasData ? (
           /* 빈 상태 (Empty State) */
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-12 text-center">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
             <div className="max-w-md mx-auto">
               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                 <Users className="text-slate-400" size={32} />
@@ -338,7 +433,7 @@ export function OverviewClient({
             {/* 중앙 섹션: 액션 필요 + 오늘 일정 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 액션 필요 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                     <AlertCircle className="text-white" size={18} />
@@ -389,7 +484,7 @@ export function OverviewClient({
               </div>
 
               {/* 오늘 일정 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
@@ -487,7 +582,7 @@ export function OverviewClient({
             </div>
 
             {/* 내 포지션 현황 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                   <Briefcase className="text-white" size={18} />
@@ -499,13 +594,13 @@ export function OverviewClient({
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-200">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">포지션</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">신규</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">서류</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">면접</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">최종</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">오퍼</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">진행률</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">포지션</th>
+                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">신규</th>
+                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">서류</th>
+                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">면접</th>
+                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">최종</th>
+                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">오퍼</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">진행률</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -526,7 +621,7 @@ export function OverviewClient({
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 h-2.5 bg-slate-200 rounded-full overflow-hidden">
                                   <div
-                                    className="h-full bg-gradient-to-r from-brand-dark to-brand-main transition-all rounded-full"
+                                    className={`h-full transition-all rounded-full ${getProgressBarColor(position.progress)}`}
                                     style={{ width: `${position.progress}%` }}
                                   />
                                 </div>
@@ -552,7 +647,7 @@ export function OverviewClient({
             {/* 최근 활동 + 채용 퍼널 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 최근 활동 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                     <Clock className="text-white" size={18} />
@@ -591,7 +686,7 @@ export function OverviewClient({
               </div>
 
               {/* 채용 퍼널 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
@@ -608,6 +703,24 @@ export function OverviewClient({
                     {(hiringFunnel || []).map((stage, index) => {
                       const maxCount = Math.max(...(hiringFunnel || []).map(s => s.count));
                       const percentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
+                      // 퍼널 효과: 각 단계별로 너비가 점점 좁아지도록 계산
+                      // 첫 번째 단계는 100%, 이후 단계는 이전 단계 대비 비율로 축소
+                      const funnelWidth = index === 0 
+                        ? 100 
+                        : (hiringFunnel || [])[index - 1]?.count > 0
+                          ? (stage.count / (hiringFunnel || [])[index - 1].count) * 100
+                          : 0;
+                      // 그라데이션 색상: 단계가 진행될수록 진해짐
+                      const gradientClass = index === 0
+                        ? 'bg-gradient-to-r from-blue-200 to-blue-300'
+                        : index === 1
+                        ? 'bg-gradient-to-r from-blue-300 to-blue-400'
+                        : index === 2
+                        ? 'bg-gradient-to-r from-blue-400 to-blue-500'
+                        : index === 3
+                        ? 'bg-gradient-to-r from-blue-500 to-blue-600'
+                        : 'bg-gradient-to-r from-blue-600 to-indigo-600';
+                      
                       const stageNames: Record<string, string> = {
                         'Applied': '서류 접수',
                         'Screening': '서류 통과',
@@ -625,8 +738,8 @@ export function OverviewClient({
                           </div>
                           <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-gradient-to-r from-brand-dark to-brand-main transition-all rounded-full"
-                              style={{ width: `${percentage}%` }}
+                              className={`h-full transition-all rounded-full ${gradientClass}`}
+                              style={{ width: `${Math.min(funnelWidth, 100)}%` }}
                             />
                           </div>
                         </div>
