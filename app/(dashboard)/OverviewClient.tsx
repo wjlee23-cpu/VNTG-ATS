@@ -1,6 +1,6 @@
 'use client';
 
-import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, ArrowRight, ChevronRight, TrendingUp, UserPlus, CalendarCheck, Award } from 'lucide-react';
+import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, ArrowRight, ChevronRight, TrendingUp, UserPlus, CalendarCheck, Award, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUserProfile } from '@/api/queries/auth';
@@ -71,6 +71,7 @@ interface OverviewClientProps {
     stage: string;
     count: number;
   }>;
+  aiInsight?: string | null | undefined;
 }
 
 export function OverviewClient({ 
@@ -81,26 +82,37 @@ export function OverviewClient({
   todaySchedules,
   positionStatus,
   hiringFunnel,
+  aiInsight,
 }: OverviewClientProps) {
   const router = useRouter();
   const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer' | null>(null);
+  const [userName, setUserName] = useState<string>('님');
   const [isSeeding, setIsSeeding] = useState(false);
   const [scheduleFilter, setScheduleFilter] = useState<'today' | 'week' | 'tomorrow'>('today');
 
-  // 사용자 역할 확인
+  // 사용자 프로필 정보 로드 (이름 및 역할)
   useEffect(() => {
-    async function loadUserRole() {
+    async function loadUserProfile() {
       try {
         const result = await getUserProfile();
         if (result.data) {
           setUserRole(result.data.role);
+          setUserName(result.data.displayName || '님');
         }
       } catch (error) {
-        console.error('사용자 역할 로드 실패:', error);
+        console.error('사용자 프로필 로드 실패:', error);
       }
     }
-    loadUserRole();
+    loadUserProfile();
   }, []);
+
+  // 시간대별 인사말 생성 함수
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return '좋은 아침이에요';
+    if (hour < 18) return '좋은 오후에요';
+    return '좋은 저녁이에요';
+  };
 
   // 더미 데이터 생성
   const handleSeedData = async () => {
@@ -221,76 +233,85 @@ export function OverviewClient({
     }, 0),
   };
 
+
   return (
-    <div className="h-full overflow-auto bg-gray-50">
-      <div className="px-8 py-6">
-        {/* Header */}
-        <div className="mb-8 gradient-blue-subtle rounded-2xl px-8 py-6 -mx-8 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground mb-2">좋은 오후에요, 김하늘님</h1>
-              <p className="text-sm text-muted-foreground">
-                오늘 면접 <span className="font-semibold text-brand-main">{todaySummary.interviews}</span>건 · 긴급 액션 <span className="font-semibold text-orange-600">{todaySummary.urgentActions}</span>건
-              </p>
+    <div className="h-full overflow-auto bg-slate-50">
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
+        {/* 환영 메시지 섹션 (Hero Section) */}
+        <div className="mb-8">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 sm:p-8">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-4">
+              {aiInsight || `${getGreeting()}, ${userName}님`}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 bg-blue-50 text-brand-main px-3 py-1 rounded-full text-sm font-medium">
+                오늘 면접 {todaySummary.interviews}건
+              </span>
+              {todaySummary.urgentActions > 0 && (
+                <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-sm font-medium">
+                  긴급 액션 {todaySummary.urgentActions}건
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* KPI Cards */}
+        {/* KPI 요약 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* 신규 지원 */}
-          <div className="card-modern p-6 bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200/50 animate-slide-up" style={{ animationDelay: '0ms' }}>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-blue">
-                <UserPlus className="text-white" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <UserPlus className="text-primary" size={24} />
               </div>
             </div>
-            <div className="text-sm text-blue-700 font-medium mb-1">신규 지원</div>
-            <div className="text-3xl font-bold text-blue-900">{stats.newApplications}</div>
+            <div className="text-sm text-slate-600 font-medium mb-1">신규 지원</div>
+            <div className="text-4xl font-extrabold text-slate-900">{stats.newApplications}</div>
           </div>
 
           {/* 면접 진행 */}
-          <div className="card-modern p-6 bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50 animate-slide-up" style={{ animationDelay: '100ms' }}>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 8px 24px rgba(249, 115, 22, 0.15)' }}>
-                <Clock className="text-white" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <Clock className="text-primary" size={24} />
               </div>
             </div>
-            <div className="text-sm text-orange-700 font-medium mb-1">면접 진행</div>
-            <div className="text-3xl font-bold text-orange-900">{stats.interviewsInProgress}</div>
+            <div className="text-sm text-slate-600 font-medium mb-1">면접 진행</div>
+            <div className="text-4xl font-extrabold text-slate-900">{stats.interviewsInProgress}</div>
           </div>
 
           {/* 오퍼 발송 */}
-          <div className="card-modern p-6 bg-gradient-to-br from-green-50 to-green-100/50 border-green-200/50 animate-slide-up" style={{ animationDelay: '200ms' }}>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 8px 24px rgba(34, 197, 94, 0.15)' }}>
-                <Send className="text-white" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <Send className="text-primary" size={24} />
               </div>
             </div>
-            <div className="text-sm text-green-700 font-medium mb-1">오퍼 발송</div>
-            <div className="text-3xl font-bold text-green-900">{stats.offersSent}</div>
+            <div className="text-sm text-slate-600 font-medium mb-1">오퍼 발송</div>
+            <div className="text-4xl font-extrabold text-slate-900">{stats.offersSent}</div>
           </div>
 
           {/* 채용 완료 */}
-          <div className="card-modern p-6 bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200/50 animate-slide-up" style={{ animationDelay: '300ms' }}>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 8px 24px rgba(168, 85, 247, 0.15)' }}>
-                <Award className="text-white" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <Award className="text-primary" size={24} />
               </div>
             </div>
-            <div className="text-sm text-purple-700 font-medium mb-1">채용 완료</div>
-            <div className="text-3xl font-bold text-purple-900">{stats.hiringCompleted}</div>
+            <div className="text-sm text-slate-600 font-medium mb-1">채용 완료</div>
+            <div className="text-4xl font-extrabold text-slate-900">{stats.hiringCompleted}</div>
           </div>
         </div>
 
         {!hasData ? (
-          <div className="card-modern p-12 text-center">
+          /* 빈 상태 (Empty State) */
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-12 text-center">
             <div className="max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                <Users className="text-muted-foreground" size={32} />
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <Users className="text-slate-400" size={32} />
               </div>
-              <h2 className="text-xl font-semibold text-foreground mb-2">데이터가 없습니다</h2>
-              <p className="text-muted-foreground mb-6">
+              <h2 className="text-xl font-semibold text-slate-900 mb-2">데이터가 없습니다</h2>
+              <p className="text-slate-400 mb-6">
                 더미 데이터를 생성하여 대시보드를 테스트해보세요.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -298,14 +319,14 @@ export function OverviewClient({
                   <button
                     onClick={handleSeedData}
                     disabled={isSeeding}
-                    className="px-6 py-3 gradient-blue text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {isSeeding ? '생성 중...' : '더미 데이터 생성'}
                   </button>
                 )}
                 <button
                   onClick={() => router.push('/jobs/create')}
-                  className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors"
+                  className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors"
                 >
                   첫 채용 공고 만들기
                 </button>
@@ -317,12 +338,12 @@ export function OverviewClient({
             {/* 중앙 섹션: 액션 필요 + 오늘 일정 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 액션 필요 */}
-              <div className="card-modern p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                     <AlertCircle className="text-white" size={18} />
                   </div>
-                  <h2 className="text-lg font-bold text-foreground">액션 필요</h2>
+                  <h2 className="text-lg font-bold text-slate-900">액션 필요</h2>
                 </div>
                 {(pendingActions || []).length > 0 ? (
                   <div className="space-y-3">
@@ -334,15 +355,15 @@ export function OverviewClient({
                       return (
                         <div
                           key={index}
-                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-blue-50/50 cursor-pointer transition-colors"
                           onClick={() => firstItem && router.push(firstItem.link)}
                         >
                           <div className={`w-10 h-10 rounded-lg ${colorClass} flex items-center justify-center flex-shrink-0 shadow-sm`}>
                             <Icon size={20} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-foreground mb-1">{action.title}</div>
-                            <div className="text-sm text-muted-foreground truncate">
+                            <div className="font-medium text-slate-900 mb-1">{action.title}</div>
+                            <div className="text-sm text-slate-600 truncate">
                               {action.description}
                             </div>
                             {firstItem?.daysOverdue !== undefined && firstItem.daysOverdue > 0 && (
@@ -352,24 +373,29 @@ export function OverviewClient({
                               </div>
                             )}
                           </div>
-                          <ChevronRight className="text-muted-foreground flex-shrink-0" size={20} />
+                          <ChevronRight className="text-slate-400 flex-shrink-0" size={20} />
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">액션이 필요한 항목이 없습니다.</p>
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                      <CheckCircle2 className="text-slate-400" size={24} />
+                    </div>
+                    <p className="text-sm text-slate-400">액션이 필요한 항목이 없습니다.</p>
+                  </div>
                 )}
               </div>
 
               {/* 오늘 일정 */}
-              <div className="card-modern p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                       <Calendar className="text-white" size={18} />
                     </div>
-                    <h2 className="text-lg font-bold text-foreground">오늘 일정 <span className="text-brand-main">{filteredSchedules.length}</span>건</h2>
+                    <h2 className="text-lg font-bold text-slate-900">오늘 일정 <span className="text-brand-main">{filteredSchedules.length}</span>건</h2>
                   </div>
                   <button
                     onClick={() => router.push('/calendar')}
@@ -378,33 +404,34 @@ export function OverviewClient({
                     전체 보기 <ArrowRight size={14} />
                   </button>
                 </div>
-                <div className="flex gap-2 mb-4">
+                {/* Segmented Control 스타일 필터 */}
+                <div className="bg-slate-100 p-1 rounded-lg mb-4 flex gap-1">
                   <button
                     onClick={() => setScheduleFilter('today')}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all font-medium ${
                       scheduleFilter === 'today'
-                        ? 'gradient-blue text-white shadow-blue'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-white text-brand-main shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     오늘까지
                   </button>
                   <button
                     onClick={() => setScheduleFilter('week')}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all font-medium ${
                       scheduleFilter === 'week'
-                        ? 'gradient-blue text-white shadow-blue'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-white text-brand-main shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     이번 주
                   </button>
                   <button
                     onClick={() => setScheduleFilter('tomorrow')}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-all font-medium ${
+                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all font-medium ${
                       scheduleFilter === 'tomorrow'
-                        ? 'gradient-blue text-white shadow-blue'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-white text-brand-main shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     내일까지
@@ -417,7 +444,7 @@ export function OverviewClient({
                       return (
                         <div
                           key={schedule.id}
-                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-all border border-transparent hover:border-gray-200"
+                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-blue-50/50 cursor-pointer transition-all border border-transparent hover:border-slate-200"
                           onClick={() => router.push(`/candidates/${schedule.candidateId}`)}
                         >
                           <div className={`flex-shrink-0 px-3 py-2 rounded-lg border ${timeSlotColor} min-w-[60px] text-center`}>
@@ -431,15 +458,15 @@ export function OverviewClient({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <CalendarCheck className="text-brand-main" size={16} />
-                              <div className="font-medium text-foreground">
+                              <div className="font-medium text-slate-900">
                                 {getInterviewTypeText(schedule.interviewType)}
                               </div>
                             </div>
-                            <div className="text-sm text-muted-foreground truncate">
+                            <div className="text-sm text-slate-600 truncate">
                               {schedule.candidateName} · {schedule.position}
                             </div>
                             {schedule.interviewers.length > 0 && (
-                              <div className="text-xs text-muted-foreground mt-1">
+                              <div className="text-xs text-slate-500 mt-1">
                                 면접관: {schedule.interviewers.map(i => i.email.split('@')[0]).join(', ')}
                               </div>
                             )}
@@ -449,56 +476,61 @@ export function OverviewClient({
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">일정이 없습니다.</p>
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                      <Calendar className="text-slate-400" size={24} />
+                    </div>
+                    <p className="text-sm text-slate-400">일정이 없습니다.</p>
+                  </div>
                 )}
               </div>
             </div>
 
             {/* 내 포지션 현황 */}
-            <div className="card-modern p-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                   <Briefcase className="text-white" size={18} />
                 </div>
-                <h2 className="text-lg font-bold text-foreground">내 포지션 현황 <span className="text-brand-main">{(positionStatus || []).length}</span>개</h2>
+                <h2 className="text-lg font-bold text-slate-900">내 포지션 현황 <span className="text-brand-main">{(positionStatus || []).length}</span>개</h2>
               </div>
               {(positionStatus || []).length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">포지션</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">신규</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">서류</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">면접</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">최종</th>
-                        <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">오퍼</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">진행률</th>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">포지션</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">신규</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">서류</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">면접</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">최종</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">오퍼</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">진행률</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(positionStatus || []).map((position) => {
                         const total = position.new + position.document + position.interview + position.final + position.offer;
                         return (
-                          <tr key={position.jobPostId} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/jobs/${position.jobPostId}`)}>
+                          <tr key={position.jobPostId} className="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onClick={() => router.push(`/jobs/${position.jobPostId}`)}>
                             <td className="py-3 px-4">
-                              <div className="font-medium text-foreground">{position.position}</div>
-                              <div className="text-xs text-muted-foreground">{position.team} - D+{position.daysSincePost}</div>
+                              <div className="font-medium text-slate-900">{position.position}</div>
+                              <div className="text-xs text-slate-500">{position.team} - D+{position.daysSincePost}</div>
                             </td>
-                            <td className="text-center py-3 px-4 text-sm">{position.new}</td>
-                            <td className="text-center py-3 px-4 text-sm">{position.document}</td>
-                            <td className="text-center py-3 px-4 text-sm">{position.interview}</td>
-                            <td className="text-center py-3 px-4 text-sm">{position.final}</td>
-                            <td className="text-center py-3 px-4 text-sm">{position.offer}</td>
+                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.new}</td>
+                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.document}</td>
+                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.interview}</td>
+                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.final}</td>
+                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.offer}</td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                                <div className="flex-1 h-2.5 bg-slate-200 rounded-full overflow-hidden">
                                   <div
-                                    className="h-full gradient-blue transition-all rounded-full"
+                                    className="h-full bg-gradient-to-r from-brand-dark to-brand-main transition-all rounded-full"
                                     style={{ width: `${position.progress}%` }}
                                   />
                                 </div>
-                                <span className="text-xs font-medium text-muted-foreground w-12 text-right">{position.progress}%</span>
+                                <span className="text-xs font-medium text-slate-600 w-12 text-right">{position.progress}%</span>
                               </div>
                             </td>
                           </tr>
@@ -508,55 +540,66 @@ export function OverviewClient({
                   </table>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">포지션이 없습니다.</p>
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                    <Briefcase className="text-slate-400" size={24} />
+                  </div>
+                  <p className="text-sm text-slate-400">포지션이 없습니다.</p>
+                </div>
               )}
             </div>
 
             {/* 최근 활동 + 채용 퍼널 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 최근 활동 */}
-              <div className="card-modern p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                     <Clock className="text-white" size={18} />
                   </div>
-                  <h2 className="text-lg font-bold text-foreground">최근 활동</h2>
+                  <h2 className="text-lg font-bold text-slate-900">최근 활동</h2>
                 </div>
                 {(recentActivity || []).length > 0 ? (
                   <div className="space-y-4">
                     {(recentActivity || []).slice(0, 6).map((activity, index) => (
-                      <div key={activity.id} className="flex items-start gap-3 relative pl-4">
-                        {/* 타임라인 라인 */}
+                      <div key={activity.id} className="flex items-start gap-3 relative pl-6">
+                        {/* 타임라인 수직 연결선 */}
                         {index < (recentActivity || []).slice(0, 6).length - 1 && (
-                          <div className="absolute left-[7px] top-5 w-0.5 h-full bg-gradient-to-b from-brand-main to-transparent" />
+                          <div className="absolute left-[11px] top-6 bottom-0 w-0.5 border-l-2 border-slate-100" />
                         )}
-                        <div className="w-3 h-3 rounded-full bg-brand-main border-2 border-white shadow-sm flex-shrink-0 mt-1.5 relative z-10" />
+                        {/* 타임라인 노드 */}
+                        <div className="w-2 h-2 rounded-full bg-brand-main ring-4 ring-brand-main/20 flex-shrink-0 mt-2 relative z-10" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-foreground">
+                          <p className="text-sm text-slate-900">
                             <span className="font-semibold">{activity.candidate}</span>
                             {' '}{activity.action}{' '}
                             <span className="font-semibold">{activity.job}</span>
                           </p>
-                          <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
+                          <p className="text-xs text-slate-500 mt-1">{activity.time}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">최근 활동이 없습니다.</p>
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                      <Clock className="text-slate-400" size={24} />
+                    </div>
+                    <p className="text-sm text-slate-400">최근 활동이 없습니다.</p>
+                  </div>
                 )}
               </div>
 
               {/* 채용 퍼널 */}
-              <div className="card-modern p-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100/50 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
                       <TrendingUp className="text-white" size={18} />
                     </div>
-                    <h2 className="text-lg font-bold text-foreground">채용 퍼널</h2>
+                    <h2 className="text-lg font-bold text-slate-900">채용 퍼널</h2>
                   </div>
-                  <select className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:border-brand-main transition-colors">
+                  <select className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white hover:border-brand-main transition-colors">
                     <option>전체 포지션</option>
                   </select>
                 </div>
@@ -577,22 +620,22 @@ export function OverviewClient({
                       return (
                         <div key={index}>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-foreground">{stageName}</span>
+                            <span className="text-sm font-medium text-slate-900">{stageName}</span>
                             <span className="text-sm font-semibold text-brand-main">{stage.count}명</span>
                           </div>
-                          <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
                             <div
-                              className="h-full gradient-blue transition-all rounded-full"
+                              className="h-full bg-gradient-to-r from-brand-dark to-brand-main transition-all rounded-full"
                               style={{ width: `${percentage}%` }}
                             />
                           </div>
                         </div>
                       );
                     })}
-                    <div className="pt-4 border-t border-gray-200 mt-4">
+                    <div className="pt-4 border-t border-slate-200 mt-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">전환율</span>
-                        <span className="text-sm font-medium text-foreground">
+                        <span className="text-sm text-slate-600">전환율</span>
+                        <span className="text-sm font-medium text-slate-900">
                           {(hiringFunnel || []).length > 0 && (hiringFunnel || [])[0]?.count > 0
                             ? (((hiringFunnel || [])[(hiringFunnel || []).length - 1]?.count || 0) / (hiringFunnel || [])[0].count * 100).toFixed(1)
                             : '0.0'}%
@@ -601,7 +644,12 @@ export function OverviewClient({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">데이터가 없습니다.</p>
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                      <TrendingUp className="text-slate-400" size={24} />
+                    </div>
+                    <p className="text-sm text-slate-400">데이터가 없습니다.</p>
+                  </div>
                 )}
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { getDashboardStats, getRecentActivity, getTopCandidates, getPendingActions, getTodaySchedules, getPositionStatus } from '@/api/queries/dashboard';
 import { getHiringFunnel } from '@/api/queries/analytics';
+import { getDashboardInsight } from '@/api/actions/dashboard';
 import { OverviewClient } from './OverviewClient';
 
 export default async function OverviewPage() {
@@ -26,6 +27,60 @@ export default async function OverviewPage() {
   const todaySchedules = todaySchedulesResult.data || [];
   const positionStatus = positionStatusResult.data || [];
   const hiringFunnel = hiringFunnelResult.data || [];
+
+  // AI 인사이트 메시지 생성
+  console.log('🎯 [OverviewPage] AI 인사이트 생성 시작...');
+  let aiInsight: string | null = null;
+  try {
+    const insightResult = await getDashboardInsight();
+    
+    console.log('📦 [OverviewPage] getDashboardInsight 결과:');
+    console.log('   - hasData:', !!insightResult.data);
+    console.log('   - data 타입:', typeof insightResult.data);
+    console.log('   - data 값:', insightResult.data);
+    console.log('   - data 길이:', insightResult.data?.length || 0);
+    console.log('   - hasError:', !!insightResult.error);
+    console.log('   - error:', insightResult.error);
+    
+    if (insightResult.data && insightResult.data.trim().length > 0) {
+      // AI 인사이트가 정상적으로 생성된 경우
+      aiInsight = insightResult.data;
+      console.log('✅ [OverviewPage] AI 인사이트 생성 성공');
+      console.log('   - 최종 aiInsight:', aiInsight);
+      console.log('   - aiInsight 길이:', aiInsight.length);
+    } else if (insightResult.error) {
+      // 에러가 발생한 경우
+      console.error('❌ [OverviewPage] AI 인사이트 생성 실패');
+      console.error('   - 에러 메시지:', insightResult.error);
+      console.warn('   - fallback 인사말을 표시합니다.');
+      aiInsight = null; // null로 두어 fallback 인사말 표시
+    } else {
+      // 데이터가 없거나 빈 문자열인 경우
+      console.warn('⚠️ [OverviewPage] AI 인사이트 결과가 없습니다.');
+      console.warn('   - data:', insightResult.data);
+      console.warn('   - data 타입:', typeof insightResult.data);
+      console.warn('   - data가 빈 문자열인가?', insightResult.data === '');
+      console.warn('   - data가 null인가?', insightResult.data === null);
+      console.warn('   - data가 undefined인가?', insightResult.data === undefined);
+      console.warn('   - fallback 인사말을 표시합니다.');
+      aiInsight = null; // null로 두어 fallback 인사말 표시
+    }
+  } catch (error) {
+    console.error('❌ [OverviewPage] AI 인사이트 생성 중 예외 발생');
+    console.error('   - 에러 타입:', error?.constructor?.name || typeof error);
+    if (error instanceof Error) {
+      console.error('   - 에러 메시지:', error.message);
+      console.error('   - 에러 스택:', error.stack);
+    } else {
+      console.error('   - 알 수 없는 에러:', error);
+    }
+    console.warn('   - fallback 인사말을 표시합니다.');
+    aiInsight = null; // null로 두어 fallback 인사말 표시
+  }
+  
+  console.log('🏁 [OverviewPage] AI 인사이트 처리 완료');
+  console.log('   - 최종 aiInsight 값:', aiInsight);
+  console.log('   - aiInsight가 null인가?', aiInsight === null);
 
   // 에러가 발생한 경우 콘솔에 로그 출력 (개발 환경)
   if (statsResult.error) {
@@ -59,6 +114,7 @@ export default async function OverviewPage() {
       todaySchedules={todaySchedules}
       positionStatus={positionStatus}
       hiringFunnel={hiringFunnel}
+      aiInsight={aiInsight}
     />
   );
 }
