@@ -21,6 +21,7 @@ import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateM
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
 import { CommentModal } from '@/components/candidates/CommentModal';
 import { DocumentPreviewModal } from '@/components/candidates/DocumentPreviewModal';
+import { MatchScoreSection } from '@/components/candidates/MatchScoreSection';
 import { getStageEvaluations } from '@/api/queries/evaluations';
 import { getResumeFilesByCandidate } from '@/api/queries/resume-files';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
@@ -48,7 +49,11 @@ interface Candidate {
   current_stage_id: string | null;
   token: string;
   resume_file_url: string | null;
+  ai_score?: number | null;
   ai_summary?: string | null;
+  ai_strengths?: string[] | null;
+  ai_weaknesses?: string[] | null;
+  ai_analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
   current_salary?: string | null;
   expected_salary?: string | null;
   parsed_data: {
@@ -85,6 +90,7 @@ interface ResumeFile {
   candidate_id: string;
   file_url: string;
   file_type: string;
+  original_name?: string | null; // 원본 파일명 (한글 포함 가능)
   parsing_status: string;
   parsed_data?: any;
   created_at: string;
@@ -148,6 +154,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [isDocumentPreviewOpen, setIsDocumentPreviewOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<ResumeFile | null>(null);
+  const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
   const [evaluations, setEvaluations] = useState<any[]>([]);
   const [resumeFiles, setResumeFiles] = useState<ResumeFile[]>([]);
   const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer' | 'hiring_manager'>('recruiter');
@@ -488,8 +495,14 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     );
   };
 
-  // 파일명 추출
-  const getFileName = (fileUrl: string) => {
+  // 파일명 추출 (원본 파일명 우선 사용)
+  const getFileName = (file: ResumeFile | string) => {
+    // ResumeFile 객체가 전달된 경우 original_name 우선 사용
+    if (typeof file === 'object' && file.original_name) {
+      return file.original_name;
+    }
+    // original_name이 없거나 문자열(fileUrl)이 전달된 경우 URL에서 추출
+    const fileUrl = typeof file === 'string' ? file : file.file_url;
     const parts = fileUrl.split('/');
     return parts[parts.length - 1] || 'document';
   };
@@ -1135,6 +1148,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   // 문서 선택 핸들러 (인라인 미리보기용)
   const handleDocumentSelect = (file: ResumeFile) => {
     setSelectedDocument(file);
+    setPdfLoadError(null); // 파일 변경 시 에러 상태 초기화
   };
 
   // 인라인 미리보기 렌더링 함수
@@ -1149,19 +1163,69 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
     }
 
     if (file.file_type === 'pdf') {
+      // PDF 로드 에러가 있는 경우 에러 메시지 표시
+      if (pdfLoadError) {
+        return (
+          <div className="w-full h-[calc(100vh-400px)] min-h-[600px] flex flex-col items-center justify-center p-8 bg-muted/30 border border-border rounded-lg">
+            <FileIcon className="w-16 h-16 text-destructive mb-4" />
+            <p className="text-sm font-medium text-foreground mb-2 text-center">
+              PDF 미리보기를 로드할 수 없습니다
+            </p>
+            <p className="text-xs text-muted-foreground mb-4 text-center max-w-md">
+              {pdfLoadError}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPdfLoadError(null);
+                }}
+              >
+                다시 시도
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.open(file.file_url, '_blank');
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                새 창에서 열기
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
       return (
-        <div className="w-full h-[calc(100vh-400px)] min-h-[700px] border border-border rounded-lg overflow-hidden bg-muted/30">
+        <div className="w-full h-[calc(100vh-400px)] min-h-[700px] border border-border rounded-lg overflow-hidden bg-muted/30 relative">
           <iframe
             src={`${file.file_url}#toolbar=0&navpanes=0&scrollbar=0`}
             className="w-full h-full min-h-[700px]"
             title="PDF Preview"
           />
+          {/* PDF 로드 실패 시 대체 옵션 제공 */}
+          <div className="absolute top-2 right-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.open(file.file_url, '_blank');
+              }}
+              className="bg-white/90 backdrop-blur-sm shadow-sm"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              새 창에서 열기
+            </Button>
+          </div>
         </div>
       );
     }
 
     // DOC, DOCX 파일은 다운로드만 제공
-    const fileName = getFileName(file.file_url);
+    const fileName = getFileName(file);
     return (
       <div className="w-full h-[calc(100vh-400px)] min-h-[600px] flex flex-col items-center justify-center p-8 bg-muted/30 border border-border rounded-lg">
         <FileIcon className="w-16 h-16 text-muted-foreground mb-4" />
@@ -1327,6 +1391,8 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         toast.success('파일이 업로드되었습니다.');
         // 파일 목록 새로고침
         loadResumeFiles();
+        // 서버 컴포넌트 데이터도 갱신하여 후보자 정보(ai_analysis_status 등) 반영
+        router.refresh();
       }
     } catch (error: any) {
       toast.error(error.message || '파일 업로드 중 오류가 발생했습니다.');
@@ -1445,68 +1511,11 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
           {viewMode === 'detail' ? (
             <>
               {/* Detail View - 기존 정보 카드들 */}
-                {/* Match Score - 원형 프로그레스 링 */}
-                {candidate.parsed_data?.match_score !== undefined && (
-                  <div className="mb-6 bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
-                    <div className="flex items-center gap-2 mb-6">
-                      <Sparkles className="w-5 h-5 text-primary" />
-                      <h3 className="text-lg font-semibold text-foreground">Match Score</h3>
-                    </div>
-                    <div className="flex items-center justify-center gap-8">
-                      {/* 원형 프로그레스 링 */}
-                      <div className="relative w-32 h-32">
-                        <svg className="w-32 h-32 transform -rotate-90">
-                          {/* 배경 원 */}
-                          <circle
-                            cx="64"
-                            cy="64"
-                            r="56"
-                            stroke="currentColor"
-                            strokeWidth="12"
-                            fill="none"
-                            className="text-slate-200"
-                          />
-                          {/* 프로그레스 원 */}
-                          <circle
-                            cx="64"
-                            cy="64"
-                            r="56"
-                            stroke={`url(#match-score-gradient-${candidate.id})`}
-                            strokeWidth="12"
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeDasharray={`${2 * Math.PI * 56}`}
-                            strokeDashoffset={`${2 * Math.PI * 56 * (1 - candidate.parsed_data.match_score / 100)}`}
-                            className="transition-all duration-500"
-                          />
-                          <defs>
-                            <linearGradient id={`match-score-gradient-${candidate.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                              <stop offset="0%" stopColor="#0248FF" />
-                              <stop offset="100%" stopColor="#5287FF" />
-                            </linearGradient>
-                          </defs>
-                        </svg>
-                        {/* 중앙 점수 */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="text-center">
-                            <span className="text-4xl font-bold text-primary">{candidate.parsed_data.match_score}</span>
-                            <span className="text-lg text-muted-foreground">/ 100</span>
-                          </div>
-                        </div>
-                      </div>
-              {/* AI SUMMARY 박스 */}
-              {candidate.ai_summary && (
-                <div className="mt-4 p-4 bg-white rounded-lg border border-slate-100 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                    <h3 className="text-sm font-semibold text-foreground">AI SUMMARY</h3>
-                  </div>
-                  <p className="text-sm text-foreground leading-relaxed">{candidate.ai_summary}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+              {/* Match Score - 프리미엄 AI 스타일 */}
+              <MatchScoreSection 
+                candidate={candidate} 
+                hasResumeFile={resumeFiles.length > 0}
+              />
 
                 {/* Contact - 개별 카드 스타일 */}
                 <div className="mb-6 bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
@@ -1682,7 +1691,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 )}
 
                 {/* Documents - 여러 파일 지원 + 인라인 미리보기 */}
-                <Card className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200 card-modern">
+                <Card 
+                  id="documents-section" 
+                  className="mb-6 shadow-md hover:shadow-lg transition-shadow duration-200 card-modern scroll-mt-6"
+                >
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold">Documents</CardTitle>
@@ -1737,7 +1749,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 <div className="overflow-x-auto pb-2">
                   <div className="flex gap-3 min-w-max">
                     {resumeFiles.map((file) => {
-                      const fileName = getFileName(file.file_url);
+                      const fileName = getFileName(file);
                       const fileSize = file.parsed_data?.file_size;
                       const isSelected = selectedDocument?.id === file.id;
                       return (
