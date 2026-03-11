@@ -1,37 +1,25 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  AlertCircle, 
-  RefreshCw, 
-  Loader2,
-  Filter,
-  Calendar as CalendarIcon,
+import {
   CalendarDays,
-  User,
-  Users,
-  Mail,
-  Trash2,
-  RotateCcw,
+  RefreshCw,
+  Loader2,
   Settings,
-  Edit,
   Plus,
   CheckCircle,
   AlertTriangle,
-  TrendingUp
+  TrendingUp,
+  Clock,
+  User,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { ko } from 'date-fns/locale/ko';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate, deleteSchedule, cancelSchedule, rescheduleInterview, forceConfirmSchedule, addManualScheduleOption, updateScheduleWithManualOverride } from '@/api/actions/schedules';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
+import { checkInterviewerResponses, checkAllPendingSchedules, sendScheduleOptionsToCandidate, deleteSchedule, cancelSchedule, rescheduleInterview, forceConfirmSchedule } from '@/api/actions/schedules';
 import { getAllScheduleProgress } from '@/api/queries/schedules';
 import { ManualScheduleEditor } from '@/components/admin/ManualScheduleEditor';
 import { AddScheduleOptionModal } from '@/components/admin/AddScheduleOptionModal';
@@ -42,6 +30,10 @@ import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { getTimelineEvents } from '@/api/queries/timeline';
 import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
 import { toast } from 'sonner';
+import { ScheduleTimelineView } from '@/components/schedules/ScheduleTimelineView';
+import { ScheduleFilters } from '@/components/schedules/ScheduleFilters';
+import { ScheduleCard } from '@/components/schedules/ScheduleCard';
+import { cn } from '@/components/ui/utils';
 
 interface ScheduleOption {
   id: string;
@@ -69,7 +61,7 @@ interface Candidate {
 interface Schedule {
   id: string;
   candidate_id: string;
-  workflow_status: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | null;
+  workflow_status: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | 'needs_rescheduling' | null;
   interviewer_ids: string[];
   duration_minutes: number;
   created_at: string;
@@ -106,7 +98,7 @@ interface SchedulesClientProps {
   confirmedSchedules?: ManualSchedule[];
 }
 
-export function SchedulesClient({ 
+export function SchedulesClient({
   initialSchedules,
   needsRescheduling = [],
   manualSchedules = [],
@@ -116,12 +108,13 @@ export function SchedulesClient({
   const searchParams = useSearchParams();
   const [schedules, setSchedules] = useState<Schedule[]>(initialSchedules);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [checkingScheduleId, setCheckingScheduleId] = useState<string | null>(null);
   const [isCheckingAll, setIsCheckingAll] = useState(false);
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [cancellingScheduleId, setCancellingScheduleId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('management');
-  
+
   // 수동 조율 관련 상태
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [addingOptionScheduleId, setAddingOptionScheduleId] = useState<string | null>(null);
@@ -139,45 +132,29 @@ export function SchedulesClient({
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  // 일정 카드 refs (자동 스크롤용)
-  const scheduleRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
   // URL query parameter에서 candidate 값 읽기
   useEffect(() => {
     const candidateId = searchParams.get('candidate');
     const showDetail = searchParams.get('showDetail') === 'true';
-    
+
     setSelectedCandidateId(candidateId);
     setShowCandidateDetail(showDetail);
-    
-    // candidate가 있고 showDetail이 true일 때만 candidate 데이터 로드
+
     if (candidateId && showDetail) {
       loadCandidateDetail(candidateId);
-    } else if (candidateId) {
-      // candidate는 있지만 showDetail이 없으면 스크롤만 수행
-      setTimeout(() => {
-        const schedule = schedules.find(s => s.candidates.id === candidateId);
-        if (schedule && scheduleRefs.current[schedule.id]) {
-          scheduleRefs.current[schedule.id]?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-          });
-        }
-      }, 100);
     } else {
-      // candidate가 없으면 detail 데이터 초기화
       setCandidateDetail(null);
       setCandidateSchedules([]);
       setTimelineEvents([]);
       setShowCandidateDetail(false);
     }
-  }, [searchParams, schedules]);
+  }, [searchParams]);
 
   // Candidate detail 데이터 로드
   const loadCandidateDetail = async (candidateId: string) => {
     setIsLoadingDetail(true);
     setDetailError(null);
-    
+
     try {
       const [candidateResult, schedulesResult, timelineResult] = await Promise.all([
         getCandidateById(candidateId),
@@ -211,129 +188,85 @@ export function SchedulesClient({
   const handleCloseDetail = () => {
     const candidateId = searchParams.get('candidate');
     if (candidateId) {
-      // candidate query parameter는 유지하되 showDetail만 제거
       router.push(`/schedules?candidate=${candidateId}`);
     } else {
       router.push('/schedules');
     }
   };
 
-  // 필터링된 일정 목록
+  // 필터링 및 검색된 일정 목록
   const filteredSchedules = useMemo(() => {
-    if (filterStatus === 'all') {
-      return schedules;
+    let filtered = schedules;
+
+    // 상태 필터
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter((schedule) => schedule.workflow_status === filterStatus);
     }
-    return schedules.filter(schedule => schedule.workflow_status === filterStatus);
-  }, [schedules, filterStatus]);
+
+    // 검색 쿼리
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (schedule) =>
+          schedule.candidates.name.toLowerCase().includes(query) ||
+          schedule.candidates.email.toLowerCase().includes(query) ||
+          schedule.candidates.job_posts?.title?.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [schedules, filterStatus, searchQuery]);
 
   // 상태별 통계
   const stats = useMemo(() => {
     return {
       all: schedules.length,
-      pending_interviewers: schedules.filter(s => s.workflow_status === 'pending_interviewers').length,
-      pending_candidate: schedules.filter(s => s.workflow_status === 'pending_candidate').length,
-      confirmed: schedules.filter(s => s.workflow_status === 'confirmed').length,
-      cancelled: schedules.filter(s => s.workflow_status === 'cancelled').length,
+      pending_interviewers: schedules.filter((s) => s.workflow_status === 'pending_interviewers').length,
+      pending_candidate: schedules.filter((s) => s.workflow_status === 'pending_candidate').length,
+      confirmed: schedules.filter((s) => s.workflow_status === 'confirmed').length,
+      cancelled: schedules.filter((s) => s.workflow_status === 'cancelled').length,
+      needs_rescheduling: schedules.filter((s) => s.workflow_status === 'needs_rescheduling').length,
     };
   }, [schedules]);
-
-  // 상태 아이콘
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'accepted':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-      case 'declined':
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'tentative':
-        return <Clock className="w-4 h-4 text-yellow-500" />;
-      default:
-        return <AlertCircle className="w-4 h-4 text-gray-400" />;
-    }
-  };
-
-  // 상태 텍스트
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'accepted':
-        return '수락';
-      case 'declined':
-        return '거절';
-      case 'tentative':
-        return '보류';
-      default:
-        return '대기 중';
-    }
-  };
-
-  // 워크플로우 상태 텍스트
-  const getWorkflowStatusText = (status: string | null) => {
-    switch (status) {
-      case 'pending_interviewers':
-        return '면접관 수락 대기';
-      case 'pending_candidate':
-        return '후보자 선택 대기';
-      case 'confirmed':
-        return '확정됨';
-      case 'cancelled':
-        return '취소됨';
-      default:
-        return '상태 불명';
-    }
-  };
-
-  // 워크플로우 상태 색상
-  const getWorkflowStatusColor = (status: string | null) => {
-    switch (status) {
-      case 'pending_interviewers':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'pending_candidate':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'confirmed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'cancelled':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
 
   // 개별 일정 응답 확인
   const handleCheckResponse = async (scheduleId: string) => {
     setCheckingScheduleId(scheduleId);
     try {
       const result = await checkInterviewerResponses(scheduleId);
-      
+
       if (result.error) {
         toast.error(result.error);
       } else if (result.data) {
         if (result.data.allAccepted) {
           if (result.data.emailSent === false) {
-            toast.warning(result.data.message || '모든 면접관이 수락한 일정이 있습니다. 하지만 이메일 발송에 실패했습니다. 메일 재전송 버튼을 사용해주세요.');
+            toast.warning(
+              result.data.message ||
+                '모든 면접관이 수락한 일정이 있습니다. 하지만 이메일 발송에 실패했습니다. 메일 재전송 버튼을 사용해주세요.'
+            );
           } else {
-            toast.success(result.data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.');
+            toast.success(
+              result.data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.'
+            );
           }
         } else if (result.data.allDeclined) {
-          // 모든 일정 옵션이 거절된 경우
           if (result.data.regenerated) {
-            // 새로운 일정이 자동으로 생성된 경우
             toast.success(
-              result.data.message || 
-              '모든 일정 옵션이 거절되어 새로운 일정 옵션이 자동으로 생성되었습니다. 날짜 범위를 확장하여 검색했습니다.',
+              result.data.message ||
+                '모든 일정 옵션이 거절되어 새로운 일정 옵션이 자동으로 생성되었습니다. 날짜 범위를 확장하여 검색했습니다.',
               { duration: 5000 }
             );
           } else {
-            // 새로운 일정 생성 실패한 경우
             toast.error(
-              result.data.message || 
-              '모든 일정 옵션이 거절되었지만, 새로운 일정을 찾을 수 없습니다. 면접 일정이 취소되었습니다.',
+              result.data.message ||
+                '모든 일정 옵션이 거절되었지만, 새로운 일정을 찾을 수 없습니다. 면접 일정이 취소되었습니다.',
               { duration: 8000 }
             );
           }
         } else {
           toast.info(result.data.message || '아직 모든 면접관이 수락하지 않았습니다.');
         }
-        
-        // 약간의 지연 후 서버에서 최신 데이터 다시 가져오기 (DB 업데이트 반영 시간 고려)
+
         setTimeout(async () => {
           try {
             const latestData = await getAllScheduleProgress();
@@ -342,7 +275,6 @@ export function SchedulesClient({
             }
           } catch (refreshError) {
             console.error('데이터 새로고침 실패:', refreshError);
-            // 새로고침 실패 시 전체 페이지 새로고침
             window.location.reload();
           }
         }, 1000);
@@ -360,25 +292,23 @@ export function SchedulesClient({
     setCheckingScheduleId(scheduleId);
     try {
       const result = await sendScheduleOptionsToCandidate(scheduleId);
-      
+
       if (result.error) {
         toast.error(result.error);
       } else if (result.data) {
         if (result.data.emailSent === false) {
-          // Gmail API 스코프 부족 에러인지 확인
           const errorMessage = result.data.error || '알 수 없는 오류';
-          const isScopeError = errorMessage.includes('insufficient authentication scopes') || 
-                              errorMessage.includes('insufficient') ||
-                              errorMessage.includes('authentication scopes') ||
-                              errorMessage.includes('GMAIL_SCOPE_MISSING') ||
-                              errorMessage.includes('Gmail API 권한');
-          
+          const isScopeError =
+            errorMessage.includes('insufficient authentication scopes') ||
+            errorMessage.includes('insufficient') ||
+            errorMessage.includes('authentication scopes') ||
+            errorMessage.includes('GMAIL_SCOPE_MISSING') ||
+            errorMessage.includes('Gmail API 권한');
+
           if (isScopeError) {
             toast.error(
               `이메일 발송 실패: Gmail API 권한 부족. Google Cloud Console에서 Gmail API 활성화 및 OAuth 동의 화면에 gmail.send 스코프 추가 후, 우측 상단 프로필 메뉴에서 구글 캘린더를 재연동해주세요.`,
-              { 
-                duration: 12000,
-              }
+              { duration: 12000 }
             );
           } else {
             toast.error(`이메일 발송에 실패했습니다: ${errorMessage}. 워크플로우 상태는 업데이트되었습니다.`);
@@ -386,8 +316,7 @@ export function SchedulesClient({
         } else {
           toast.success(`후보자에게 이메일이 재전송되었습니다. (${result.data.optionsCount}개 옵션)`);
         }
-        
-        // 약간의 지연 후 서버에서 최신 데이터 다시 가져오기
+
         setTimeout(async () => {
           try {
             const latestData = await getAllScheduleProgress();
@@ -417,13 +346,12 @@ export function SchedulesClient({
     setDeletingScheduleId(scheduleId);
     try {
       const result = await deleteSchedule(scheduleId);
-      
+
       if (result.error) {
         toast.error(result.error);
       } else {
         toast.success('면접 일정이 삭제되었습니다.');
-        
-        // 서버에서 최신 데이터 다시 가져오기
+
         setTimeout(async () => {
           try {
             const latestData = await getAllScheduleProgress();
@@ -453,13 +381,12 @@ export function SchedulesClient({
     setCancellingScheduleId(scheduleId);
     try {
       const result = await cancelSchedule(scheduleId);
-      
+
       if (result.error) {
         toast.error(result.error);
       } else {
         toast.success('면접 일정이 취소되었습니다.');
-        
-        // 서버에서 최신 데이터 다시 가져오기
+
         setTimeout(async () => {
           try {
             const latestData = await getAllScheduleProgress();
@@ -485,20 +412,19 @@ export function SchedulesClient({
     setIsCheckingAll(true);
     try {
       const result = await checkAllPendingSchedules();
-      
+
       if (result.error) {
         toast.error(result.error);
       } else if (result.data) {
         toast.success(
           `총 ${result.data.checked}개 일정 확인 완료. ` +
-          `${result.data.allAccepted}개 일정이 후보자에게 전송되었고, ` +
-          `${result.data.stillPending}개 일정은 계속 대기 중입니다.`
+            `${result.data.allAccepted}개 일정이 후보자에게 전송되었고, ` +
+            `${result.data.stillPending}개 일정은 계속 대기 중입니다.`
         );
         if (result.data.errors.length > 0) {
           console.error('일부 일정 확인 중 오류:', result.data.errors);
         }
-        
-        // 서버에서 최신 데이터 다시 가져오기
+
         try {
           const latestData = await getAllScheduleProgress();
           if (latestData.data) {
@@ -506,7 +432,6 @@ export function SchedulesClient({
           }
         } catch (refreshError) {
           console.error('데이터 새로고침 실패:', refreshError);
-          // 새로고침 실패 시 전체 페이지 새로고침
           window.location.reload();
         }
       }
@@ -518,535 +443,286 @@ export function SchedulesClient({
     }
   };
 
+  // 재조율 핸들러
+  const handleReschedule = async (scheduleId: string) => {
+    setIsRescheduling(true);
+    setReschedulingScheduleId(scheduleId);
+    try {
+      const formData = new FormData();
+      formData.append('rescheduling_reason', '관리자 요청');
+      formData.append('num_options', '2');
+
+      const result = await rescheduleInterview(scheduleId, formData);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('재조율이 완료되었습니다.');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('재조율에 실패했습니다.');
+      console.error(error);
+    } finally {
+      setIsRescheduling(false);
+      setReschedulingScheduleId(null);
+    }
+  };
+
+  // 수동 조율 일정을 Schedule 형태로 변환
+  const convertManualScheduleToSchedule = (manual: ManualSchedule): Schedule | null => {
+    if (!manual.candidates) return null;
+
+    return {
+      id: manual.id,
+      candidate_id: manual.candidate_id,
+      workflow_status: (manual.workflow_status as any) || null,
+      interviewer_ids: manual.interviewer_ids,
+      duration_minutes: manual.duration_minutes,
+      created_at: manual.scheduled_at,
+      candidates: {
+        id: manual.candidates.id,
+        name: manual.candidates.name,
+        email: manual.candidates.email,
+        job_posts: manual.candidates.job_posts || null,
+      },
+      schedule_options: [
+        {
+          id: manual.id,
+          scheduled_at: manual.scheduled_at,
+          status: manual.workflow_status || 'pending',
+          interviewer_responses: null,
+          google_event_id: null,
+        },
+      ],
+      interviewers: [],
+    };
+  };
+
   return (
-    <div className="h-full overflow-auto bg-slate-50">
+    <div className="h-full overflow-auto bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* 헤더 */}
         <div className="mb-6 sm:mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <CalendarDays className="w-6 h-6 sm:w-7 sm:h-7 text-brand-main" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-main to-brand-dark flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <CalendarDays className="w-6 h-6 text-white" />
+            </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">면접 일정 관리</h1>
           </div>
-          <p className="text-sm sm:text-base text-slate-500 ml-9 sm:ml-10">모든 면접 일정의 진행상황을 확인하고 관리할 수 있습니다.</p>
+          <p className="text-sm sm:text-base text-slate-600 ml-13 sm:ml-14">
+            모든 면접 일정의 진행상황을 확인하고 관리할 수 있습니다.
+          </p>
         </div>
 
-        {/* 탭 구조 - Segmented Control 스타일 */}
+        {/* 탭 구조 */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="bg-slate-200/50 p-1 rounded-xl inline-flex gap-1">
-            <button
-              onClick={() => setActiveTab('management')}
-              className={`
-                px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2
-                ${activeTab === 'management'
-                  ? 'bg-white shadow-sm text-foreground'
-                  : 'text-slate-600 hover:bg-slate-50/50'
-                }
-              `}
-            >
-              <CalendarIcon className="w-4 h-4" />
-              일정 관리
-            </button>
-            <button
-              onClick={() => setActiveTab('manual')}
-              className={`
-                px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 relative
-                ${activeTab === 'manual'
-                  ? 'bg-white shadow-sm text-foreground'
-                  : 'text-slate-600 hover:bg-slate-50/50'
-                }
-              `}
-            >
-              <Settings className="w-4 h-4" />
-              수동 조율
-              {needsRescheduling.length > 0 && (
-                <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                  activeTab === 'manual' 
-                    ? 'bg-rose-100 text-rose-700' 
-                    : 'bg-rose-200 text-rose-600'
-                }`}>
-                  {needsRescheduling.length}
-                </span>
-              )}
-            </button>
+          <div className="flex justify-between items-center gap-4 flex-wrap">
+            {/* 탭 메뉴 */}
+            <div className="bg-slate-200/50 p-1 rounded-xl inline-flex gap-1">
+              <button
+                onClick={() => setActiveTab('management')}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2',
+                  activeTab === 'management'
+                    ? 'bg-white shadow-sm text-foreground'
+                    : 'text-slate-600 hover:bg-slate-50/50'
+                )}
+              >
+                <CalendarDays className="w-4 h-4" />
+                일정 관리
+              </button>
+              <button
+                onClick={() => setActiveTab('manual')}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 relative',
+                  activeTab === 'manual'
+                    ? 'bg-white shadow-sm text-foreground'
+                    : 'text-slate-600 hover:bg-slate-50/50'
+                )}
+              >
+                <Settings className="w-4 h-4" />
+                수동 조율
+                {needsRescheduling.length > 0 && (
+                  <span
+                    className={cn(
+                      'ml-1 px-1.5 py-0.5 rounded-full text-xs font-medium',
+                      activeTab === 'manual' ? 'bg-rose-100 text-rose-700' : 'bg-rose-200 text-rose-600'
+                    )}
+                  >
+                    {needsRescheduling.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* 일정 관리 탭 */}
           <TabsContent value="management" className="space-y-6">
-            {/* 통계 카드 - card-modern 스타일 적용 */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              {/* 전체 */}
-              <div className="card-modern p-4 sm:p-5">
+            {/* 통계 카드 */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                    <CalendarIcon className="w-5 h-5 text-slate-600" />
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center flex-shrink-0">
+                    <CalendarDays className="w-5 h-5 text-slate-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-slate-400" />
                 </div>
                 <div className="text-3xl font-bold text-gray-900 mb-1">{stats.all}</div>
                 <div className="text-xs sm:text-sm text-slate-600">전체</div>
-              </div>
-              
-              {/* 면접관 대기 */}
-              <div className="card-modern p-4 sm:p-5">
+              </Card>
+
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center flex-shrink-0">
                     <Clock className="w-5 h-5 text-amber-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-amber-400" />
                 </div>
                 <div className="text-3xl font-bold text-amber-600 mb-1">{stats.pending_interviewers}</div>
                 <div className="text-xs sm:text-sm text-slate-600">면접관 대기</div>
-              </div>
-              
-              {/* 후보자 대기 */}
-              <div className="card-modern p-4 sm:p-5">
+              </Card>
+
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center flex-shrink-0">
                     <User className="w-5 h-5 text-blue-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="text-3xl font-bold text-blue-600 mb-1">{stats.pending_candidate}</div>
                 <div className="text-xs sm:text-sm text-slate-600">후보자 대기</div>
-              </div>
-              
-              {/* 확정됨 */}
-              <div className="card-modern p-4 sm:p-5">
+              </Card>
+
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center flex-shrink-0">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="text-3xl font-bold text-emerald-600 mb-1">{stats.confirmed}</div>
                 <div className="text-xs sm:text-sm text-slate-600">확정됨</div>
-              </div>
-              
-              {/* 취소됨 */}
-              <div className="card-modern p-4 sm:p-5">
+              </Card>
+
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                    <XCircle className="w-5 h-5 text-slate-600" />
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-50 to-rose-100 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-rose-600" />
                   </div>
-                  <TrendingUp className="w-4 h-4 text-slate-400" />
+                  <TrendingUp className="w-4 h-4 text-rose-400" />
                 </div>
-                <div className="text-3xl font-bold text-slate-600 mb-1">{stats.cancelled}</div>
-                <div className="text-xs sm:text-sm text-slate-600">취소됨</div>
-              </div>
+                <div className="text-3xl font-bold text-rose-600 mb-1">{stats.needs_rescheduling}</div>
+                <div className="text-xs sm:text-sm text-slate-600">재조율 필요</div>
+              </Card>
             </div>
 
-            {/* 필터 및 액션 버튼 */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Filter className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700">필터:</span>
-                  <Button
-                    variant={filterStatus === 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setFilterStatus('all')}
-                  >
-                    전체
-                  </Button>
-                  <Button
-                    variant={filterStatus === 'pending_interviewers' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setFilterStatus('pending_interviewers')}
-                  >
-                    면접관 대기
-                  </Button>
-                  <Button
-                    variant={filterStatus === 'pending_candidate' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setFilterStatus('pending_candidate')}
-                  >
-                    후보자 대기
-                  </Button>
-                  <Button
-                    variant={filterStatus === 'confirmed' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setFilterStatus('confirmed')}
-                  >
-                    확정됨
-                  </Button>
-                </div>
-                <Button
-                  onClick={handleCheckAll}
-                  disabled={isCheckingAll || stats.pending_interviewers === 0}
-                  size="sm"
-                  className="w-full sm:w-auto"
-                >
-                  {isCheckingAll ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      확인 중...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      일괄 응답 확인
-                    </>
-                  )}
-                </Button>
+            {/* 필터 및 액션 */}
+            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+              <div className="flex-1">
+                <ScheduleFilters
+                  statusFilter={filterStatus}
+                  onStatusFilterChange={setFilterStatus}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                />
               </div>
-            </div>
-
-            {/* 일정 목록 */}
-            {filteredSchedules.length === 0 ? (
-              <div className="card-modern p-16 sm:p-20 text-center">
-                <CalendarDays className="mx-auto text-slate-300 mb-6" size={64} />
-                <p className="text-slate-500 text-base sm:text-lg mb-6">예정된 면접 일정이 없습니다</p>
-                <Button 
-                  className="gradient-blue text-white hover:opacity-90"
-                  onClick={() => router.push('/candidates')}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  새 일정 조율하기
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredSchedules.map((schedule) => {
-                  const isSelectedCandidate = selectedCandidateId === schedule.candidates.id;
-                  return (
-              <div
-                key={schedule.id}
-                ref={(el) => {
-                  scheduleRefs.current[schedule.id] = el;
-                }}
-                className={`card-modern p-4 sm:p-6 hover:shadow-md hover:border-blue-100 transition-all ${
-                  isSelectedCandidate 
-                    ? 'border-blue-500 border-2 shadow-lg ring-2 ring-blue-200' 
-                    : ''
-                }`}
+              <Button
+                onClick={handleCheckAll}
+                disabled={isCheckingAll || stats.pending_interviewers === 0}
+                size="sm"
+                className="gradient-blue text-white hover:opacity-90 shadow-lg shadow-blue-500/20 whitespace-nowrap"
               >
-                <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-                  {/* 왼쪽: 후보자 정보 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-4">
-                      {/* Avatar 컴포넌트 사용 */}
-                      <Avatar className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0">
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-base sm:text-lg">
-                          {schedule.candidates.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <h3 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCandidateClick(schedule.candidates.id);
-                          }}
-                          className="text-base sm:text-lg font-semibold text-gray-900 truncate cursor-pointer hover:text-brand-main transition-colors"
-                        >
-                          {schedule.candidates.name}
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <div className="flex items-center gap-1 text-sm text-slate-600">
-                            <Mail className="w-3 h-3" />
-                            <span className="truncate">{schedule.candidates.email}</span>
-                          </div>
-                          {schedule.candidates.job_posts?.title && (
-                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
-                              {schedule.candidates.job_posts.title}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                {isCheckingAll ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    확인 중...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    일괄 응답 확인
+                  </>
+                )}
+              </Button>
+            </div>
 
-                    {/* 워크플로우 상태 - Soft Badge 스타일 */}
-                    <div className="mb-4">
-                      {schedule.workflow_status === 'confirmed' ? (
-                        <span className="inline-flex items-center bg-emerald-100 text-emerald-700 rounded-full px-3 py-1 text-sm font-medium">
-                          {getWorkflowStatusText(schedule.workflow_status)}
-                        </span>
-                      ) : schedule.workflow_status === 'pending_interviewers' ? (
-                        <span className="inline-flex items-center bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-sm font-medium">
-                          {getWorkflowStatusText(schedule.workflow_status)}
-                        </span>
-                      ) : schedule.workflow_status === 'pending_candidate' ? (
-                        <span className="inline-flex items-center bg-blue-100 text-blue-700 rounded-full px-3 py-1 text-sm font-medium">
-                          {getWorkflowStatusText(schedule.workflow_status)}
-                        </span>
-                      ) : schedule.workflow_status === 'cancelled' ? (
-                        <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">
-                          {getWorkflowStatusText(schedule.workflow_status)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">
-                          {getWorkflowStatusText(schedule.workflow_status)}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 일정 옵션별 면접관 응답 */}
-                    {schedule.schedule_options && schedule.schedule_options.length > 0 && (
-                      <div className="space-y-3 mt-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3">일정 옵션별 면접관 응답</h4>
-                        {schedule.schedule_options.map((option) => {
-                          const date = new Date(option.scheduled_at);
-                          const responses = option.interviewer_responses || {};
-
-                          // 부분적 충돌 정보 확인
-                          const metadata = (responses as any)?._metadata;
-                          const isPartialConflict = metadata?.isPartialConflict || false;
-                          const missingInterviewerIds = metadata?.missingInterviewers || [];
-                          const missingInterviewers = missingInterviewerIds
-                            .map((id: string) => {
-                              const interviewer = schedule.interviewers?.find(inv => inv.id === id);
-                              return interviewer?.email || id;
-                            })
-                            .filter(Boolean);
-
-                          // 면접관 응답 상태에 따라 옵션 상태 결정
-                          const getOptionStatus = () => {
-                            if (option.status === 'selected') return '선택됨';
-                            if (option.status === 'rejected') return '거절됨';
-                            if (option.status === 'accepted') return '후보자 선택 대기';
-                            
-                            // interviewer_responses를 기반으로 상태 판단
-                            if (schedule.interviewer_ids && schedule.interviewer_ids.length > 0) {
-                              const allAccepted = schedule.interviewer_ids.every((interviewerId: string) => {
-                                return responses[interviewerId] === 'accepted';
-                              });
-                              const allDeclined = schedule.interviewer_ids.every((interviewerId: string) => {
-                                return responses[interviewerId] === 'declined';
-                              });
-                              const hasDeclined = schedule.interviewer_ids.some((interviewerId: string) => {
-                                return responses[interviewerId] === 'declined';
-                              });
-                              const hasAccepted = schedule.interviewer_ids.some((interviewerId: string) => {
-                                return responses[interviewerId] === 'accepted';
-                              });
-
-                              if (allAccepted) return '후보자 선택 대기';
-                              if (allDeclined) return '거절됨';
-                              if (hasDeclined && hasAccepted) return '일부 거절';
-                              if (hasAccepted) return '일부 수락';
-                            }
-                            
-                            return '대기 중';
-                          };
-
-                          return (
-                            <div key={option.id} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                              <div className="mb-3">
-                                {/* 미니 캘린더/시계 블록 UI */}
-                                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 mb-3">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <CalendarIcon className="w-4 h-4 text-brand-main" />
-                                    <p className="text-sm font-semibold text-gray-900">
-                                      {format(date, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-brand-main" />
-                                    <p className="text-sm font-medium text-gray-700">
-                                      {format(date, 'HH:mm', { locale: ko })}
-                                    </p>
-                                  </div>
-                                </div>
-                                
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1">
-                                    <p className="text-xs text-slate-500">
-                                      상태: {getOptionStatus()}
-                                    </p>
-                                  </div>
-                                  {isPartialConflict && missingInterviewers.length > 0 && (
-                                    <Badge 
-                                      variant="outline" 
-                                      className="bg-amber-100 text-amber-700 border-amber-300 text-xs font-medium whitespace-nowrap"
-                                    >
-                                      일부 면접관 제외
-                                    </Badge>
-                                  )}
-                                </div>
-                                {isPartialConflict && missingInterviewers.length > 0 && (
-                                  <div className="mt-2 p-2 bg-amber-50/50 rounded border border-amber-200/50">
-                                    <p className="text-xs text-amber-700 font-medium mb-1">
-                                      참석 불가능한 면접관:
-                                    </p>
-                                    <p className="text-xs text-amber-600">
-                                      {missingInterviewers.join(', ')}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="space-y-1.5">
-                                {schedule.interviewer_ids.map((interviewerId) => {
-                                  const interviewer = schedule.interviewers?.find(inv => inv.id === interviewerId);
-                                  const response = responses[interviewerId] || 'needsAction';
-
-                                  return (
-                                    <div key={interviewerId} className="flex items-center justify-between text-xs sm:text-sm">
-                                      <span className="text-slate-700 truncate">
-                                        {interviewer?.email || interviewerId}
-                                      </span>
-                                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                                        {getStatusIcon(response)}
-                                        <span className="text-slate-600">{getStatusText(response)}</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 오른쪽: 액션 버튼 */}
-                  <div className="flex flex-col gap-2 lg:min-w-[140px] lg:items-end">
-                    {schedule.workflow_status === 'pending_interviewers' && (
-                      <Button
-                        onClick={() => handleCheckResponse(schedule.id)}
-                        disabled={checkingScheduleId === schedule.id}
-                        size="sm"
-                        variant="ghost"
-                        className="w-full lg:w-auto"
-                      >
-                        {checkingScheduleId === schedule.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            확인 중...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            응답 확인
-                          </>
-                        )}
-                      </Button>
-                    )}
-                    {schedule.workflow_status === 'pending_candidate' && (
-                      <Button
-                        onClick={() => handleResendEmail(schedule.id)}
-                        disabled={checkingScheduleId === schedule.id}
-                        size="sm"
-                        variant="ghost"
-                        className="w-full lg:w-auto"
-                      >
-                        {checkingScheduleId === schedule.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            전송 중...
-                          </>
-                        ) : (
-                          <>
-                            <Mail className="w-4 h-4 mr-2" />
-                            메일 재전송
-                          </>
-                        )}
-                      </Button>
-                    )}
-                    
-                    {/* 삭제 및 초기화 버튼 */}
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        onClick={() => handleCancelSchedule(schedule.id)}
-                        disabled={cancellingScheduleId === schedule.id || deletingScheduleId === schedule.id || schedule.workflow_status === 'cancelled'}
-                        size="sm"
-                        variant="ghost"
-                        className="flex-1 text-yellow-600 hover:bg-yellow-50"
-                        title="초기화 (취소)"
-                      >
-                        {cancellingScheduleId === schedule.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RotateCcw className="w-4 h-4" />
-                        )}
-                      </Button>
-                      <Button
-                        onClick={() => handleDeleteSchedule(schedule.id)}
-                        disabled={deletingScheduleId === schedule.id || cancellingScheduleId === schedule.id}
-                        size="sm"
-                        variant="ghost"
-                        className="flex-1 text-red-600 hover:bg-red-50"
-                        title="삭제"
-                      >
-                        {deletingScheduleId === schedule.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </div>
-                    
-                    <div className="text-xs text-slate-500 mt-2">
-                      <div className="flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        <span>면접관 {schedule.interviewer_ids.length}명</span>
-                      </div>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{schedule.duration_minutes}분</span>
-                      </div>
-                      <div className="mt-1">
-                        생성: {format(new Date(schedule.created_at), 'yyyy.MM.dd HH:mm', { locale: ko })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-                })}
-              </div>
-            )}
+            {/* 타임라인 뷰 */}
+            <ScheduleTimelineView
+              schedules={filteredSchedules}
+              onCheckResponse={handleCheckResponse}
+              onResendEmail={handleResendEmail}
+              onDelete={handleDeleteSchedule}
+              onCancel={handleCancelSchedule}
+              onCandidateClick={handleCandidateClick}
+              checkingScheduleId={checkingScheduleId}
+              deletingScheduleId={deletingScheduleId}
+              cancellingScheduleId={cancellingScheduleId}
+              selectedCandidateId={selectedCandidateId}
+            />
           </TabsContent>
 
           {/* 수동 조율 탭 */}
           <TabsContent value="manual" className="space-y-6">
-            {/* 수동 조율 통계 - card-modern 스타일 적용 */}
+            {/* 수동 조율 통계 */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* 재조율 필요 */}
-              <div className="card-modern p-4 sm:p-5">
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-50 to-rose-100 flex items-center justify-center flex-shrink-0">
                     <AlertTriangle className="w-5 h-5 text-rose-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-rose-400" />
                 </div>
                 <div className="text-3xl font-bold text-rose-600 mb-1">{needsRescheduling.length}</div>
                 <div className="text-xs sm:text-sm text-slate-600">재조율 필요</div>
-              </div>
-              
-              {/* 수동 조율 이력 */}
-              <div className="card-modern p-4 sm:p-5">
+              </Card>
+
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center flex-shrink-0">
                     <Settings className="w-5 h-5 text-slate-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-slate-400" />
                 </div>
                 <div className="text-3xl font-bold text-slate-600 mb-1">{manualSchedules.length}</div>
                 <div className="text-xs sm:text-sm text-slate-600">수동 조율 이력</div>
-              </div>
-              
-              {/* 확정 일정 */}
-              <div className="card-modern p-4 sm:p-5">
+              </Card>
+
+              <Card className="card-modern p-4 sm:p-5 border-0 shadow-lg">
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center flex-shrink-0">
                     <CheckCircle className="w-5 h-5 text-emerald-600" />
                   </div>
                   <TrendingUp className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="text-3xl font-bold text-emerald-600 mb-1">{confirmedSchedules.length}</div>
                 <div className="text-xs sm:text-sm text-slate-600">확정 일정</div>
-              </div>
+              </Card>
             </div>
 
             {/* 재조율 필요 일정 */}
             {needsRescheduling.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  <AlertTriangle className="w-5 h-5 text-rose-500" />
                   재조율 필요 ({needsRescheduling.length})
                 </h2>
                 <div className="space-y-4">
-                  {needsRescheduling.map((schedule) => renderManualScheduleCard(schedule, true))}
+                  {needsRescheduling.map((schedule) => {
+                    const converted = convertManualScheduleToSchedule(schedule);
+                    if (!converted) return null;
+                    return (
+                      <ScheduleCard
+                        key={schedule.id}
+                        schedule={converted}
+                        onEdit={() => setEditingScheduleId(schedule.id)}
+                        onDelete={handleDeleteSchedule}
+                        onCancel={handleCancelSchedule}
+                        onCandidateClick={handleCandidateClick}
+                        isDeleting={deletingScheduleId === schedule.id}
+                        isCancelling={cancellingScheduleId === schedule.id}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1059,37 +735,67 @@ export function SchedulesClient({
                   수동 조율 이력 ({manualSchedules.length})
                 </h2>
                 <div className="space-y-4">
-                  {manualSchedules.map((schedule) => renderManualScheduleCard(schedule, true))}
+                  {manualSchedules.map((schedule) => {
+                    const converted = convertManualScheduleToSchedule(schedule);
+                    if (!converted) return null;
+                    return (
+                      <ScheduleCard
+                        key={schedule.id}
+                        schedule={converted}
+                        onEdit={() => setEditingScheduleId(schedule.id)}
+                        onDelete={handleDeleteSchedule}
+                        onCancel={handleCancelSchedule}
+                        onCandidateClick={handleCandidateClick}
+                        isDeleting={deletingScheduleId === schedule.id}
+                        isCancelling={cancellingScheduleId === schedule.id}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* 확정 일정 (수정 가능) */}
+            {/* 확정 일정 */}
             {confirmedSchedules.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
                   확정 일정 ({confirmedSchedules.length})
                 </h2>
                 <div className="space-y-4">
-                  {confirmedSchedules.map((schedule) => renderManualScheduleCard(schedule, true))}
+                  {confirmedSchedules.map((schedule) => {
+                    const converted = convertManualScheduleToSchedule(schedule);
+                    if (!converted) return null;
+                    return (
+                      <ScheduleCard
+                        key={schedule.id}
+                        schedule={converted}
+                        onEdit={() => setEditingScheduleId(schedule.id)}
+                        onDelete={handleDeleteSchedule}
+                        onCancel={handleCancelSchedule}
+                        onCandidateClick={handleCandidateClick}
+                        isDeleting={deletingScheduleId === schedule.id}
+                        isCancelling={cancellingScheduleId === schedule.id}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             )}
 
             {/* 일정이 없는 경우 */}
             {needsRescheduling.length === 0 && manualSchedules.length === 0 && confirmedSchedules.length === 0 && (
-              <div className="card-modern p-16 sm:p-20 text-center">
+              <Card className="card-modern p-16 sm:p-20 text-center border-0 shadow-lg">
                 <CalendarDays className="mx-auto text-slate-300 mb-6" size={64} />
                 <p className="text-slate-500 text-base sm:text-lg mb-6">수동 조율이 필요한 일정이 없습니다</p>
-                <Button 
-                  className="gradient-blue text-white hover:opacity-90"
+                <Button
+                  className="gradient-blue text-white hover:opacity-90 shadow-lg shadow-blue-500/20"
                   onClick={() => router.push('/candidates')}
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   새 일정 조율하기
                 </Button>
-              </div>
+              </Card>
             )}
           </TabsContent>
         </Tabs>
@@ -1097,9 +803,9 @@ export function SchedulesClient({
         {/* 모달들 */}
         {(() => {
           const allSchedules = [...needsRescheduling, ...manualSchedules, ...confirmedSchedules];
-          const editingSchedule = allSchedules.find(s => s.id === editingScheduleId);
-          const addingOptionSchedule = allSchedules.find(s => s.id === addingOptionScheduleId);
-          const forceConfirmSchedule = allSchedules.find(s => s.id === forceConfirmScheduleId);
+          const editingSchedule = allSchedules.find((s) => s.id === editingScheduleId);
+          const addingOptionSchedule = allSchedules.find((s) => s.id === addingOptionScheduleId);
+          const forceConfirmSchedule = allSchedules.find((s) => s.id === forceConfirmScheduleId);
 
           return (
             <>
@@ -1148,15 +854,17 @@ export function SchedulesClient({
       </div>
 
       {/* 중앙 집중형 모달: Candidate Detail */}
-      <Dialog open={showCandidateDetail && !!selectedCandidateId} onOpenChange={(open) => {
-        if (!open) {
-          handleCloseDetail();
-        }
-      }}>
-        <DialogContent 
+      <Dialog
+        open={showCandidateDetail && !!selectedCandidateId}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseDetail();
+          }
+        }}
+      >
+        <DialogContent
           className="!w-[95vw] !max-w-5xl !max-h-[90vh] p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden"
         >
-          {/* 접근성을 위한 숨겨진 제목 */}
           <DialogTitle className="sr-only">
             {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
           </DialogTitle>
@@ -1194,194 +902,4 @@ export function SchedulesClient({
       </Dialog>
     </div>
   );
-
-  // 수동 조율 일정 카드 렌더링 함수 - 트렌디한 스타일로 통일
-  function renderManualScheduleCard(schedule: ManualSchedule, showActions: boolean = true) {
-    const candidate = schedule.candidates;
-    if (!candidate) return null;
-
-    const scheduledDate = new Date(schedule.scheduled_at);
-    const endTime = new Date(scheduledDate);
-    endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
-
-    // 워크플로우 상태에 따른 Soft Badge 스타일
-    const getWorkflowStatusBadge = (status: string | null) => {
-      switch (status) {
-        case 'pending_interviewers':
-          return <span className="inline-flex items-center bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-sm font-medium">면접관 대기</span>;
-        case 'pending_candidate':
-          return <span className="inline-flex items-center bg-blue-100 text-blue-700 rounded-full px-3 py-1 text-sm font-medium">후보자 대기</span>;
-        case 'confirmed':
-          return <span className="inline-flex items-center bg-emerald-100 text-emerald-700 rounded-full px-3 py-1 text-sm font-medium">확정</span>;
-        case 'cancelled':
-          return <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">취소</span>;
-        case 'needs_rescheduling':
-          return <span className="inline-flex items-center bg-rose-100 text-rose-700 rounded-full px-3 py-1 text-sm font-medium">재조율 필요</span>;
-        default:
-          return <span className="inline-flex items-center bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-sm font-medium">알 수 없음</span>;
-      }
-    };
-
-    return (
-      <div key={schedule.id} className="card-modern p-4 sm:p-6 hover:shadow-md hover:border-blue-100 transition-all">
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-          {/* 왼쪽: 후보자 정보 */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-4">
-              {/* Avatar 컴포넌트 사용 */}
-              <Avatar className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0">
-                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-base sm:text-lg">
-                  {candidate.name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                  {candidate.name}
-                </h3>
-                <div className="flex flex-wrap items-center gap-2 mt-1">
-                  <div className="flex items-center gap-1 text-sm text-slate-600">
-                    <Mail className="w-3 h-3" />
-                    <span className="truncate">{candidate.email}</span>
-                  </div>
-                  {candidate.job_posts?.title && (
-                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
-                      {candidate.job_posts.title}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 워크플로우 상태 */}
-            <div className="mb-4 flex items-center gap-2 flex-wrap">
-              {getWorkflowStatusBadge(schedule.workflow_status)}
-              {schedule.manual_override && (
-                <span className="inline-flex items-center bg-amber-100 text-amber-700 rounded-full px-3 py-1 text-sm font-medium">
-                  수동 조율
-                </span>
-              )}
-            </div>
-
-            {/* 미니 캘린더/시계 블록 UI */}
-            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 mb-3">
-              <div className="flex items-center gap-2 mb-1">
-                <CalendarIcon className="w-4 h-4 text-brand-main" />
-                <p className="text-sm font-semibold text-gray-900">
-                  {format(scheduledDate, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-brand-main" />
-                <p className="text-sm font-medium text-gray-700">
-                  {format(scheduledDate, 'HH:mm', { locale: ko })} - {format(endTime, 'HH:mm', { locale: ko })}
-                </p>
-              </div>
-            </div>
-
-            {/* 추가 정보 */}
-            <div className="space-y-2 text-sm text-slate-600">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                <span>{schedule.duration_minutes}분</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span>면접관 {schedule.interviewer_ids.length}명</span>
-              </div>
-              {schedule.rescheduling_reason && (
-                <div className="flex items-start gap-2 text-sm text-rose-600 mt-3 p-2 bg-rose-50 rounded-lg border border-rose-100">
-                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>재조율 사유: {schedule.rescheduling_reason}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 오른쪽: 액션 버튼 */}
-          <div className="flex flex-col gap-2 lg:min-w-[140px] lg:items-end">
-            {showActions && (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setEditingScheduleId(schedule.id)}
-                    className="w-full lg:w-auto"
-                  >
-                    <Edit className="w-4 h-4 mr-1" />
-                    수정
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setAddingOptionScheduleId(schedule.id)}
-                    className="w-full lg:w-auto"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    옵션 추가
-                  </Button>
-                </div>
-                {(schedule.workflow_status === 'pending_interviewers' || schedule.workflow_status === 'pending_candidate') && (
-                  <Button
-                    size="sm"
-                    className="gradient-blue text-white hover:opacity-90 w-full lg:w-auto"
-                    onClick={() => {
-                      setForceConfirmScheduleId(schedule.id);
-                      setForceConfirmOptionId(undefined);
-                    }}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    강제 확정
-                  </Button>
-                )}
-                {schedule.needs_rescheduling && (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleReschedule(schedule.id)}
-                    disabled={isRescheduling && reschedulingScheduleId === schedule.id}
-                    className="w-full lg:w-auto"
-                  >
-                    {isRescheduling && reschedulingScheduleId === schedule.id ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        재조율 중...
-                      </>
-                    ) : (
-                      '재조율'
-                    )}
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 재조율 핸들러
-  async function handleReschedule(scheduleId: string) {
-    setIsRescheduling(true);
-    setReschedulingScheduleId(scheduleId);
-    try {
-      const formData = new FormData();
-      formData.append('rescheduling_reason', '관리자 요청');
-      formData.append('num_options', '2');
-
-      const result = await rescheduleInterview(scheduleId, formData);
-      if (result.error) {
-        toast.error(result.error);
-      } else {
-        toast.success('재조율이 완료되었습니다.');
-        router.refresh();
-      }
-    } catch (error) {
-      toast.error('재조율에 실패했습니다.');
-      console.error(error);
-    } finally {
-      setIsRescheduling(false);
-      setReschedulingScheduleId(null);
-    }
-  }
 }
