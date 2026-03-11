@@ -1,11 +1,12 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyJobPostAccess, verifyCandidateAccess, requireRecruiterOrAdmin } from '@/api/utils/auth';
 import { validateRequired, validateEmail, validatePhone, validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
+import { analyzeCandidateMatch } from '@/lib/ai/candidate-matching';
 
 type CandidateInsert = Database['public']['Tables']['candidates']['Insert'];
 type CandidateUpdate = Database['public']['Tables']['candidates']['Update'];
@@ -31,6 +32,9 @@ export async function createCandidate(formData: FormData) {
     await verifyJobPostAccess(jobPostId);
 
     // 후보자 생성
+    // 주의: Service Role Client를 사용하여 RLS를 우회합니다.
+    // getCurrentUser()와 verifyJobPostAccess()에서 이미 권한 확인을 완료했으므로 안전합니다.
+    const serviceClient = createServiceClient();
     const candidateData: CandidateInsert = {
       job_post_id: jobPostId,
       name,
@@ -41,7 +45,7 @@ export async function createCandidate(formData: FormData) {
       token: crypto.randomUUID(), // 비로그인 접근용 토큰 생성
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await serviceClient
       .from('candidates')
       .insert(candidateData)
       .select()
@@ -52,7 +56,8 @@ export async function createCandidate(formData: FormData) {
     }
 
     // 타임라인 이벤트 생성
-    const { error: timelineError } = await supabase.from('timeline_events').insert({
+    // Service Role Client를 사용하여 RLS를 우회합니다.
+    const { error: timelineError } = await serviceClient.from('timeline_events').insert({
       candidate_id: data.id,
       type: 'system_log',
       content: {
@@ -68,6 +73,29 @@ export async function createCandidate(formData: FormData) {
         console.error('[타임라인] DB 스키마 제약 조건 위반 - system_log 타입이 허용되지 않음.');
       }
     }
+
+    // 이력서 파일이 있는지 확인하고, 있으면 AI 분석 시작 (비동기, 백그라운드 실행)
+    // 주의: createCandidate는 이력서 파일 정보를 받지 않으므로, 
+    // 실제로는 uploadResumeFile에서 분석이 시작됩니다.
+    // 여기서는 후보자 생성 후 이력서 파일이 이미 존재하는 경우를 대비한 체크만 수행합니다.
+    // Service Role Client를 사용하여 RLS를 우회합니다.
+    serviceClient
+      .from('resume_files')
+      .select('id')
+      .eq('candidate_id', data.id)
+      .limit(1)
+      .single()
+      .then(async (resumeResult) => {
+        if (resumeResult.data) {
+          // 이력서 파일이 있으면 AI 분석 시작 (비동기, 에러는 로그만 남김)
+          analyzeCandidateMatch(data.id, jobPostId).catch((err) => {
+            console.error('[createCandidate] AI 분석 시작 실패:', err);
+          });
+        }
+      })
+      .catch(() => {
+        // 이력서 파일이 없으면 분석 보류 (정상 동작)
+      });
 
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');
@@ -372,5 +400,69 @@ export async function changeCandidatePosition(candidateId: string, newJobPostId:
     revalidatePath(`/dashboard/candidates/${validatedCandidateId}`);
 
     return data;
+  });
+}
+
+/**
+ * AI 분석 트리거 (수동 호출용)
+ * @param candidateId 후보자 ID
+ * @returns 성공 여부
+ */
+export async function triggerAIAnalysis(candidateId: string) {
+  return withErrorHandling(async () => {
+    console.log('[triggerAIAnalysis] 시작 - 후보자 ID:', candidateId);
+    
+    // 후보자 접근 권한 확인
+    const candidate = await verifyCandidateAccess(candidateId);
+    const supabase = await createClient();
+
+    console.log('[triggerAIAnalysis] 후보자 정보:', {
+      candidateId: candidate.id,
+      jobPostId: candidate.job_post_id,
+      aiAnalysisStatus: candidate.ai_analysis_status,
+    });
+
+    // job_post_id 확인
+    if (!candidate.job_post_id) {
+      console.error('[triggerAIAnalysis] 채용 공고가 지정되지 않음');
+      throw new Error('채용 공고가 지정되지 않은 후보자입니다.');
+    }
+
+    // 이력서 파일 확인
+    console.log('[triggerAIAnalysis] 이력서 파일 조회 중...');
+    const { data: resumeFiles, error: resumeError } = await supabase
+      .from('resume_files')
+      .select('id')
+      .eq('candidate_id', candidateId)
+      .limit(1);
+
+    if (resumeError) {
+      console.error('[triggerAIAnalysis] 이력서 파일 조회 실패:', resumeError);
+      throw new Error(`이력서 파일 조회 실패: ${resumeError.message}`);
+    }
+
+    console.log('[triggerAIAnalysis] 이력서 파일 개수:', resumeFiles?.length || 0);
+
+    if (!resumeFiles || resumeFiles.length === 0) {
+      console.error('[triggerAIAnalysis] 이력서 파일이 없음');
+      throw new Error('이력서 파일이 없어 AI 분석을 시작할 수 없습니다.');
+    }
+
+    // AI 분석 시작 (비동기, 에러는 로그만 남김)
+    console.log('[triggerAIAnalysis] analyzeCandidateMatch 호출 시작 - 후보자 ID:', candidateId, '채용 공고 ID:', candidate.job_post_id);
+    analyzeCandidateMatch(candidateId, candidate.job_post_id)
+      .then((result) => {
+        console.log('[triggerAIAnalysis] analyzeCandidateMatch 성공:', result);
+      })
+      .catch((err) => {
+        console.error('[triggerAIAnalysis] AI 분석 시작 실패:', err);
+      });
+
+    // 캐시 무효화
+    revalidatePath(`/candidates/${candidateId}`);
+    revalidatePath(`/dashboard/candidates/${candidateId}`);
+
+    console.log('[triggerAIAnalysis] 완료 - 성공 반환');
+    return { success: true };
   });
 }
