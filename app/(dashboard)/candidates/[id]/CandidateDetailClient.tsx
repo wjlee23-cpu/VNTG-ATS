@@ -37,7 +37,7 @@ import { getUsers } from '@/api/queries/users';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { cn } from '@/components/ui/utils';
@@ -174,8 +174,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [users, setUsers] = useState<Array<{ id: string; email: string; role: string }>>([]);
   const [scheduleFormData, setScheduleFormData] = useState({
-    start_date: '',
-    end_date: '',
+    dateRange: { from: undefined, to: undefined } as { from: Date | undefined, to: Date | undefined },
     duration_minutes: '60',
     stage_id: 'stage-6',
     interviewer_ids: [] as string[],
@@ -276,11 +275,19 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
     setScheduleWarning(null);
 
     try {
+      // DateRange를 start_date, end_date 문자열로 변환
+      const startDateStr = scheduleFormData.dateRange.from 
+        ? format(scheduleFormData.dateRange.from, 'yyyy-MM-dd') 
+        : '';
+      const endDateStr = scheduleFormData.dateRange.to 
+        ? format(scheduleFormData.dateRange.to, 'yyyy-MM-dd') 
+        : '';
+
       const formDataToSend = new FormData();
       formDataToSend.append('candidate_id', candidate.id);
       formDataToSend.append('stage_id', scheduleFormData.stage_id);
-      formDataToSend.append('start_date', scheduleFormData.start_date);
-      formDataToSend.append('end_date', scheduleFormData.end_date);
+      formDataToSend.append('start_date', startDateStr);
+      formDataToSend.append('end_date', endDateStr);
       formDataToSend.append('duration_minutes', scheduleFormData.duration_minutes);
       formDataToSend.append('interviewer_ids', JSON.stringify(scheduleFormData.interviewer_ids));
       formDataToSend.append('num_options', scheduleFormData.num_options);
@@ -325,8 +332,8 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
 
   // 스케줄링 폼 유효성 검사
   const isScheduleFormValid = 
-    scheduleFormData.start_date && 
-    scheduleFormData.end_date && 
+    scheduleFormData.dateRange.from && 
+    scheduleFormData.dateRange.to && 
     scheduleFormData.interviewer_ids.length > 0 &&
     !isLoadingUsers;
 
@@ -1138,9 +1145,6 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
   // 관리자/리크루터 권한 체크
   const canManageCandidate = userRole === 'admin' || userRole === 'recruiter';
 
-  // Schedule Interview 버튼 표시 조건 (1차 면접 또는 2차 면접 단계에서만)
-  const canScheduleInterview = currentStageId === 'stage-6' || currentStageId === 'stage-8';
-
   // 전형 이동 관련 상태
   const [isMovingStage, setIsMovingStage] = useState(false);
 
@@ -1574,7 +1578,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
     {/* 완벽한 반응형 Grid 레이아웃: 모바일(세로 스택) → PC(좌우 분할) */}
     <div className="flex flex-col md:grid md:grid-cols-12 h-full max-h-[90vh] overflow-hidden">
       {/* 좌측 프로필 영역 - 모바일: 위쪽, PC: 왼쪽 */}
-      <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col">
+      <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col min-w-0 overflow-x-visible">
         {/* 대형 Avatar - 반응형 정렬 */}
         <div className="flex flex-col items-center md:items-start text-center md:text-left mb-6">
           <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-slate-200 shadow-md mb-4">
@@ -1596,32 +1600,82 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
           )}
         </div>
 
-        {/* Schedule Interview 버튼 - 텍스트 잘림 방지 */}
-        {canManageCandidate && canScheduleInterview && (
+        {/* 일정 등록 버튼 - 인터뷰, 과제전형, 역량검사, 레퍼런스체크 등 스케줄링 */}
+        {canManageCandidate && (
           <Button
             onClick={() => setViewMode('scheduling')}
             className="w-full h-12 text-base whitespace-normal break-keep px-4 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white shadow-md hover:shadow-lg transition-all duration-200"
           >
             <Calendar className="w-5 h-5 mr-2 flex-shrink-0" />
-            <span className="break-words">Schedule Interview</span>
+            <span className="break-words">일정 등록</span>
           </Button>
         )}
 
         {/* 기타 액션 버튼들 */}
         {canManageCandidate && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2 min-w-0 w-full">
             <Button
               onClick={() => setIsEmailModalOpen(true)}
               variant="ghost"
-              className="w-full text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
             >
               <Mail className="w-4 h-4 mr-2" />
               Email
             </Button>
+            {/* 전형이동 버튼 - Popover로 단계 선택 */}
+            <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
+              <PopoverTrigger asChild className="w-full min-w-0">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900 min-w-0"
+                  disabled={isMovingStage}
+                >
+                  <ArrowRightCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+                  {isMovingStage ? '이동 중...' : '전형이동'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="start">
+                {isLoadingStages ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
+                    <span className="text-sm text-muted-foreground">단계 목록 로딩 중...</span>
+                  </div>
+                ) : availableStages.length === 0 ? (
+                  <div className="py-4 text-center">
+                    <p className="text-sm text-muted-foreground">이동 가능한 단계가 없습니다.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground px-2 py-1.5">전형 단계 선택</p>
+                    {availableStages.map((stage) => (
+                      <button
+                        key={stage.id}
+                        onClick={() => handleMoveToStage(stage.id)}
+                        disabled={stage.isCurrent || isMovingStage}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          stage.isCurrent
+                            ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                            : 'hover:bg-blue-50 hover:text-blue-700 text-foreground cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span>{stage.name}</span>
+                          {stage.isCurrent && (
+                            <Badge variant="secondary" className="text-xs">
+                              현재
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
             <Button
               onClick={() => setIsArchiveModalOpen(true)}
               variant="ghost"
-              className="w-full text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
             >
               <Archive className="w-4 h-4 mr-2" />
               아카이브
@@ -2096,10 +2150,10 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                   <Button
                     onClick={() => setViewMode('detail')}
                     variant="ghost"
-                    className="mb-4"
+                    className="mb-4 -ml-3 px-3 py-2 w-fit flex items-center gap-2 hover:bg-yellow-100 hover:text-slate-900 rounded-md transition-colors text-slate-600"
                   >
-                    <ArrowRight className="w-4 h-4 mr-2 rotate-180" />
-                    뒤로 가기
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                    <span>뒤로 가기</span>
                   </Button>
 
                   <form onSubmit={handleScheduleSubmit} className="space-y-6">
@@ -2111,102 +2165,53 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                       <p className="text-base font-medium text-slate-900">{candidate.name}</p>
                     </div>
 
-                    {/* 날짜 선택 카드 - PC에서 가로 배치 */}
+                    {/* 날짜 선택 카드 - 단일 Date Range Picker */}
                     <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-4">
                       <label className="block text-sm font-medium text-slate-700">
                         <Calendar className="w-4 h-4 inline mr-2 text-[#5287FF]" />
                         일정 검색 기간
                       </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="start_date" className="block text-xs text-slate-600 mb-1.5">
-                            시작 날짜
-                          </label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                id="start_date"
-                                className={cn(
-                                  "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm",
-                                  !scheduleFormData.start_date && "text-slate-500"
-                                )}
-                              >
-                                <Calendar className="mr-2 h-4 w-4 text-slate-500" />
-                                {scheduleFormData.start_date ? (
-                                  format(new Date(scheduleFormData.start_date), 'yyyy년 MM월 dd일', { locale: ko })
-                                ) : (
-                                  <span>날짜 선택</span>
-                                )}
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <CalendarComponent
-                                mode="single"
-                                selected={scheduleFormData.start_date ? new Date(scheduleFormData.start_date) : undefined}
-                                onSelect={(date) => {
-                                  if (date) {
-                                    const dateStr = format(date, 'yyyy-MM-dd');
-                                    setScheduleFormData({ ...scheduleFormData, start_date: dateStr });
-                                    if (scheduleFormData.end_date && new Date(scheduleFormData.end_date) < date) {
-                                      setScheduleFormData(prev => ({ ...prev, start_date: dateStr, end_date: dateStr }));
-                                    }
-                                  }
-                                }}
-                                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                                initialFocus
-                                locale={ko}
-                                weekStartsOn={0}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                        <div>
-                          <label htmlFor="end_date" className="block text-xs text-slate-600 mb-1.5">
-                            종료 날짜
-                          </label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                id="end_date"
-                                className={cn(
-                                  "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm",
-                                  !scheduleFormData.end_date && "text-slate-500"
-                                )}
-                              >
-                                <Calendar className="mr-2 h-4 w-4 text-slate-500" />
-                                {scheduleFormData.end_date ? (
-                                  format(new Date(scheduleFormData.end_date), 'yyyy년 MM월 dd일', { locale: ko })
-                                ) : (
-                                  <span>날짜 선택</span>
-                                )}
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <CalendarComponent
-                                mode="single"
-                                selected={scheduleFormData.end_date ? new Date(scheduleFormData.end_date) : undefined}
-                                onSelect={(date) => {
-                                  if (date) {
-                                    setScheduleFormData({ ...scheduleFormData, end_date: format(date, 'yyyy-MM-dd') });
-                                  }
-                                }}
-                                disabled={(date) => {
-                                  const today = new Date(new Date().setHours(0, 0, 0, 0));
-                                  const minDate = scheduleFormData.start_date 
-                                    ? new Date(scheduleFormData.start_date) 
-                                    : today;
-                                  return date < minDate;
-                                }}
-                                initialFocus
-                                locale={ko}
-                                weekStartsOn={0}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-sm",
+                              !scheduleFormData.dateRange.from && !scheduleFormData.dateRange.to && "text-slate-500",
+                              scheduleFormData.dateRange.from && scheduleFormData.dateRange.to && "text-slate-900 font-medium"
+                            )}
+                          >
+                            <Calendar className="mr-2 h-4 w-4 text-slate-500" />
+                            {scheduleFormData.dateRange.from && scheduleFormData.dateRange.to ? (
+                              // 모두 선택된 경우: "2026년 3월 16일 - 2026년 3월 20일"
+                              `${format(scheduleFormData.dateRange.from, 'yyyy년 MM월 dd일', { locale: ko })} - ${format(scheduleFormData.dateRange.to, 'yyyy년 MM월 dd일', { locale: ko })}`
+                            ) : scheduleFormData.dateRange.from ? (
+                              // 시작일만 선택된 경우: "2026년 3월 16일 - (종료일 선택)"
+                              `${format(scheduleFormData.dateRange.from, 'yyyy년 MM월 dd일', { locale: ko })} - (종료일 선택)`
+                            ) : (
+                              // 선택 안 된 경우: "기간을 선택해주세요"
+                              <span>기간을 선택해주세요</span>
+                            )}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[calc(100vw-2rem)] max-w-[320px] p-2 bg-white rounded-xl shadow-lg border border-slate-100" align="start">
+                          <DateRangePicker
+                            selected={scheduleFormData.dateRange}
+                            onSelect={(range) => {
+                              setScheduleFormData({ 
+                                ...scheduleFormData, 
+                                dateRange: range
+                              });
+                            }}
+                            numberOfMonths={1}
+                            disabled={(date) => {
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              return date < today;
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
 
                     {/* 면접 시간 선택 - Segmented Control */}
