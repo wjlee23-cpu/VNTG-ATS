@@ -24,11 +24,13 @@ import { DocumentPreviewModal } from '@/components/candidates/DocumentPreviewMod
 import { MatchScoreSection } from '@/components/candidates/MatchScoreSection';
 import { getStageEvaluations } from '@/api/queries/evaluations';
 import { getResumeFilesByCandidate } from '@/api/queries/resume-files';
+import { getCandidateById } from '@/api/queries/candidates';
+import { getTimelineEvents } from '@/api/queries/timeline';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { getUserProfile } from '@/api/queries/auth';
 import { skipStage, moveToStage, getAvailableStagesAction } from '@/api/actions/evaluations';
 import { syncCandidateEmails } from '@/api/actions/emails';
-import { updateCandidate } from '@/api/actions/candidates';
+import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
 import { scheduleInterviewAutomated } from '@/api/actions/schedules';
 import { getUsers } from '@/api/queries/users';
@@ -144,8 +146,10 @@ interface CandidateDetailClientProps {
   isSidebar?: boolean;
 }
 
-export function CandidateDetailClient({ candidate, schedules, timelineEvents, onClose, isSidebar = false }: CandidateDetailClientProps) {
+export function CandidateDetailClient({ candidate: initialCandidate, schedules, timelineEvents, onClose, isSidebar = false }: CandidateDetailClientProps) {
   const router = useRouter();
+  // 후보자 데이터를 상태로 관리하여 부분 업데이트 가능하도록 함
+  const [candidate, setCandidate] = useState<Candidate>(initialCandidate);
   // View 모드: 'detail' 또는 'scheduling'
   const [viewMode, setViewMode] = useState<'detail' | 'scheduling'>('detail');
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -157,6 +161,8 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
   const [evaluations, setEvaluations] = useState<any[]>([]);
   const [resumeFiles, setResumeFiles] = useState<ResumeFile[]>([]);
+  // 타임라인 이벤트를 상태로 관리하여 부분 업데이트 가능하도록 함
+  const [timelineEventsState, setTimelineEventsState] = useState<TimelineEvent[]>(timelineEvents);
   const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer' | 'hiring_manager'>('recruiter');
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
@@ -199,6 +205,37 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
   });
   // 파일 업로드 상태
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  // 후보자 데이터 새로고침 상태 (전체 화면 오버레이 방지용)
+  const [isRefreshingCandidate, setIsRefreshingCandidate] = useState(false);
+
+  // 후보자 데이터를 부분 업데이트하는 함수 (백그라운드에서 실행, 화면 깜빡임 최소화)
+  const refreshCandidateData = async () => {
+    setIsRefreshingCandidate(true);
+    try {
+      const result = await getCandidateById(candidate.id);
+      if (result.data) {
+        setCandidate(result.data);
+      }
+    } catch (error) {
+      console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+      // 에러가 발생해도 기존 데이터는 유지
+    } finally {
+      setIsRefreshingCandidate(false);
+    }
+  };
+
+  // 타임라인 이벤트를 다시 로드하는 함수
+  const refreshTimelineEvents = async () => {
+    try {
+      const result = await getTimelineEvents(candidate.id);
+      if (result.data) {
+        setTimelineEventsState(result.data);
+      }
+    } catch (error) {
+      console.error('[CandidateDetailClient] 타임라인 이벤트 업데이트 실패:', error);
+      // 에러가 발생해도 기존 데이터는 유지
+    }
+  };
 
   // 평가 데이터 및 파일 로드
   useEffect(() => {
@@ -260,7 +297,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       } else {
         toast.success(result.message || '면접 일정 자동화가 시작되었습니다.');
         setViewMode('detail');
-        router.refresh();
+        // 후보자 데이터와 타임라인만 업데이트 (전체 페이지 리로드 방지)
+        refreshCandidateData().catch((error) => {
+          console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+        });
+        refreshTimelineEvents().catch((error) => {
+          console.error('[CandidateDetailClient] 타임라인 업데이트 실패:', error);
+        });
       }
     } catch (error) {
       toast.error('면접 일정 자동화에 실패했습니다.');
@@ -293,6 +336,77 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       setSelectedDocument(resumeFiles[0]);
     }
   }, [resumeFiles]);
+
+  // AI 분석 자동 트리거: 이력서 파일이 있고 분석 상태가 null 또는 pending인 경우
+  useEffect(() => {
+    // 디버깅: 현재 상태 로그
+    console.log('[CandidateDetailClient] AI 분석 트리거 체크:', {
+      resumeFilesCount: resumeFiles.length,
+      aiAnalysisStatus: candidate.ai_analysis_status,
+      jobPostId: candidate.job_post_id,
+      candidateId: candidate.id,
+    });
+
+    const shouldTriggerAnalysis = 
+      resumeFiles.length > 0 && 
+      (candidate.ai_analysis_status === null || candidate.ai_analysis_status === 'pending') &&
+      candidate.job_post_id;
+
+    if (shouldTriggerAnalysis) {
+      console.log('[CandidateDetailClient] AI 분석 트리거 조건 만족 - 분석 시작');
+      // AI 분석 시작 (비동기, 에러는 로그만 남김)
+      triggerAIAnalysis(candidate.id)
+        .then((result) => {
+          console.log('[CandidateDetailClient] AI 분석 트리거 성공:', result);
+          // 후보자 데이터 부분 업데이트 (ai_analysis_status가 'processing'으로 변경됨)
+          refreshCandidateData();
+        })
+        .catch((err) => {
+          console.error('[CandidateDetailClient] AI 분석 시작 실패:', err);
+          // 에러가 발생해도 사용자에게는 조용히 처리 (이미 스켈레톤 UI가 표시됨)
+        });
+    } else {
+      console.log('[CandidateDetailClient] AI 분석 트리거 조건 불만족:', {
+        hasResumeFiles: resumeFiles.length > 0,
+        isPendingOrNull: candidate.ai_analysis_status === null || candidate.ai_analysis_status === 'pending',
+        hasJobPostId: !!candidate.job_post_id,
+      });
+    }
+  }, [resumeFiles, candidate.ai_analysis_status, candidate.job_post_id, candidate.id, router]);
+
+  // AI 분석 상태 polling: 분석이 진행 중일 때 주기적으로 상태 확인
+  useEffect(() => {
+    // 분석이 진행 중이 아니면 polling 중지
+    if (candidate.ai_analysis_status !== 'processing') {
+      return;
+    }
+
+    // 3초마다 상태 확인
+    const intervalId = setInterval(async () => {
+      try {
+        const result = await getCandidateById(candidate.id);
+        if (result.data) {
+          const updatedCandidate = result.data;
+          setCandidate(updatedCandidate);
+          
+          // 분석이 완료되거나 실패하면 polling 중지
+          if (updatedCandidate.ai_analysis_status === 'completed' || 
+              updatedCandidate.ai_analysis_status === 'failed') {
+            clearInterval(intervalId);
+            console.log('[CandidateDetailClient] AI 분석 상태 polling 종료:', updatedCandidate.ai_analysis_status);
+          }
+        }
+      } catch (error) {
+        console.error('[CandidateDetailClient] AI 분석 상태 확인 실패:', error);
+        // 에러가 발생해도 polling은 계속 (일시적 네트워크 오류일 수 있음)
+      }
+    }, 3000); // 3초마다 확인
+
+    // cleanup: 컴포넌트 언마운트 시 또는 상태 변경 시 interval 정리
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [candidate.ai_analysis_status, candidate.id]);
 
   const loadEvaluations = async () => {
     setIsLoadingEvaluations(true);
@@ -1129,7 +1243,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         toast.error(result.error);
       } else {
         toast.success(`${targetStage.name}로 이동했습니다.`);
-        router.refresh();
+        // 후보자 데이터와 타임라인만 업데이트 (전체 페이지 리로드 방지)
+        refreshCandidateData().catch((error) => {
+          console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+        });
+        refreshTimelineEvents().catch((error) => {
+          console.error('[CandidateDetailClient] 타임라인 업데이트 실패:', error);
+        });
       }
     } catch (error) {
       toast.error('전형 이동 중 오류가 발생했습니다.');
@@ -1205,6 +1325,23 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             src={`${file.file_url}#toolbar=0&navpanes=0&scrollbar=0`}
             className="w-full h-full min-h-[700px]"
             title="PDF Preview"
+            onLoad={(e) => {
+              // iframe 로드 성공 시 에러 상태 초기화
+              const iframe = e.target as HTMLIFrameElement;
+              try {
+                // iframe의 contentWindow에 접근할 수 있는지 확인 (CORS 문제일 수 있음)
+                if (iframe.contentWindow) {
+                  setPdfLoadError(null);
+                }
+              } catch (err) {
+                // CORS 문제로 접근할 수 없는 경우는 정상 (다른 도메인)
+                // 에러 상태는 유지하지 않음
+              }
+            }}
+            onError={() => {
+              // iframe 로드 실패 시 에러 상태 설정
+              setPdfLoadError('PDF 파일을 로드할 수 없습니다. 파일이 손상되었거나 접근 권한이 없을 수 있습니다.');
+            }}
           />
           {/* PDF 로드 실패 시 대체 옵션 제공 */}
           <div className="absolute top-2 right-2">
@@ -1291,8 +1428,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             toast.info('동기화할 이메일이 없습니다.');
           }
         }
-        // 타임라인 새로고침
-        router.refresh();
+        // 타임라인만 새로고침 (전체 페이지 리로드 방지)
+        refreshTimelineEvents().catch((error) => {
+          console.error('[CandidateDetailClient] 타임라인 업데이트 실패:', error);
+        });
       }
     } catch (error) {
       console.error('[클라이언트] 이메일 동기화 오류:', error);
@@ -1357,8 +1496,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       } else {
         toast.success('후보자 정보가 수정되었습니다.');
         setIsEditMode(false);
-        // 페이지 새로고침
-        router.refresh();
+        // 후보자 데이터만 업데이트 (전체 페이지 리로드 방지)
+        refreshCandidateData().catch((error) => {
+          console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+        });
       }
     } catch (error: any) {
       toast.error(error.message || '수정 중 오류가 발생했습니다.');
@@ -1389,10 +1530,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         toast.error(result.error);
       } else {
         toast.success('파일이 업로드되었습니다.');
-        // 파일 목록 새로고침
+        // 파일 목록을 먼저 즉시 업데이트 (사용자에게 빠른 피드백)
         loadResumeFiles();
-        // 서버 컴포넌트 데이터도 갱신하여 후보자 정보(ai_analysis_status 등) 반영
-        router.refresh();
+        // 후보자 데이터는 백그라운드에서 업데이트 (화면 깜빡임 방지)
+        // await 없이 실행하여 화면이 블로킹되지 않도록 함
+        refreshCandidateData().catch((error) => {
+          console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+        });
       }
     } catch (error: any) {
       toast.error(error.message || '파일 업로드 중 오류가 발생했습니다.');
@@ -1412,8 +1556,13 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         toast.error(result.error);
       } else {
         toast.success('파일이 삭제되었습니다.');
-        // 파일 목록 새로고침
+        // 파일 목록을 먼저 즉시 업데이트 (사용자에게 빠른 피드백)
         loadResumeFiles();
+        // 후보자 데이터는 백그라운드에서 업데이트 (AI 분석 상태 초기화 반영)
+        // await 없이 실행하여 화면이 블로킹되지 않도록 함
+        refreshCandidateData().catch((error) => {
+          console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+        });
       }
     } catch (error: any) {
       toast.error(error.message || '파일 삭제 중 오류가 발생했습니다.');
@@ -1872,7 +2021,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
             </div>
           </CardHeader>
           <CardContent>
-            {timelineEvents.length === 0 ? (
+            {timelineEventsState.length === 0 ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
                   <MessageSquare className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
@@ -1885,7 +2034,7 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
                 <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-muted via-border to-muted" />
                 
                 <div className="space-y-6">
-                  {timelineEvents.map((event, index) => (
+                  {timelineEventsState.map((event, index) => (
                     <div key={event.id} className="relative flex gap-4 group">
                       {/* 아이콘 - 개선된 스타일 */}
                       <div className="relative z-10 flex-shrink-0 flex items-center justify-center">
@@ -2294,7 +2443,14 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       isOpen={isArchiveModalOpen}
       onClose={() => {
         setIsArchiveModalOpen(false);
-        router.refresh();
+        // 아카이브 후 후보자 데이터 업데이트 (전체 페이지 리로드 방지)
+        refreshCandidateData().catch((error) => {
+          console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+        });
+        // onClose 콜백이 있으면 호출 (부모 컴포넌트에서 목록 새로고침)
+        if (onClose) {
+          onClose();
+        }
       }}
     />
 
@@ -2305,7 +2461,10 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
       isOpen={isCommentModalOpen}
       onClose={() => {
         setIsCommentModalOpen(false);
-        router.refresh();
+        // 코멘트 추가 후 타임라인만 새로고침 (전체 페이지 리로드 방지)
+        refreshTimelineEvents().catch((error) => {
+          console.error('[CandidateDetailClient] 타임라인 업데이트 실패:', error);
+        });
       }}
     />
 
@@ -2322,8 +2481,11 @@ export function CandidateDetailClient({ candidate, schedules, timelineEvents, on
         isOpen={isEvaluationModalOpen}
         onClose={() => {
           setIsEvaluationModalOpen(false);
+          // 평가 데이터와 타임라인만 새로고침 (전체 페이지 리로드 방지)
           loadEvaluations();
-          router.refresh();
+          refreshTimelineEvents().catch((error) => {
+            console.error('[CandidateDetailClient] 타임라인 업데이트 실패:', error);
+          });
         }}
       />
     )}
