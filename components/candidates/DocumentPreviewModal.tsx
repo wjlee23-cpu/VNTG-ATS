@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Download, FileText, FileIcon } from 'lucide-react';
+import { X, Download, FileText, FileIcon, ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +9,7 @@ interface DocumentPreviewModalProps {
     id: string;
     file_url: string;
     file_type: string;
+    original_name?: string | null; // 원본 파일명 (한글 포함 가능)
   } | null;
   isOpen: boolean;
   onClose: () => void;
@@ -21,8 +22,13 @@ export function DocumentPreviewModal({
 }: DocumentPreviewModalProps) {
   if (!file) return null;
 
-  // 파일명 추출
+  // 파일명 추출 (원본 파일명 우선 사용)
   const getFileName = () => {
+    // original_name이 있으면 우선 사용
+    if (file.original_name) {
+      return file.original_name;
+    }
+    // 없으면 URL에서 추출
     const parts = file.file_url.split('/');
     return parts[parts.length - 1] || 'document';
   };
@@ -51,8 +57,9 @@ export function DocumentPreviewModal({
                 variant="outline"
                 size="sm"
                 onClick={() => window.open(file.file_url, '_blank')}
+                className="hover:bg-blue-50 hover:text-blue-700 transition-colors"
               >
-                <FileText className="w-4 h-4 mr-2" />
+                <ExternalLink className="w-4 h-4 mr-2" />
                 새 창에서 열기
               </Button>
             </div>
@@ -78,6 +85,7 @@ export function DocumentPreviewModal({
             link.download = getFileName();
             link.click();
           }}
+          className="hover:bg-blue-50 hover:text-blue-700 transition-colors"
         >
           <Download className="w-4 h-4 mr-2" />
           다운로드
@@ -106,7 +114,9 @@ export function DocumentPreviewModal({
                 link.href = file.file_url;
                 link.download = getFileName();
                 link.click();
+                onClose();
               }}
+              className="hover:bg-blue-50 hover:text-blue-700 transition-colors"
             >
               <Download className="w-4 h-4 mr-2" />
               다운로드

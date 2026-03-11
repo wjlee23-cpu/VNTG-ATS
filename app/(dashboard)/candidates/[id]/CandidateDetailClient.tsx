@@ -979,7 +979,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                 onClick={() => router.push(`/schedules?candidate=${candidate.id}`)}
                 variant="outline"
                 size="sm"
-                className="border-border bg-card hover:bg-accent transition-all duration-200"
+                className="border-border bg-card hover:bg-blue-50 hover:text-blue-700 transition-colors duration-200"
               >
                 <Settings className="w-4 h-4 mr-2" />
                 일정 조율 관리로 이동
@@ -1259,11 +1259,6 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
     }
   };
 
-  // 문서 열기 핸들러 (모달용)
-  const handleDocumentClick = (file: ResumeFile) => {
-    setSelectedDocument(file);
-    setIsDocumentPreviewOpen(true);
-  };
 
   // 문서 선택 핸들러 (인라인 미리보기용)
   const handleDocumentSelect = (file: ResumeFile) => {
@@ -1304,16 +1299,6 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
               >
                 다시 시도
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.open(file.file_url, '_blank');
-                }}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                새 창에서 열기
-              </Button>
             </div>
           </div>
         );
@@ -1343,20 +1328,6 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
               setPdfLoadError('PDF 파일을 로드할 수 없습니다. 파일이 손상되었거나 접근 권한이 없을 수 있습니다.');
             }}
           />
-          {/* PDF 로드 실패 시 대체 옵션 제공 */}
-          <div className="absolute top-2 right-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                window.open(file.file_url, '_blank');
-              }}
-              className="bg-white/90 backdrop-blur-sm shadow-sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              새 창에서 열기
-            </Button>
-          </div>
         </div>
       );
     }
@@ -1547,6 +1518,15 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
     }
   };
 
+  // 파일 다운로드 핸들러 (모달 없이 바로 다운로드)
+  const handleFileDownload = (file: ResumeFile) => {
+    const fileName = getFileName(file);
+    const link = document.createElement('a');
+    link.href = file.file_url;
+    link.download = fileName;
+    link.click();
+  };
+
   const handleFileDelete = async (fileId: string) => {
     if (!confirm('정말 이 파일을 삭제하시겠습니까?')) return;
 
@@ -1694,6 +1674,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                     onClick={() => setIsEditMode(true)}
                     size="sm"
                     variant="outline"
+                    className="hover:bg-blue-50 hover:text-blue-700 transition-colors"
                   >
                     <Settings className="w-4 h-4 mr-2" />
                     수정
@@ -1750,12 +1731,12 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
               </>
             ) : (
               <>
-                <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+                <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-200">
                   <Mail className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm text-foreground break-all">{candidate.email}</span>
                 </div>
                 {candidate.phone && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+                  <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-200">
                     <Phone className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                     <span className="text-sm text-foreground break-all">{candidate.phone}</span>
                   </div>
@@ -1763,7 +1744,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
               </>
             )}
             {location && (
-              <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors duration-200">
+              <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-200">
                 <MapPin className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                 <span className="text-sm text-foreground">{location}</span>
               </div>
@@ -1796,7 +1777,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                     variant="outline"
                     size="sm"
                     onClick={() => setShowCompensation(true)}
-                    className="transition-all duration-200"
+                    className="hover:bg-blue-50 hover:text-blue-700 transition-colors"
                   >
                     <Eye className="w-4 h-4 mr-2" />
                     View
@@ -1867,7 +1848,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                       size="sm"
                       variant="outline"
                       disabled={isUploadingFile}
-                      className="cursor-pointer"
+                      className="cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition-colors"
                       asChild
                     >
                       <span>
@@ -1908,7 +1889,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                           className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-all duration-200 group whitespace-nowrap ${
                             isSelected
                               ? 'border-primary bg-primary/5 shadow-md'
-                              : 'border-border hover:bg-accent/50 hover:shadow-md'
+                              : 'border-border hover:bg-blue-50 hover:shadow-md'
                           }`}
                         >
                           {file.file_type === 'pdf' ? (
@@ -1934,10 +1915,10 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDocumentClick(file);
+                                handleFileDownload(file);
                               }}
-                              className="flex-shrink-0 p-1 hover:bg-accent rounded transition-colors duration-200"
-                              title="새 창에서 열기"
+                              className="flex-shrink-0 p-1 hover:bg-blue-50 rounded transition-colors duration-200"
+                              title="다운로드"
                             >
                               <Download className={`w-4 h-4 transition-colors duration-200 ${
                                 isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
