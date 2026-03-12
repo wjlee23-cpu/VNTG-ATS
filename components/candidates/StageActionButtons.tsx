@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ArrowRight, SkipForward, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { skipStage, forceApproveStage, rejectCandidate, approveStageEvaluation } from '@/api/actions/evaluations';
+import { confirmHire } from '@/api/actions/offers';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -120,7 +121,30 @@ export function StageActionButtons({
     }
   };
 
+  const handleConfirmHire = async () => {
+    if (!confirm('입사 확정 처리하시겠습니까? 입사 확정된 후보자는 입사확정 필터에서 조회할 수 있습니다.')) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await confirmHire(candidateId);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('입사 확정 처리되었습니다.');
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('입사 확정 처리 중 오류가 발생했습니다.');
+      console.error('Confirm hire error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const isAdmin = userRole === 'admin';
+  const isOfferStage = currentStageName === 'Offer';
 
   return (
     <>
@@ -149,7 +173,7 @@ export function StageActionButtons({
             </Button>
           </>
         )}
-        {hasPassedEvaluations && (
+        {hasPassedEvaluations && !isOfferStage && (
           <Button
             onClick={handleApprove}
             variant="outline"
@@ -159,6 +183,18 @@ export function StageActionButtons({
           >
             <ArrowRight className="w-4 h-4 mr-2" />
             다음 전형으로
+          </Button>
+        )}
+        {isOfferStage && (
+          <Button
+            onClick={handleConfirmHire}
+            variant="outline"
+            size="sm"
+            disabled={isLoading}
+            className="border-green-300 text-green-700 hover:bg-green-50"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            입사 확정
           </Button>
         )}
         <Button

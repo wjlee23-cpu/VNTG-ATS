@@ -2,14 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal, Archive } from 'lucide-react';
+import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal, Archive, CheckCircle2 } from 'lucide-react';
 import { RECRUITMENT_STAGES, getStageNameByStageId, getStageNameById } from '@/constants/stages';
-import { getCandidateById, getArchivedCandidates, getConfirmedCandidates } from '@/api/queries/candidates';
+import { ARCHIVE_REASONS } from '@/constants/archive-reasons';
+import { getCandidateById, getArchivedCandidates, getConfirmedCandidates, getArchivedCandidatesByStage } from '@/api/queries/candidates';
+import { confirmHire } from '@/api/actions/offers';
+import { toast } from 'sonner';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { getTimelineEvents } from '@/api/queries/timeline';
 import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { AddCandidateModal } from '@/components/candidates/AddCandidateModal';
+import { CandidateDetailSkeleton } from '@/components/candidates/CandidateDetailSkeleton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
@@ -21,6 +25,7 @@ interface Candidate {
   status: 'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue';
   current_stage_id: string | null;
   job_post_id: string;
+  ai_score?: number | null;
   parsed_data: {
     match_score?: number;
     skills?: string[];
@@ -59,18 +64,38 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   const [isLoadingArchived, setIsLoadingArchived] = useState(false);
   const [isLoadingConfirmed, setIsLoadingConfirmed] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [currentStageCounts, setCurrentStageCounts] = useState<Record<string, number>>(stageCounts);
+  const [selectedArchiveReason, setSelectedArchiveReason] = useState<string>('all');
 
   // 클라이언트 마운트 확인 (Hydration 에러 방지)
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // 필터 변경 시 해당 후보자 로드
+  // 초기 마운트 시 stageCounts 설정
   useEffect(() => {
-    if (archiveFilter === 'archived' && isMounted) {
+    if (isMounted && archiveFilter === 'active') {
+      setCurrentStageCounts(stageCounts);
+    }
+  }, [isMounted, stageCounts]);
+
+  // 필터 변경 시 해당 후보자 및 단계별 카운트 로드
+  useEffect(() => {
+    if (!isMounted) return;
+
+    if (archiveFilter === 'archived') {
       loadArchivedCandidates();
-    } else if (archiveFilter === 'confirmed' && isMounted) {
+      // 아카이브 필터는 사유별 필터만 사용하므로 stageCounts는 빈 객체
+      setCurrentStageCounts({});
+      setSelectedArchiveReason('all'); // 필터 변경 시 사유 필터 초기화
+    } else if (archiveFilter === 'confirmed') {
       loadConfirmedCandidates();
+      // 입사확정 필터는 단계별 카운트가 필요 없으므로 빈 객체로 설정
+      setCurrentStageCounts({});
+    } else {
+      // Active 필터는 초기 stageCounts 사용
+      setCurrentStageCounts(stageCounts);
+      setSelectedArchiveReason('all'); // 필터 변경 시 사유 필터 초기화
     }
   }, [archiveFilter, isMounted]);
 
@@ -103,6 +128,22 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
       console.error('Load confirmed candidates error:', error);
     } finally {
       setIsLoadingConfirmed(false);
+    }
+  };
+
+  // 아카이브된 후보자의 단계별 카운트 로드
+  const loadArchivedStageCounts = async () => {
+    try {
+      const result = await getArchivedCandidatesByStage();
+      if (result.error) {
+        console.error('Failed to load archived stage counts:', result.error);
+        setCurrentStageCounts({});
+      } else {
+        setCurrentStageCounts(result.data || {});
+      }
+    } catch (error) {
+      console.error('Load archived stage counts error:', error);
+      setCurrentStageCounts({});
     }
   };
 
@@ -219,10 +260,17 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     archiveFilter === 'confirmed' ? confirmedCandidates :
     initialCandidates;
 
-  // 검색 및 단계 필터링
+  // 검색 및 필터링
   const filteredCandidates = candidatesToFilter.filter(candidate => {
-    // 단계 필터링
-    if (selectedStage !== 'all') {
+    // 아카이브 필터일 때 아카이브 사유 필터링
+    if (archiveFilter === 'archived' && selectedArchiveReason !== 'all') {
+      if ((candidate as any).archive_reason !== selectedArchiveReason) {
+        return false;
+      }
+    }
+
+    // 단계 필터링 (Active 필터일 때만)
+    if (archiveFilter === 'active' && selectedStage !== 'all') {
       const candidateStage = getStageName(candidate.current_stage_id);
       const selectedStageName = getStageNameById(selectedStage);
       // null 체크 추가: 둘 다 null이 아니고 같은 경우만 통과
@@ -294,7 +342,11 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             <Users className="w-8 h-8 text-foreground" />
             <h1 className="text-3xl font-bold text-foreground">Candidates</h1>
             <span className="bg-blue-50 text-[#5287FF] rounded-full px-3 py-1 text-sm font-medium">
-              {activeCandidatesCount} active candidates
+              {archiveFilter === 'archived' 
+                ? `${activeCandidatesCount} archived candidates`
+                : archiveFilter === 'confirmed'
+                ? `${activeCandidatesCount} confirmed candidates`
+                : `${activeCandidatesCount} active candidates`}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -340,55 +392,90 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         </div>
 
         {/* Stage Filters - Segmented Control 스타일 */}
-        <div className="mb-6 overflow-x-auto">
-          <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
-            {RECRUITMENT_STAGES.map((stage) => {
-              const count = stage.id === 'all' 
-                ? activeCandidatesCount 
-                : (stageCounts[stage.name] || 0);
-              const isSelected = selectedStage === stage.id;
-              
-              return (
-                <button
-                  key={stage.id}
-                  onClick={() => setSelectedStage(stage.id)}
-                  className={`
-                    px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all
-                    ${isSelected
-                      ? 'bg-white shadow-sm text-foreground'
-                      : 'text-slate-600 hover:bg-slate-50/50'
-                    }
-                  `}
-                >
-                  {stage.label}
-                  {count > 0 && (
-                    <span className={`ml-2 ${isSelected ? 'text-foreground' : 'text-slate-500'}`}>
-                      ({count})
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+        {/* Active 필터일 때는 단계별 필터 표시 */}
+        {archiveFilter === 'active' && (
+          <div className="mb-6 overflow-x-auto">
+            <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
+              {RECRUITMENT_STAGES.map((stage) => {
+                const count = stage.id === 'all' 
+                  ? activeCandidatesCount 
+                  : (currentStageCounts[stage.name] || 0);
+                const isSelected = selectedStage === stage.id;
+                
+                return (
+                  <button
+                    key={stage.id}
+                    onClick={() => setSelectedStage(stage.id)}
+                    className={`
+                      px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all
+                      ${isSelected
+                        ? 'bg-white shadow-sm text-foreground'
+                        : 'text-slate-600 hover:bg-slate-50/50'
+                      }
+                    `}
+                  >
+                    {stage.label}
+                    {count > 0 && (
+                      <span className={`ml-2 ${isSelected ? 'text-foreground' : 'text-slate-500'}`}>
+                        ({count})
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Search and Filters */}
-        <div className="mb-6 flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={20} />
-            <input
-              type="text"
-              placeholder="Search candidates, jobs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white"
-            />
+        {/* Archive Reason Filters - 아카이브 필터일 때 아카이브 사유별 필터 표시 */}
+        {archiveFilter === 'archived' && (
+          <div className="mb-6 overflow-x-auto">
+            <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
+              <button
+                onClick={() => setSelectedArchiveReason('all')}
+                className={`
+                  px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all
+                  ${selectedArchiveReason === 'all'
+                    ? 'bg-white shadow-sm text-foreground'
+                    : 'text-slate-600 hover:bg-slate-50/50'
+                  }
+                `}
+              >
+                All Reasons
+                {activeCandidatesCount > 0 && (
+                  <span className={`ml-2 ${selectedArchiveReason === 'all' ? 'text-foreground' : 'text-slate-500'}`}>
+                    ({activeCandidatesCount})
+                  </span>
+                )}
+              </button>
+              {ARCHIVE_REASONS.map((reason) => {
+                const count = archivedCandidates.filter(c => (c as any).archive_reason === reason.id).length;
+                const isSelected = selectedArchiveReason === reason.id;
+                
+                return (
+                  <button
+                    key={reason.id}
+                    onClick={() => setSelectedArchiveReason(reason.id)}
+                    className={`
+                      px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all
+                      ${isSelected
+                        ? 'bg-white shadow-sm text-foreground'
+                        : 'text-slate-600 hover:bg-slate-50/50'
+                      }
+                    `}
+                  >
+                    {reason.label}
+                    {count > 0 && (
+                      <span className={`ml-2 ${isSelected ? 'text-foreground' : 'text-slate-500'}`}>
+                        ({count})
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <button className="px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center gap-2 text-slate-600 h-10">
-            <Filter size={18} />
-            필터
-          </button>
-        </div>
+        )}
 
         {/* Error Message */}
         {error && (
@@ -442,7 +529,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 <tbody>
                   {filteredCandidates.map((candidate) => {
                     const stageName = getStageName(candidate.current_stage_id);
-                    const matchScore = candidate.parsed_data?.match_score || 0;
+                    // AI Match Insight 점수 사용 (ai_score가 null이면 0으로 표시)
+                    const matchScore = candidate.ai_score ?? 0;
                     
                     return (
                       <tr
@@ -482,13 +570,19 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                         {/* MATCH */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="flex-1 bg-slate-100 rounded-full h-2 max-w-[100px]">
-                              <div 
-                                className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] h-2 rounded-full transition-all"
-                                style={{ width: `${matchScore}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-semibold text-foreground">{matchScore}</span>
+                            {matchScore > 0 ? (
+                              <>
+                                <div className="flex-1 bg-slate-100 rounded-full h-2 max-w-[100px]">
+                                  <div 
+                                    className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] h-2 rounded-full transition-all"
+                                    style={{ width: `${matchScore}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm font-semibold text-foreground">{matchScore}</span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
                           </div>
                         </td>
                         {/* APPLIED */}
@@ -505,17 +599,46 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                         </td>
                         {/* Actions */}
                         <td className="px-6 py-4">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCandidateForArchive({ id: candidate.id, name: candidate.name });
-                              setArchiveModalOpen(true);
-                            }}
-                            className="p-1 hover:bg-slate-100 rounded transition-colors"
-                            title="아카이브"
-                          >
-                            <Archive size={16} className="text-slate-400" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {/* 오퍼 단계일 때 입사 확정 버튼 */}
+                            {getStageNameByStageId(candidate.current_stage_id) === 'Offer' && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm('입사 확정 처리하시겠습니까? 입사 확정된 후보자는 입사확정 필터에서 조회할 수 있습니다.')) {
+                                    return;
+                                  }
+                                  try {
+                                    const result = await confirmHire(candidate.id);
+                                    if (result.error) {
+                                      toast.error(result.error);
+                                    } else {
+                                      toast.success('입사 확정 처리되었습니다.');
+                                      router.refresh();
+                                    }
+                                  } catch (error) {
+                                    toast.error('입사 확정 처리 중 오류가 발생했습니다.');
+                                    console.error('Confirm hire error:', error);
+                                  }
+                                }}
+                                className="p-1 hover:bg-green-100 rounded transition-colors"
+                                title="입사 확정"
+                              >
+                                <CheckCircle2 size={16} className="text-green-600" />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCandidateForArchive({ id: candidate.id, name: candidate.name });
+                                setArchiveModalOpen(true);
+                              }}
+                              className="p-1 hover:bg-slate-100 rounded transition-colors"
+                              title="아카이브"
+                            >
+                              <Archive size={16} className="text-slate-400" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -549,12 +672,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           </DialogTitle>
           <div className="h-full overflow-hidden">
             {isLoadingDetail ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                  <p className="text-muted-foreground">로딩 중...</p>
-                </div>
-              </div>
+              <CandidateDetailSkeleton />
             ) : detailError ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="text-center">

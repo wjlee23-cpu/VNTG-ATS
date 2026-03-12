@@ -35,8 +35,12 @@ export async function archiveCandidate(id: string, reason: string) {
       throw new Error(`아카이브 처리 실패: ${error.message}`);
     }
 
+    if (!data) {
+      throw new Error('아카이브 처리된 후보자 데이터를 찾을 수 없습니다.');
+    }
+
     // 타임라인 이벤트 생성
-    await supabase.from('timeline_events').insert({
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: id,
       type: 'archive',
       content: {
@@ -45,6 +49,11 @@ export async function archiveCandidate(id: string, reason: string) {
       },
       created_by: user.userId,
     });
+
+    if (timelineError) {
+      console.error('[타임라인] 이벤트 생성 실패 (아카이브):', timelineError);
+      // 타임라인 이벤트 생성 실패는 치명적이지 않으므로 계속 진행
+    }
 
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');

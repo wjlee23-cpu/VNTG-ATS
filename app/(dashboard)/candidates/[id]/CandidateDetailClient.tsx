@@ -29,6 +29,7 @@ import { getTimelineEvents } from '@/api/queries/timeline';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { getUserProfile } from '@/api/queries/auth';
 import { skipStage, moveToStage, getAvailableStagesAction } from '@/api/actions/evaluations';
+import { confirmHire } from '@/api/actions/offers';
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
@@ -1622,18 +1623,49 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
               <Mail className="w-4 h-4 mr-2" />
               Email
             </Button>
-            {/* 전형이동 버튼 - Popover로 단계 선택 */}
-            <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
-              <PopoverTrigger asChild className="w-full min-w-0">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900 min-w-0"
-                  disabled={isMovingStage}
-                >
-                  <ArrowRightCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                  {isMovingStage ? '이동 중...' : '전형이동'}
-                </Button>
-              </PopoverTrigger>
+            {/* 오퍼 단계일 때 입사 확정 버튼, 그 외에는 전형이동 버튼 */}
+            {currentStageName === 'Offer' ? (
+              <Button
+                onClick={async () => {
+                  if (!confirm('입사 확정 처리하시겠습니까? 입사 확정된 후보자는 입사확정 필터에서 조회할 수 있습니다.')) {
+                    return;
+                  }
+                  try {
+                    const result = await confirmHire(candidate.id);
+                    if (result.error) {
+                      toast.error(result.error);
+                    } else {
+                      toast.success('입사 확정 처리되었습니다.');
+                      refreshCandidateData().catch((error) => {
+                        console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+                      });
+                      if (onClose) {
+                        onClose();
+                      }
+                    }
+                  } catch (error) {
+                    toast.error('입사 확정 처리 중 오류가 발생했습니다.');
+                    console.error('Confirm hire error:', error);
+                  }
+                }}
+                variant="ghost"
+                className="w-full justify-start text-green-700 hover:bg-green-50 hover:text-green-800"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                입사 확정
+              </Button>
+            ) : (
+              <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                    disabled={isMovingStage}
+                  >
+                    <ArrowRightCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+                    <span className="flex-1 text-left">{isMovingStage ? '이동 중...' : '전형이동'}</span>
+                  </Button>
+                </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="start">
                 {isLoadingStages ? (
                   <div className="flex items-center justify-center py-4">
@@ -1672,6 +1704,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                 )}
               </PopoverContent>
             </Popover>
+            )}
             <Button
               onClick={() => setIsArchiveModalOpen(true)}
               variant="ghost"

@@ -233,6 +233,81 @@ export async function getCandidatesByStage() {
 }
 
 /**
+ * 아카이브된 후보자의 단계별 수 조회
+ * @returns 아카이브된 후보자의 단계별 수
+ */
+export async function getArchivedCandidatesByStage() {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const isAdmin = user.role === 'admin';
+    
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    // 관리자일 경우 모든 job_posts 조회, 일반 사용자는 자신의 organization_id로 필터링
+    let jobPostsQuery = supabase
+      .from('job_posts')
+      .select('id');
+    
+    if (!isAdmin) {
+      jobPostsQuery = jobPostsQuery.eq('organization_id', user.organizationId);
+    }
+
+    const { data: jobPosts } = await jobPostsQuery;
+
+    if (!jobPosts || jobPosts.length === 0) {
+      return {};
+    }
+
+    const jobPostIds = jobPosts.map(jp => jp.id);
+
+    // 아카이브된 후보자만 조회 (current_stage_id 포함)
+    const { data: candidates } = await supabase
+      .from('candidates')
+      .select('current_stage_id')
+      .in('job_post_id', jobPostIds)
+      .eq('archived', true); // 아카이브된 후보자만 조회
+
+    // 단계별 카운트 (current_stage_id를 단계 이름으로 매핑)
+    const byStage: Record<string, number> = {};
+    
+    // 단계 이름 목록 (사용자가 정의한 단계)
+    const stageNames = [
+      'New Application',
+      'HR Screening',
+      'Application Review',
+      'Competency Assessment',
+      'Technical Test',
+      '1st Interview',
+      'Reference Check',
+      '2nd Interview',
+      'Offer',
+    ];
+
+    // 각 단계별로 초기값 설정
+    stageNames.forEach(stageName => {
+      byStage[stageName] = 0;
+    });
+
+    candidates?.forEach(candidate => {
+      // current_stage_id는 process의 stage ID("stage-1", "stage-2" 등)이므로
+      // 매핑 상수를 사용하여 단계 이름으로 변환
+      const stageName = getStageNameByStageId(candidate.current_stage_id) || 'New Application';
+      
+      // stageName이 정의된 단계 목록에 포함되어 있으면 카운트 증가
+      if (stageNames.includes(stageName)) {
+        byStage[stageName] = (byStage[stageName] || 0) + 1;
+      } else {
+        // 정의되지 않은 단계는 'New Application'으로 카운트
+        byStage['New Application'] = (byStage['New Application'] || 0) + 1;
+      }
+    });
+
+    return byStage;
+  });
+}
+
+/**
  * 후보자 통계 조회
  * @param jobPostId 채용 공고 ID (선택, 없으면 전체)
  * @returns 후보자 통계
