@@ -725,9 +725,11 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       
       for (const interviewer of interviewersWithCalendar) {
         try {
+          // userId를 전달하여 갱신된 토큰을 DB에 자동 저장
           const token = await refreshAccessTokenIfNeeded(
             interviewer.calendar_access_token!,
-            interviewer.calendar_refresh_token!
+            interviewer.calendar_refresh_token!,
+            interviewer.id
           );
           
           const busyTimes = await getBusyTimes(
@@ -886,7 +888,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       const organizer = interviewersWithCalendar[0];
       const organizerToken = await refreshAccessTokenIfNeeded(
         organizer.calendar_access_token!,
-        organizer.calendar_refresh_token!
+        organizer.calendar_refresh_token!,
+        organizer.id
       );
 
       // 부분적 충돌 정보 처리
@@ -1254,9 +1257,11 @@ async function regenerateScheduleOptions(scheduleId: string) {
     
     for (const interviewer of interviewersWithCalendar) {
       try {
+        // userId를 전달하여 갱신된 토큰을 DB에 자동 저장
         const token = await refreshAccessTokenIfNeeded(
           interviewer.calendar_access_token!,
-          interviewer.calendar_refresh_token!
+          interviewer.calendar_refresh_token!,
+          interviewer.id
         );
         
         const busyTimes = await getBusyTimes(
@@ -1353,7 +1358,8 @@ async function regenerateScheduleOptions(scheduleId: string) {
     const organizer = interviewersWithCalendar[0];
     const organizerToken = await refreshAccessTokenIfNeeded(
       organizer.calendar_access_token!,
-      organizer.calendar_refresh_token!
+      organizer.calendar_refresh_token!,
+      organizer.id
     );
 
     // 구글 캘린더에 block 일정 생성
@@ -2984,9 +2990,11 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
 
     for (const interviewer of interviewersWithCalendar) {
       try {
+        // userId를 전달하여 갱신된 토큰을 DB에 자동 저장
         const token = await refreshAccessTokenIfNeeded(
           interviewer.calendar_access_token!,
-          interviewer.calendar_refresh_token!
+          interviewer.calendar_refresh_token!,
+          interviewer.id
         );
         
         const busyTimes = await getBusyTimes(
@@ -3053,7 +3061,8 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
 
       const organizerToken = await refreshAccessTokenIfNeeded(
         organizer.calendar_access_token,
-        organizer.calendar_refresh_token
+        organizer.calendar_refresh_token,
+        organizer.id
       );
 
       // 구글 캘린더에 block 일정 생성
@@ -3352,7 +3361,8 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
     const organizer = interviewersWithCalendar[0];
     const organizerToken = await refreshAccessTokenIfNeeded(
       organizer.calendar_access_token!,
-      organizer.calendar_refresh_token!
+      organizer.calendar_refresh_token!,
+      organizer.id
     );
 
     // 구글 캘린더에 block 일정 생성

@@ -78,7 +78,7 @@ export async function sendEmailToCandidate(formData: FormData) {
       throw new Error(`이메일 저장 실패: ${emailError.message}`);
     }
 
-    // Gmail API를 사용하여 이메일 발송
+    // Gmail API를 사용하여 이메일 발송 (userId 전달하여 토큰 갱신 시 DB 저장)
     const emailResult = await sendEmailViaGmail(
       currentUserData.calendar_access_token,
       currentUserData.calendar_refresh_token,
@@ -88,7 +88,8 @@ export async function sendEmailToCandidate(formData: FormData) {
         subject,
         html: body.replace(/\n/g, '<br>'), // 줄바꿈을 HTML로 변환
         replyTo: currentUserData.email || user.email,
-      }
+      },
+      user.userId
     )
 
     // 이메일 발송 결과 업데이트
@@ -394,7 +395,8 @@ export async function syncCandidateEmails(candidateId: string, daysBack: number 
             currentUserData.calendar_access_token,
             currentUserData.calendar_refresh_token,
             query,
-            500 // 최대 500개까지 조회 (페이지네이션으로 더 많이 조회 가능)
+            500, // 최대 500개까지 조회 (페이지네이션으로 더 많이 조회 가능)
+            user.userId // userId 전달하여 토큰 갱신 시 DB에 자동 저장
           );
           
           const elapsedTime = Date.now() - startTime;
@@ -464,7 +466,8 @@ export async function syncCandidateEmails(candidateId: string, daysBack: number 
               currentUserData.calendar_access_token,
               currentUserData.calendar_refresh_token,
               query,
-              500 // 최대 500개까지 조회
+              500, // 최대 500개까지 조회
+              user.userId // userId 전달하여 토큰 갱신 시 DB에 자동 저장
             );
             
             const elapsedTime = Date.now() - startTime;
@@ -685,7 +688,8 @@ export async function syncCandidateEmails(candidateId: string, daysBack: number 
           message = await getMessage(
             currentUserData.calendar_access_token,
             currentUserData.calendar_refresh_token,
-            messageId
+            messageId,
+            user.userId // userId 전달하여 토큰 갱신 시 DB에 자동 저장
           );
         } catch (error: any) {
           const errorMessage = error.message || '알 수 없는 오류';

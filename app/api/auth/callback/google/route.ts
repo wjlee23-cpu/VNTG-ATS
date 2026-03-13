@@ -5,8 +5,11 @@ import { google } from 'googleapis';
 /**
  * 구글 OAuth 콜백 처리
  * 로그인과 캘린더 연동을 함께 처리합니다.
+ * 
+ * 🔑 핵심 로직:
  * - 로그인 플로우: Google OAuth → Supabase 사용자 생성/로그인 → 캘린더 토큰 저장
  * - 캘린더 연동 플로우: 기존 사용자의 캘린더 토큰만 업데이트
+ * - refresh_token이 없고 DB에도 없을 때: prompt=consent로 자동 재시도 (1회만)
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -40,9 +43,7 @@ export async function GET(request: Request) {
 
   // 코드가 없으면 에러
   if (!code) {
-    const errorMessage = flowType === 'login'
-      ? '인증 코드를 받지 못했습니다'
-      : '인증 코드를 받지 못했습니다';
+    const errorMessage = '인증 코드를 받지 못했습니다';
     return NextResponse.redirect(
       new URL(`/login?error=oauth_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
     );
@@ -65,9 +66,6 @@ export async function GET(request: Request) {
     if (!tokens.access_token) {
       throw new Error('액세스 토큰을 받지 못했습니다.');
     }
-
-    // refresh token이 없을 수 있음 (이미 권한이 있는 경우)
-    // 이 경우 기존 refresh token을 유지하도록 처리
 
     // 토큰으로 사용자 정보 가져오기
     oauth2Client.setCredentials({
@@ -114,9 +112,36 @@ export async function GET(request: Request) {
       // users 테이블에 사용자가 있는지 확인
       const { data: existingUser } = await serviceClient
         .from('users')
-        .select('id, email, organization_id, role')
+        .select('id, email, organization_id, role, calendar_refresh_token')
         .eq('id', authUserId)
         .single();
+
+      // ─── refresh_token 자동 재시도 로직 ───
+      // Google은 prompt: 'consent' 없이는 refresh_token을 발급하지 않음 (이미 승인된 경우)
+      // DB에도 refresh_token이 없다면, prompt: 'consent'로 1회 재시도하여 반드시 확보
+      const hasNewRefreshToken = !!tokens.refresh_token;
+      const hasExistingRefreshToken = !!existingUser?.calendar_refresh_token;
+
+      if (!hasNewRefreshToken && !hasExistingRefreshToken) {
+        // refresh_token이 어디에도 없음 → prompt: 'consent'로 재시도
+        console.log('[OAuth 콜백] refresh_token 없음 → force_consent로 재시도');
+        
+        // 먼저 access_token이라도 저장 (유저가 이미 존재하면)
+        if (existingUser) {
+          await serviceClient
+            .from('users')
+            .update({
+              calendar_provider: 'google',
+              calendar_access_token: tokens.access_token,
+            })
+            .eq('id', authUserId);
+        }
+
+        // prompt: 'consent'를 포함하여 다시 Google OAuth로 리다이렉트
+        return NextResponse.redirect(
+          new URL(`/api/auth/google?next=${encodeURIComponent(next)}&force_consent=true`, requestUrl.origin)
+        );
+      }
 
       if (!existingUser) {
         // users 테이블에 사용자 생성
@@ -168,13 +193,6 @@ export async function GET(request: Request) {
         }
       } else {
         // 기존 사용자의 캘린더 토큰 업데이트
-        // refresh token이 없으면 기존 refresh token을 유지
-        const { data: existingUserData } = await serviceClient
-          .from('users')
-          .select('calendar_refresh_token')
-          .eq('id', authUserId)
-          .single();
-
         const updateData: {
           calendar_provider: string;
           calendar_access_token: string;
@@ -184,12 +202,11 @@ export async function GET(request: Request) {
           calendar_access_token: tokens.access_token,
         };
 
-        // refresh token이 있으면 업데이트, 없으면 기존 것 유지
+        // refresh_token 결정: 새 토큰 우선 → 기존 토큰 유지
         if (tokens.refresh_token) {
           updateData.calendar_refresh_token = tokens.refresh_token;
-        } else if (existingUserData?.calendar_refresh_token) {
-          // refresh token이 없지만 기존 refresh token이 있으면 유지
-          updateData.calendar_refresh_token = existingUserData.calendar_refresh_token;
+        } else if (existingUser.calendar_refresh_token) {
+          updateData.calendar_refresh_token = existingUser.calendar_refresh_token;
         }
 
         const { error: updateError } = await serviceClient
@@ -204,7 +221,6 @@ export async function GET(request: Request) {
       }
 
       // Supabase Auth 세션 생성 (매직 링크 방식)
-      // 매직 링크를 생성하여 자동 로그인
       const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
         type: 'magiclink',
         email: userInfo.email,
@@ -212,25 +228,21 @@ export async function GET(request: Request) {
 
       if (linkError || !linkData) {
         console.error('매직 링크 생성 실패:', linkError);
-        // 매직 링크 생성 실패 시: 사용자에게 이메일로 로그인하도록 안내
-        // (캘린더 토큰은 이미 저장되었으므로, 이후에는 이메일로 로그인하면 됩니다)
         return NextResponse.redirect(
           new URL(`/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`, requestUrl.origin)
         );
       }
 
       // 매직 링크의 action_link로 리다이렉트하여 자동 로그인
-      // action_link는 Supabase Auth 세션을 생성하는 URL입니다
       if (linkData.properties?.action_link) {
         return NextResponse.redirect(linkData.properties.action_link);
       }
 
-      // action_link가 없으면 로그인 페이지로 리다이렉트
       return NextResponse.redirect(
         new URL(`/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`, requestUrl.origin)
       );
     } else {
-      // 캘린더 연동 플로우: 기존 사용자의 캘린더 토큰만 업데이트
+      // ─── 캘린더 연동 플로우: 기존 사용자의 캘린더 토큰만 업데이트 ───
       const { data: { user: authUser } } = await supabase.auth.getUser();
       
       if (!authUser) {
@@ -239,8 +251,7 @@ export async function GET(request: Request) {
         );
       }
 
-      // 사용자 정보에 구글 캘린더 토큰 저장
-      // refresh token이 없으면 기존 refresh token을 유지
+      // 기존 refresh_token 조회
       const { data: existingUserData } = await serviceClient
         .from('users')
         .select('calendar_refresh_token')
@@ -256,11 +267,10 @@ export async function GET(request: Request) {
         calendar_access_token: tokens.access_token,
       };
 
-      // refresh token이 있으면 업데이트, 없으면 기존 것 유지
+      // refresh_token 결정: 새 토큰 우선 → 기존 토큰 유지
       if (tokens.refresh_token) {
         updateData.calendar_refresh_token = tokens.refresh_token;
       } else if (existingUserData?.calendar_refresh_token) {
-        // refresh token이 없지만 기존 refresh token이 있으면 유지
         updateData.calendar_refresh_token = existingUserData.calendar_refresh_token;
       }
 

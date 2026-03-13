@@ -1,16 +1,24 @@
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 /**
  * 구글 로그인 시작점 (모든 권한 포함)
  * 캘린더, Gmail 권한을 포함하여 처음부터 모든 권한을 받습니다.
+ * 
+ * 🔑 핵심 로직:
+ * - 기본적으로 prompt: 'select_account' 사용 → 계정 선택만, 동의 화면 생략
+ * - 처음 사용하는 구글 계정은 자동으로 동의 화면이 표시됨 (구글이 알아서 처리)
+ * - 이미 권한을 승인한 계정은 계정 선택만으로 바로 로그인됨
+ * - 콜백에서 refresh_token이 없고 DB에도 없는 경우에만 prompt: 'consent'로 재시도
+ * 
  * GET /api/auth/google?next=/dashboard
  */
 export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
     const next = requestUrl.searchParams.get('next') || '/dashboard';
+    // 콜백에서 재시도 요청이 올 수 있음 (refresh_token 미발급 시)
+    const forceConsent = requestUrl.searchParams.get('force_consent') === 'true';
 
     // Google OAuth2 클라이언트 생성
     const oauth2Client = new google.auth.OAuth2(
@@ -21,39 +29,14 @@ export async function GET(request: Request) {
 
     // 필요한 모든 스코프 포함
     const scopes = [
-      'https://www.googleapis.com/auth/calendar', // 캘린더 읽기/쓰기
-      'https://www.googleapis.com/auth/gmail.send', // Gmail 발송
-      'https://www.googleapis.com/auth/gmail.readonly', // Gmail 읽기 권한 (이메일 동기화용)
-      'https://www.googleapis.com/auth/userinfo.email', // 이메일 정보
+      'https://www.googleapis.com/auth/calendar',       // 캘린더 읽기/쓰기
+      'https://www.googleapis.com/auth/gmail.send',      // Gmail 발송
+      'https://www.googleapis.com/auth/gmail.readonly',  // Gmail 읽기 권한 (이메일 동기화용)
+      'https://www.googleapis.com/auth/userinfo.email',  // 이메일 정보
       'https://www.googleapis.com/auth/userinfo.profile', // 프로필 정보
     ];
 
-    // 사용자가 이미 로그인되어 있고 캘린더를 연동했는지 확인
-    let usePromptConsent = true; // 기본값: 항상 동의 화면 표시
-    try {
-      const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        // 사용자가 이미 로그인되어 있으면 연동 상태 확인
-        const serviceClient = createServiceClient();
-        const { data: userData } = await serviceClient
-          .from('users')
-          .select('calendar_provider, calendar_refresh_token')
-          .eq('id', user.id)
-          .single();
-
-        // 이미 연동되어 있고 refresh token이 있으면 prompt: 'consent' 제거
-        if (userData?.calendar_provider === 'google' && userData?.calendar_refresh_token) {
-          usePromptConsent = false;
-        }
-      }
-    } catch (error) {
-      // 사용자 확인 실패 시 기본값 사용 (항상 동의 화면 표시)
-      console.log('사용자 연동 상태 확인 실패, 기본값 사용:', error);
-    }
-
-    // OAuth URL 생성
+    // OAuth URL 옵션 구성
     const authUrlOptions: {
       access_type: string;
       scope: string[];
@@ -65,9 +48,13 @@ export async function GET(request: Request) {
       state: encodeURIComponent(JSON.stringify({ next, type: 'login' })),
     };
 
-    // 사용자가 이미 연동되어 있으면 prompt 제거, 아니면 prompt: 'consent' 사용
-    if (usePromptConsent) {
+    if (forceConsent) {
+      // 콜백에서 재시도 요청: refresh_token이 필요하므로 동의 화면 강제 표시
       authUrlOptions.prompt = 'consent';
+    } else {
+      // 기본값: 계정 선택만 표시 (이전에 권한을 승인한 경우 동의 화면 생략)
+      // → 컴퓨터 껐다 켜도 계정만 선택하면 바로 로그인됨
+      authUrlOptions.prompt = 'select_account';
     }
 
     const authUrl = oauth2Client.generateAuthUrl(authUrlOptions);

@@ -51,12 +51,13 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
           if (user) {
             const { data: userData } = await supabase
               .from('users')
-              .select('calendar_provider, calendar_access_token')
+              .select('calendar_provider, calendar_refresh_token')
               .eq('id', user.id)
               .single();
             
+            // refresh_token 기준으로 연동 상태 판단 (access_token은 1시간이면 만료되지만 refresh_token은 장기 유효)
             setIsCalendarConnected(
-              userData?.calendar_provider === 'google' && !!userData?.calendar_access_token
+              userData?.calendar_provider === 'google' && !!userData?.calendar_refresh_token
             );
           }
         }

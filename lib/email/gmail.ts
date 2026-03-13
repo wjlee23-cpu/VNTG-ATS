@@ -40,7 +40,7 @@ async function getTokenScopes(accessToken: string): Promise<string[]> {
  * @param refreshToken Google OAuth refresh token (토큰 갱신용)
  * @returns Gmail API 클라이언트
  */
-export async function getGmailClient(accessToken: string, refreshToken: string, requireReadScope: boolean = false) {
+export async function getGmailClient(accessToken: string, refreshToken: string, requireReadScope: boolean = false, userId?: string) {
   // 환경 변수 확인
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     console.error('[Gmail API] ❌ 환경 변수 미설정:', {
@@ -52,8 +52,8 @@ export async function getGmailClient(accessToken: string, refreshToken: string, 
   
   console.log('[Gmail API] 환경 변수 확인 완료');
   
-  // 토큰이 만료되었을 수 있으므로 먼저 갱신 확인
-  const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
+  // 토큰이 만료되었을 수 있으므로 먼저 갱신 확인 (userId가 있으면 갱신된 토큰을 DB에 저장)
+  const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken, userId)
   
   // 토큰 스코프 확인
   const scopes = await getTokenScopes(token)
@@ -154,11 +154,12 @@ function createMimeMessage(options: EmailOptions): string {
 export async function sendEmailViaGmail(
   accessToken: string,
   refreshToken: string,
-  options: EmailOptions
+  options: EmailOptions,
+  userId?: string // userId가 전달되면 토큰 갱신 시 DB에 자동 저장
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    // Gmail API 클라이언트 생성
-    const gmail = await getGmailClient(accessToken, refreshToken)
+    // Gmail API 클라이언트 생성 (userId 전달하여 토큰 갱신 시 DB 저장)
+    const gmail = await getGmailClient(accessToken, refreshToken, false, userId)
 
     // MIME 메시지 생성
     const mimeMessage = createMimeMessage(options)
@@ -249,11 +250,12 @@ export async function listMessages(
   accessToken: string,
   refreshToken: string,
   query: string,
-  maxResults: number = 50
+  maxResults: number = 50,
+  userId?: string // userId가 전달되면 토큰 갱신 시 DB에 자동 저장
 ): Promise<string[]> {
   try {
-    // 읽기 권한이 필요하므로 requireReadScope를 true로 설정
-    const gmail = await getGmailClient(accessToken, refreshToken, true)
+    // 읽기 권한이 필요하므로 requireReadScope를 true로 설정 (userId 전달)
+    const gmail = await getGmailClient(accessToken, refreshToken, true, userId)
     
     // Gmail API는 한 번에 최대 500개까지 조회 가능
     const pageSize = Math.min(maxResults, 500);
@@ -405,7 +407,8 @@ export async function listMessages(
 export async function getMessage(
   accessToken: string,
   refreshToken: string,
-  messageId: string
+  messageId: string,
+  userId?: string // userId가 전달되면 토큰 갱신 시 DB에 자동 저장
 ): Promise<{
   id: string
   threadId: string
@@ -417,8 +420,8 @@ export async function getMessage(
   receivedAt?: string
 }> {
   try {
-    // 읽기 권한이 필요하므로 requireReadScope를 true로 설정
-    const gmail = await getGmailClient(accessToken, refreshToken, true)
+    // 읽기 권한이 필요하므로 requireReadScope를 true로 설정 (userId 전달)
+    const gmail = await getGmailClient(accessToken, refreshToken, true, userId)
     
     const response = await gmail.users.messages.get({
       userId: 'me',

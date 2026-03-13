@@ -33,7 +33,8 @@ export default function ConnectCalendarPage() {
         .eq('id', user.id)
         .single();
 
-      if (userData?.calendar_provider === 'google' && userData?.calendar_access_token) {
+      // refresh_token 기준으로 연동 상태 판단 (access_token은 1시간이면 만료되지만 refresh_token은 장기 유효)
+      if (userData?.calendar_provider === 'google' && userData?.calendar_refresh_token) {
         setIsConnected(true);
       }
     } catch (error) {
@@ -75,13 +76,41 @@ export default function ConnectCalendarPage() {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">구글 캘린더 연동 완료</h1>
           <p className="text-gray-600 mb-6">
             구글 캘린더가 이미 연동되어 있습니다.
+            <br />
+            <span className="text-sm text-gray-500">
+              인증이 만료되었거나 문제가 발생한 경우 재연동해주세요.
+            </span>
           </p>
-          <Button
-            onClick={() => router.push('/dashboard')}
-            className="w-full"
-          >
-            대시보드로 이동
-          </Button>
+          
+          <div className="space-y-3">
+            <Button
+              onClick={handleConnect}
+              disabled={isConnecting}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              size="lg"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  재연동 중...
+                </>
+              ) : (
+                <>
+                  <Calendar className="w-4 h-4 mr-2" />
+                  구글 캘린더 재연동하기
+                </>
+              )}
+            </Button>
+            
+            <Button
+              onClick={() => router.push('/dashboard')}
+              variant="outline"
+              className="w-full"
+              disabled={isConnecting}
+            >
+              대시보드로 이동
+            </Button>
+          </div>
         </div>
       </div>
     );

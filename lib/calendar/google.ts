@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { createServiceClient } from '@/lib/supabase/server'
 
 export interface CalendarEvent {
   id: string
@@ -126,7 +127,8 @@ export function getGoogleAuthUrl(): string {
  */
 export async function refreshAccessTokenIfNeeded(
   accessToken: string,
-  refreshToken: string
+  refreshToken: string,
+  userId?: string // userId가 전달되면 갱신된 토큰을 DB에 자동 저장
 ): Promise<string> {
   try {
     const oauth2Client = new google.auth.OAuth2(
@@ -140,18 +142,31 @@ export async function refreshAccessTokenIfNeeded(
       refresh_token: refreshToken,
     })
 
-    // 토큰이 만료되었는지 확인
+    // 토큰이 만료되었는지 확인하고, 필요시 갱신
     const tokenInfo = await oauth2Client.getAccessToken()
-    if (tokenInfo.token) {
-      return tokenInfo.token
+    const newToken = tokenInfo.token
+
+    if (!newToken) {
+      // getAccessToken이 null을 반환하면 수동으로 갱신 시도
+      const { credentials } = await oauth2Client.refreshAccessToken()
+      if (!credentials.access_token) {
+        throw new Error('토큰 갱신에 실패했습니다. 구글 캘린더를 재연동해주세요.')
+      }
+
+      // 갱신된 토큰이 기존 토큰과 다르면 DB에 저장 (userId가 있을 때만)
+      if (userId && credentials.access_token !== accessToken) {
+        await persistAccessTokenToDB(userId, credentials.access_token)
+      }
+
+      return credentials.access_token
     }
 
-    // 만료된 경우 갱신
-    const { credentials } = await oauth2Client.refreshAccessToken()
-    if (!credentials.access_token) {
-      throw new Error('토큰 갱신에 실패했습니다. 구글 캘린더를 재연동해주세요.')
+    // 토큰이 갱신된 경우 (기존 토큰과 다를 때) DB에 저장
+    if (userId && newToken !== accessToken) {
+      await persistAccessTokenToDB(userId, newToken)
     }
-    return credentials.access_token
+
+    return newToken
   } catch (error: any) {
     // 자세한 에러 로깅
     console.error('Error refreshing access token:', {
@@ -187,6 +202,29 @@ export async function refreshAccessTokenIfNeeded(
       `토큰 갱신 실패: ${error?.message || '알 수 없는 오류'}. ` +
       '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
     )
+  }
+}
+
+/**
+ * 갱신된 access_token을 users 테이블에 저장하는 헬퍼 함수
+ * refreshAccessTokenIfNeeded 내부에서 자동 호출됨
+ */
+async function persistAccessTokenToDB(userId: string, newAccessToken: string): Promise<void> {
+  try {
+    const serviceClient = createServiceClient()
+    const { error } = await serviceClient
+      .from('users')
+      .update({ calendar_access_token: newAccessToken })
+      .eq('id', userId)
+
+    if (error) {
+      console.error(`[Token Persist] DB 저장 실패 (userId: ${userId}):`, error)
+    } else {
+      console.log(`[Token Persist] 갱신된 access_token DB 저장 완료 (userId: ${userId})`)
+    }
+  } catch (err) {
+    // DB 저장 실패는 치명적이지 않음 (다음 요청 시 다시 갱신하면 됨)
+    console.error(`[Token Persist] DB 저장 중 예외 (userId: ${userId}):`, err)
   }
 }
 
