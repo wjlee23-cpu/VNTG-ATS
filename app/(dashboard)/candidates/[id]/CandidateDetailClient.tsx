@@ -34,7 +34,6 @@ import { SkillsCard } from '@/components/candidates/detail/SkillsCard';
 import { DocumentsCard } from '@/components/candidates/detail/DocumentsCard';
 import { ActivityTimeline } from '@/components/candidates/detail/ActivityTimeline';
 import { CandidateSchedulingForm } from '@/components/candidates/detail/CandidateSchedulingForm';
-import { StageMoveDialog } from '@/components/candidates/detail/StageMoveDialog';
 import { cn } from '@/components/ui/utils';
 
 interface CandidateDetailClientProps {
@@ -85,7 +84,6 @@ export function CandidateDetailClient({
     candidate.current_stage_id && candidate.current_stage_id.trim() !== ''
       ? candidate.current_stage_id
       : 'stage-1';
-  const [isStagePopoverOpen, setIsStagePopoverOpen] = useState(false);
   const [availableStages, setAvailableStages] = useState<
     Array<{ id: string; name: string; order: number; isCurrent: boolean }>
   >([]);
@@ -219,12 +217,10 @@ export function CandidateDetailClient({
   const loadAvailableStages = async () => {
     if (!candidate.job_posts?.id) {
       toast.error('채용 공고 정보를 찾을 수 없습니다.');
-      setIsStagePopoverOpen(false);
       return;
     }
     if (!currentStageId?.trim()) {
       toast.error('현재 전형 정보를 찾을 수 없습니다.');
-      setIsStagePopoverOpen(false);
       return;
     }
     setIsLoadingStages(true);
@@ -232,11 +228,11 @@ export function CandidateDetailClient({
       const result = await getAvailableStagesAction(candidate.job_posts.id, currentStageId);
       if (result.error) {
         toast.error(result.error || '단계 목록을 불러오는데 실패했습니다.');
-        setIsStagePopoverOpen(false);
-      } else setAvailableStages(result.data || []);
+      } else {
+        setAvailableStages(result.data || []);
+      }
     } catch {
       toast.error('단계 목록을 불러오는데 실패했습니다.');
-      setIsStagePopoverOpen(false);
     } finally {
       setIsLoadingStages(false);
     }
@@ -263,7 +259,6 @@ export function CandidateDetailClient({
     }
     if (!confirm(`${targetStage.name}로 이동하시겠습니까?`)) return;
     setIsMovingStage(true);
-    setIsStagePopoverOpen(false);
     try {
       const result = await moveToStage(candidate.id, targetStageId);
       if (result.error) toast.error(result.error);
@@ -489,11 +484,11 @@ export function CandidateDetailClient({
           currentStageId={currentStageId}
           canManageCandidate={canManageCandidate}
           isMovingStage={isMovingStage}
+          availableStages={availableStages}
+          isLoadingStages={isLoadingStages}
           onScheduleClick={() => setViewMode('scheduling')}
-          onMoveStageClick={() => {
-            setIsStagePopoverOpen(true);
-            loadAvailableStages();
-          }}
+          onMoveToStage={handleMoveToStage}
+          onLoadStages={loadAvailableStages}
           onConfirmHire={handleConfirmHire}
           onEmailClick={() => setIsEmailModalOpen(true)}
           onArchiveClick={() => setIsArchiveModalOpen(true)}
@@ -642,14 +637,6 @@ export function CandidateDetailClient({
           setIsDocumentPreviewOpen(false);
           setSelectedDocument(null);
         }}
-      />
-      <StageMoveDialog
-        open={isStagePopoverOpen}
-        onOpenChange={setIsStagePopoverOpen}
-        availableStages={availableStages}
-        isLoadingStages={isLoadingStages}
-        isMovingStage={isMovingStage}
-        onMoveToStage={handleMoveToStage}
       />
     </>
   );
