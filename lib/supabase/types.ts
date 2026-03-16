@@ -132,6 +132,11 @@ export interface Database {
           status: 'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue'
           current_stage_id: string | null
           token: string
+          ai_score: number | null
+          ai_summary: string | null
+          ai_strengths: string[] | null
+          ai_weaknesses: string[] | null
+          ai_analysis_status: 'pending' | 'processing' | 'completed' | 'failed' | null
           created_at: string
           updated_at: string
         }
@@ -144,6 +149,11 @@ export interface Database {
           status?: 'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue'
           current_stage_id?: string | null
           token?: string
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_strengths?: string[] | null
+          ai_weaknesses?: string[] | null
+          ai_analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null
           created_at?: string
           updated_at?: string
         }
@@ -156,6 +166,11 @@ export interface Database {
           status?: 'pending' | 'in_progress' | 'confirmed' | 'rejected' | 'issue'
           current_stage_id?: string | null
           token?: string
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_strengths?: string[] | null
+          ai_weaknesses?: string[] | null
+          ai_analysis_status?: 'pending' | 'processing' | 'completed' | 'failed' | null
           created_at?: string
           updated_at?: string
         }

@@ -7,7 +7,8 @@ import {
   Send, Sparkles, Star as StarIcon, ArrowRight, FileIcon, 
   MessageSquare, ArrowRightCircle, Archive, Eye, EyeOff, Plus, Folder,
   CheckCircle2, Settings, ChevronDown, ArrowUp, ArrowDown, RefreshCw,
-  ArrowUpRight, ArrowDownLeft, Trash2, Upload, Clock, Users, Loader2, AlertTriangle
+  ArrowUpRight, ArrowDownLeft, Trash2, Upload, Clock, Users, Loader2, AlertTriangle,
+  User, CalendarRange, Layers, ListChecks
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1196,14 +1197,6 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
     }
   };
 
-  // Popover 열림/닫힘 핸들러
-  const handlePopoverOpenChange = (open: boolean) => {
-    setIsStagePopoverOpen(open);
-    if (open) {
-      loadAvailableStages();
-    }
-  };
-
   // 특정 단계로 이동 핸들러
   const handleMoveToStage = async (targetStageId: string) => {
     // 디버깅: 현재 상태 확인
@@ -1577,9 +1570,9 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
     </button>
 
     {/* 완벽한 반응형 Grid 레이아웃: 모바일(세로 스택) → PC(좌우 분할) */}
-    <div className="flex flex-col md:grid md:grid-cols-12 h-full max-h-[90vh] overflow-hidden">
+    <div className="relative flex flex-col md:grid md:grid-cols-12 h-full max-h-[90vh] overflow-hidden">
       {/* 좌측 프로필 영역 - 모바일: 위쪽, PC: 왼쪽 */}
-      <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col min-w-0 overflow-x-visible">
+      <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col min-w-0 overflow-y-auto">
         {/* 대형 Avatar - 반응형 정렬 */}
         <div className="flex flex-col items-center md:items-start text-center md:text-left mb-6">
           <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-slate-200 shadow-md mb-4">
@@ -1607,9 +1600,56 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
             onClick={() => setViewMode('scheduling')}
             className="w-full h-12 text-base whitespace-normal break-keep px-4 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white shadow-md hover:shadow-lg transition-all duration-200"
           >
-            <Calendar className="w-5 h-5 mr-2 flex-shrink-0" />
+            <Calendar className="size-5 mr-2 flex-shrink-0" />
             <span className="break-words">일정 등록</span>
           </Button>
+        )}
+
+        {/* 전형이동 / 입사확정 버튼 - 일정 등록과 동일한 그라데이션 디자인, 사이드바 flex-col 직접 자식 */}
+        {canManageCandidate && (
+          currentStageName === 'Offer' ? (
+            <Button
+              onClick={async () => {
+                if (!confirm('입사 확정 처리하시겠습니까? 입사 확정된 후보자는 입사확정 필터에서 조회할 수 있습니다.')) {
+                  return;
+                }
+                try {
+                  const result = await confirmHire(candidate.id);
+                  if (result.error) {
+                    toast.error(result.error);
+                  } else {
+                    toast.success('입사 확정 처리되었습니다.');
+                    refreshCandidateData().catch((error) => {
+                      console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
+                    });
+                    if (onClose) {
+                      onClose();
+                    }
+                  }
+                } catch (error) {
+                  toast.error('입사 확정 처리 중 오류가 발생했습니다.');
+                  console.error('Confirm hire error:', error);
+                }
+              }}
+              className="w-full h-12 mt-3 text-base whitespace-normal break-keep px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-md hover:shadow-lg transition-all duration-200"
+            >
+              <CheckCircle2 className="size-5 mr-2 flex-shrink-0" />
+              <span className="break-words">입사 확정</span>
+            </Button>
+          ) : (
+            /* 전형이동 버튼: 일정 등록과 100% 동일한 구조 (Shadcn Button + size-5 아이콘) */
+            <Button
+              onClick={() => {
+                setIsStagePopoverOpen(true);
+                loadAvailableStages();
+              }}
+              disabled={isMovingStage}
+              className="w-full h-12 mt-3 text-base whitespace-normal break-keep px-4 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white shadow-md hover:shadow-lg transition-all duration-200"
+            >
+              <ArrowRightCircle className="size-5 mr-2 flex-shrink-0" />
+              <span className="break-words">{isMovingStage ? '이동 중...' : '전형이동'}</span>
+            </Button>
+          )
         )}
 
         {/* 기타 액션 버튼들 */}
@@ -1623,88 +1663,6 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
               <Mail className="w-4 h-4 mr-2" />
               Email
             </Button>
-            {/* 오퍼 단계일 때 입사 확정 버튼, 그 외에는 전형이동 버튼 */}
-            {currentStageName === 'Offer' ? (
-              <Button
-                onClick={async () => {
-                  if (!confirm('입사 확정 처리하시겠습니까? 입사 확정된 후보자는 입사확정 필터에서 조회할 수 있습니다.')) {
-                    return;
-                  }
-                  try {
-                    const result = await confirmHire(candidate.id);
-                    if (result.error) {
-                      toast.error(result.error);
-                    } else {
-                      toast.success('입사 확정 처리되었습니다.');
-                      refreshCandidateData().catch((error) => {
-                        console.error('[CandidateDetailClient] 후보자 데이터 업데이트 실패:', error);
-                      });
-                      if (onClose) {
-                        onClose();
-                      }
-                    }
-                  } catch (error) {
-                    toast.error('입사 확정 처리 중 오류가 발생했습니다.');
-                    console.error('Confirm hire error:', error);
-                  }
-                }}
-                variant="ghost"
-                className="w-full justify-start text-green-700 hover:bg-green-50 hover:text-green-800"
-              >
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                입사 확정
-              </Button>
-            ) : (
-              <Popover open={isStagePopoverOpen} onOpenChange={handlePopoverOpenChange}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                    disabled={isMovingStage}
-                  >
-                    <ArrowRightCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                    <span className="flex-1 text-left">{isMovingStage ? '이동 중...' : '전형이동'}</span>
-                  </Button>
-                </PopoverTrigger>
-              <PopoverContent className="w-64 p-2" align="start">
-                {isLoadingStages ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
-                    <span className="text-sm text-muted-foreground">단계 목록 로딩 중...</span>
-                  </div>
-                ) : availableStages.length === 0 ? (
-                  <div className="py-4 text-center">
-                    <p className="text-sm text-muted-foreground">이동 가능한 단계가 없습니다.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground px-2 py-1.5">전형 단계 선택</p>
-                    {availableStages.map((stage) => (
-                      <button
-                        key={stage.id}
-                        onClick={() => handleMoveToStage(stage.id)}
-                        disabled={stage.isCurrent || isMovingStage}
-                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                          stage.isCurrent
-                            ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                            : 'hover:bg-blue-50 hover:text-blue-700 text-foreground cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span>{stage.name}</span>
-                          {stage.isCurrent && (
-                            <Badge variant="secondary" className="text-xs">
-                              현재
-                            </Badge>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
-            )}
             <Button
               onClick={() => setIsArchiveModalOpen(true)}
               variant="ghost"
@@ -2178,38 +2136,41 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
             ) : (
               <>
                 {/* Scheduling View - 스케줄링 폼 */}
-                <div className="space-y-6">
+                <div>
                   {/* 뒤로 가기 버튼 */}
                   <Button
                     onClick={() => setViewMode('detail')}
                     variant="ghost"
-                    className="mb-4 -ml-3 px-3 py-2 w-fit flex items-center gap-2 hover:bg-yellow-100 hover:text-slate-900 rounded-md transition-colors text-slate-600"
+                    className="mb-6 -ml-3 px-3 py-2 w-fit flex items-center gap-2 hover:bg-slate-100 hover:text-slate-900 rounded-md transition-colors text-slate-600"
                   >
                     <ArrowRight className="w-4 h-4 rotate-180" />
                     <span>뒤로 가기</span>
                   </Button>
 
                   <form onSubmit={handleScheduleSubmit} className="space-y-6">
-                    {/* 후보자 정보 카드 */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                    {/* 후보자 정보 */}
+                    <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                      <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+                        <User className="size-5 text-slate-400" />
                         후보자
-                      </label>
-                      <p className="text-base font-medium text-slate-900">{candidate.name}</p>
+                      </h3>
+                      <div className="bg-slate-50 border border-slate-200/60 px-4 py-3 rounded-xl flex items-center text-sm font-medium text-slate-700 w-full">
+                        {candidate.name}
+                      </div>
                     </div>
 
-                    {/* 날짜 선택 카드 - 단일 Date Range Picker */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-4">
-                      <label className="block text-sm font-medium text-slate-700">
-                        <Calendar className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                    {/* 날짜 선택 - 단일 Date Range Picker */}
+                    <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                      <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+                        <CalendarRange className="size-5 text-slate-400" />
                         일정 검색 기간
-                      </label>
+                      </h3>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
                             type="button"
                             className={cn(
-                              "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-sm",
+                              "w-full justify-start text-left font-normal bg-white border border-slate-200 hover:border-slate-300 focus:border-brand-main focus:ring-4 focus:ring-brand-main/10 rounded-xl px-4 py-3 transition-all text-sm",
                               !scheduleFormData.dateRange.from && !scheduleFormData.dateRange.to && "text-slate-500",
                               scheduleFormData.dateRange.from && scheduleFormData.dateRange.to && "text-slate-900 font-medium"
                             )}
@@ -2247,23 +2208,23 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                       </Popover>
                     </div>
 
-                    {/* 면접 시간 선택 - Segmented Control */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
-                      <label className="block text-sm font-medium text-slate-700">
-                        <Clock className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                    {/* 면접 시간 선택 - Vercel 스타일 Segmented Control */}
+                    <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                      <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+                        <Clock className="size-5 text-slate-400" />
                         면접 시간
-                      </label>
-                      <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+                      </h3>
+                      <div className="bg-slate-100/70 p-1.5 rounded-xl flex items-center w-full max-w-lg">
                         {durationOptions.map((option) => (
                           <button
                             key={option.value}
                             type="button"
                             onClick={() => setScheduleFormData({ ...scheduleFormData, duration_minutes: option.value })}
                             className={cn(
-                              "flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                              "flex-1 py-2 text-sm rounded-lg transition-all",
                               scheduleFormData.duration_minutes === option.value
-                                ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white shadow-md"
-                                : "bg-transparent text-slate-700 hover:bg-white/50"
+                                ? "bg-white text-slate-900 font-bold shadow-sm ring-1 ring-slate-200"
+                                : "text-slate-500 font-medium hover:text-slate-700"
                             )}
                           >
                             {option.label}
@@ -2273,16 +2234,17 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                     </div>
 
                     {/* 면접 단계 선택 */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
-                      <label htmlFor="stage_id" className="block text-sm font-medium text-slate-700">
+                    <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                      <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+                        <Layers className="size-5 text-slate-400" />
                         면접 단계
-                      </label>
+                      </h3>
                       <select
                         id="stage_id"
                         required
                         value={scheduleFormData.stage_id}
                         onChange={(e) => setScheduleFormData({ ...scheduleFormData, stage_id: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm"
+                        className="bg-white border border-slate-200 hover:border-slate-300 focus:border-brand-main focus:ring-4 focus:ring-brand-main/10 rounded-xl px-4 py-3 transition-all w-full text-sm text-slate-900 focus:outline-none"
                       >
                         {Object.entries(STAGE_ID_TO_NAME_MAP).map(([id, name]) => (
                           <option key={id} value={id}>
@@ -2292,23 +2254,23 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                       </select>
                     </div>
 
-                    {/* 일정 옵션 개수 - Segmented Control */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
-                      <label className="block text-sm font-medium text-slate-700">
-                        <Calendar className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                    {/* 일정 옵션 개수 - Vercel 스타일 Segmented Control */}
+                    <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                      <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+                        <ListChecks className="size-5 text-slate-400" />
                         일정 옵션 개수
-                      </label>
-                      <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+                      </h3>
+                      <div className="bg-slate-100/70 p-1.5 rounded-xl flex items-center w-full max-w-lg">
                         {numOptionsList.map((num) => (
                           <button
                             key={num}
                             type="button"
                             onClick={() => setScheduleFormData({ ...scheduleFormData, num_options: num.toString() })}
                             className={cn(
-                              "flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                              "flex-1 py-2 text-sm rounded-lg transition-all",
                               scheduleFormData.num_options === num.toString()
-                                ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white shadow-md"
-                                : "bg-transparent text-slate-700 hover:bg-white/50"
+                                ? "bg-white text-slate-900 font-bold shadow-sm ring-1 ring-slate-200"
+                                : "text-slate-500 font-medium hover:text-slate-700"
                             )}
                           >
                             {num}개
@@ -2318,14 +2280,14 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                     </div>
 
                     {/* 면접관 선택 - Avatar 토글 UI */}
-                    <div className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm card-modern space-y-3">
-                      <label className="block text-sm font-medium text-slate-700">
-                        <Users className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+                    <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+                      <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+                        <Users className="size-5 text-slate-400" />
                         면접관 선택
                         <span className="text-xs font-normal text-slate-500 ml-2">
                           (최소 1명 이상)
                         </span>
-                      </label>
+                      </h3>
                       {isLoadingUsers ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-5 h-5 animate-spin text-[#5287FF]" />
@@ -2348,14 +2310,14 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                                     type="button"
                                     onClick={() => toggleInterviewer(user.id)}
                                     className={cn(
-                                      "flex flex-col items-center gap-2 p-3 rounded-xl transition-all min-w-[80px] md:min-w-0",
+                                      "flex flex-col items-center gap-2 p-3.5 rounded-xl transition-all min-w-[80px] md:min-w-0",
                                       isSelected
                                         ? "bg-blue-50/50 ring-2 ring-[#5287FF] shadow-sm"
                                         : "bg-slate-50 border border-slate-200 hover:bg-blue-50/30 hover:border-slate-300"
                                     )}
                                   >
                                     <Avatar className={cn(
-                                      "w-12 h-12 border-2 transition-all",
+                                      "w-11 h-11 border-2 transition-all",
                                       isSelected ? "border-[#5287FF]" : "border-slate-200"
                                     )}>
                                       <AvatarFallback className={cn(
@@ -2368,13 +2330,13 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                                       </AvatarFallback>
                                     </Avatar>
                                     <div className="text-center">
-                                      <p className="text-xs font-medium text-slate-700 truncate max-w-[70px]">
+                                      <p className="text-xs font-bold text-slate-700 truncate max-w-[70px]">
                                         {user.email.split('@')[0]}
                                       </p>
                                       {user.role === 'admin' && (
                                         <Badge 
                                           variant="outline" 
-                                          className="mt-1 text-[10px] px-1.5 py-0 border-slate-300 text-slate-600"
+                                          className="mt-1 text-[10px] px-1.5 py-0 border-slate-300 text-slate-500"
                                         >
                                           관리자
                                         </Badge>
@@ -2386,9 +2348,10 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                             )}
                           </div>
                           {scheduleFormData.interviewer_ids.length === 0 && (
-                            <p className="text-xs text-rose-600 mt-2">
-                              최소 1명의 면접관을 선택해주세요.
-                            </p>
+                            <div className="bg-rose-50 text-rose-600 px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 mt-2">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              <span>최소 1명의 면접관을 선택해주세요.</span>
+                            </div>
                           )}
                         </>
                       )}
@@ -2396,7 +2359,7 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
 
                     {/* 스마트 대안 UI - Warning Card */}
                     {scheduleWarning && (
-                      <div className="bg-amber-50 text-amber-800 rounded-xl p-4 border border-amber-200 card-modern">
+                      <div className="bg-amber-50/80 text-amber-800 rounded-2xl p-5 border border-amber-200/60 mt-4">
                         <div className="flex items-start gap-3">
                           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                           <div className="flex-1">
@@ -2408,35 +2371,37 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
                     )}
 
                     {/* 제출 버튼 */}
-                    <div className="flex gap-3 justify-end pt-4">
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={() => setViewMode('detail')} 
-                        disabled={isLoadingSchedule}
-                        className="px-6"
-                      >
-                        취소
-                      </Button>
-                      <Button
-                        type="submit"
-                        disabled={!isScheduleFormValid || isLoadingSchedule}
-                        className={cn(
-                          "px-6 transition-all",
-                          isScheduleFormValid
-                            ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white hover:opacity-90 shadow-md"
-                            : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                        )}
-                      >
-                        {isLoadingSchedule ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            처리 중...
-                          </>
-                        ) : (
-                          '자동화 시작'
-                        )}
-                      </Button>
+                    <div className="border-t border-slate-100 pt-4 mt-8">
+                      <div className="flex gap-3 justify-end">
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          onClick={() => setViewMode('detail')} 
+                          disabled={isLoadingSchedule}
+                          className="px-6"
+                        >
+                          취소
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={!isScheduleFormValid || isLoadingSchedule}
+                          className={cn(
+                            "px-6 py-3 text-sm font-semibold rounded-xl transition-opacity",
+                            isScheduleFormValid
+                              ? "bg-brand-main text-white shadow-md shadow-brand-main/20 hover:opacity-95"
+                              : "opacity-50 cursor-not-allowed bg-brand-main text-white"
+                          )}
+                        >
+                          {isLoadingSchedule ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              처리 중...
+                            </>
+                          ) : (
+                            '자동화 시작'
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </form>
                 </div>
@@ -2522,6 +2487,49 @@ export function CandidateDetailClient({ candidate: initialCandidate, schedules, 
         setSelectedDocument(null);
       }}
     />
+
+    {/* 전형이동 단계 선택 다이얼로그 - Radix Trigger 없이 순수 Dialog 사용 */}
+    <Dialog open={isStagePopoverOpen} onOpenChange={setIsStagePopoverOpen}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>전형 단계 선택</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1 py-2">
+          {isLoadingStages ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
+              <span className="text-sm text-muted-foreground">단계 목록 로딩 중...</span>
+            </div>
+          ) : availableStages.length === 0 ? (
+            <div className="py-6 text-center">
+              <p className="text-sm text-muted-foreground">이동 가능한 단계가 없습니다.</p>
+            </div>
+          ) : (
+            availableStages.map((stage) => (
+              <button
+                key={stage.id}
+                onClick={() => handleMoveToStage(stage.id)}
+                disabled={stage.isCurrent || isMovingStage}
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  stage.isCurrent
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'hover:bg-blue-50 hover:text-blue-700 text-slate-700 cursor-pointer'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span>{stage.name}</span>
+                  {stage.isCurrent && (
+                    <Badge variant="secondary" className="text-xs ml-2">
+                      현재
+                    </Badge>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

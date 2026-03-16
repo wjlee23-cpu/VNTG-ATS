@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Users, Search, Filter, Mail, Phone, Briefcase, Calendar, MoreHorizontal, Archive, CheckCircle2 } from 'lucide-react';
-import { RECRUITMENT_STAGES, getStageNameByStageId, getStageNameById } from '@/constants/stages';
+import { 
+  Users, Search, Filter, Mail, Phone, Briefcase, Calendar, 
+  MoreHorizontal, Archive, CheckCircle2, ArrowRightCircle,
+  X, Check, Loader2, ChevronDown
+} from 'lucide-react';
+import { RECRUITMENT_STAGES, STAGE_ID_TO_NAME_MAP, getStageNameByStageId, getStageNameById } from '@/constants/stages';
 import { ARCHIVE_REASONS } from '@/constants/archive-reasons';
 import { getCandidateById, getArchivedCandidates, getConfirmedCandidates, getArchivedCandidatesByStage } from '@/api/queries/candidates';
 import { confirmHire } from '@/api/actions/offers';
+import { sendEmailToCandidate } from '@/api/actions/emails';
+import { bulkArchiveCandidates, bulkMoveToStage } from '@/api/actions/candidates-archive';
 import { toast } from 'sonner';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { getTimelineEvents } from '@/api/queries/timeline';
@@ -15,8 +21,11 @@ import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateM
 import { AddCandidateModal } from '@/components/candidates/AddCandidateModal';
 import { CandidateDetailSkeleton } from '@/components/candidates/CandidateDetailSkeleton';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogFooter } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/components/ui/utils';
 
+// ─── 인터페이스 정의 ───────────────────────────────────────────
 interface Candidate {
   id: string;
   name: string;
@@ -44,9 +53,46 @@ interface CandidatesClientProps {
   error?: string;
 }
 
+// ─── 상태 색상 & 텍스트 매핑 (실제 DB status와 연동) ─────────────
+const STATUS_CONFIG: Record<string, { label: string; dotColor: string; bgColor: string; textColor: string }> = {
+  pending: {
+    label: '대기중',
+    dotColor: 'bg-amber-400',
+    bgColor: 'bg-amber-50 border-amber-200/60',
+    textColor: 'text-amber-700',
+  },
+  in_progress: {
+    label: '진행중',
+    dotColor: 'bg-blue-400',
+    bgColor: 'bg-blue-50 border-blue-200/60',
+    textColor: 'text-blue-700',
+  },
+  confirmed: {
+    label: '확정',
+    dotColor: 'bg-emerald-400',
+    bgColor: 'bg-emerald-50 border-emerald-200/60',
+    textColor: 'text-emerald-700',
+  },
+  rejected: {
+    label: '거절',
+    dotColor: 'bg-rose-400',
+    bgColor: 'bg-rose-50 border-rose-200/60',
+    textColor: 'text-rose-700',
+  },
+  issue: {
+    label: '이슈',
+    dotColor: 'bg-orange-400',
+    bgColor: 'bg-orange-50 border-orange-200/60',
+    textColor: 'text-orange-700',
+  },
+};
+
+// ─── 메인 컴포넌트 ─────────────────────────────────────────────
 export function CandidatesClient({ initialCandidates, stageCounts = {}, error }: CandidatesClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // 기존 상태들
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStage, setSelectedStage] = useState<string>('all');
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -67,6 +113,23 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   const [currentStageCounts, setCurrentStageCounts] = useState<Record<string, number>>(stageCounts);
   const [selectedArchiveReason, setSelectedArchiveReason] = useState<string>('all');
 
+  // ─── 다중 선택(Bulk) 관련 상태 ──────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  // Bulk Action 모달 상태들
+  const [bulkArchiveModalOpen, setBulkArchiveModalOpen] = useState(false);
+  const [bulkArchiveReason, setBulkArchiveReason] = useState('');
+  const [isBulkArchiving, setIsBulkArchiving] = useState(false);
+  
+  const [bulkMoveModalOpen, setBulkMoveModalOpen] = useState(false);
+  const [bulkMoveTargetStage, setBulkMoveTargetStage] = useState('');
+  const [isBulkMoving, setIsBulkMoving] = useState(false);
+  
+  const [bulkEmailModalOpen, setBulkEmailModalOpen] = useState(false);
+  const [bulkEmailSubject, setBulkEmailSubject] = useState('');
+  const [bulkEmailBody, setBulkEmailBody] = useState('');
+  const [isBulkEmailing, setIsBulkEmailing] = useState(false);
+
   // 클라이언트 마운트 확인 (Hydration 에러 방지)
   useEffect(() => {
     setIsMounted(true);
@@ -83,21 +146,26 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
   useEffect(() => {
     if (!isMounted) return;
 
+    // 필터 변경 시 선택 초기화
+    setSelectedIds(new Set());
+
     if (archiveFilter === 'archived') {
       loadArchivedCandidates();
-      // 아카이브 필터는 사유별 필터만 사용하므로 stageCounts는 빈 객체
       setCurrentStageCounts({});
-      setSelectedArchiveReason('all'); // 필터 변경 시 사유 필터 초기화
+      setSelectedArchiveReason('all');
     } else if (archiveFilter === 'confirmed') {
       loadConfirmedCandidates();
-      // 입사확정 필터는 단계별 카운트가 필요 없으므로 빈 객체로 설정
       setCurrentStageCounts({});
     } else {
-      // Active 필터는 초기 stageCounts 사용
       setCurrentStageCounts(stageCounts);
-      setSelectedArchiveReason('all'); // 필터 변경 시 사유 필터 초기화
+      setSelectedArchiveReason('all');
     }
   }, [archiveFilter, isMounted]);
+
+  // 단계/검색 필터 변경 시 선택 초기화
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [selectedStage, searchQuery]);
 
   const loadArchivedCandidates = async () => {
     setIsLoadingArchived(true);
@@ -152,11 +220,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     const selected = searchParams.get('selected');
     setSelectedCandidateId(selected);
     
-    // selected가 있으면 해당 candidate 데이터 로드
     if (selected) {
       loadCandidateDetail(selected);
     } else {
-      // selected가 없으면 detail 데이터 초기화
       setCandidateDetail(null);
       setSchedules([]);
       setTimelineEvents([]);
@@ -168,14 +234,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     setIsLoadingDetail(true);
     setDetailError(null);
     
-    // initialCandidates에서 기본 정보 먼저 찾기
     const initialCandidate = initialCandidates.find(c => c.id === candidateId);
     if (initialCandidate) {
-      // 기본 정보로 먼저 표시 (로딩 중에도 기본 정보는 보이도록)
-      setCandidateDetail({
-        ...initialCandidate,
-        // 기본 정보만 있는 상태로 표시
-      });
+      setCandidateDetail({ ...initialCandidate });
     }
     
     try {
@@ -186,30 +247,24 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
       ]);
 
       if (candidateResult.error || !candidateResult.data) {
-        // 에러가 발생해도 initialCandidates의 기본 정보가 있으면 계속 표시
         if (!initialCandidate) {
           setDetailError(candidateResult.error || '후보자를 찾을 수 없습니다.');
           setCandidateDetail(null);
         } else {
-          // 기본 정보는 유지하고, 스케줄과 타임라인만 로드 시도
           setDetailError(null);
         }
       } else {
-        // 성공적으로 로드된 경우 상세 정보로 업데이트
         setCandidateDetail(candidateResult.data);
         setSchedules(schedulesResult.data || []);
         setTimelineEvents(timelineResult.data || []);
         setDetailError(null);
       }
     } catch (err) {
-      // 에러가 발생해도 initialCandidates의 기본 정보가 있으면 계속 표시
       if (!initialCandidate) {
         setDetailError('후보자 정보를 불러오는 중 오류가 발생했습니다.');
         setCandidateDetail(null);
       } else {
-        // 기본 정보는 유지
         setDetailError(null);
-        // 스케줄과 타임라인은 빈 배열로 설정
         setSchedules([]);
         setTimelineEvents([]);
       }
@@ -218,68 +273,34 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     }
   };
 
-  // 단계별 필터링 함수
-  // current_stage_id는 process의 stage ID("stage-1", "stage-2" 등)를 저장하므로
-  // 매핑 상수를 사용하여 단계 이름으로 변환
+  // ─── 단계 이름 매핑 ─────────────────────────────────────────
   const getStageName = (stageId: string | null): string => {
-    // current_stage_id가 null이거나 빈 문자열이면 'New Application'으로 간주
-    if (!stageId) {
-      return 'New Application';
-    }
-    
-    // stage ID를 단계 이름으로 매핑
+    if (!stageId) return 'New Application';
     const mappedName = getStageNameByStageId(stageId);
-    if (mappedName) {
-      return mappedName;
-    }
-    
-    // 매핑되지 않은 경우, stageId가 이미 단계 이름인지 확인 (하위 호환성)
+    if (mappedName) return mappedName;
     const stageNames = [
-      'New Application',
-      'Application Review',
-      'Competency Assessment',
-      'Technical Test',
-      '1st Interview',
-      'Reference Check',
-      '2nd Interview',
+      'New Application', 'Application Review', 'Competency Assessment',
+      'Technical Test', '1st Interview', 'Reference Check', '2nd Interview',
     ];
-    
-    if (stageNames.includes(stageId)) {
-      return stageId;
-    }
-    
-    // 그 외의 경우는 'New Application'으로 간주
+    if (stageNames.includes(stageId)) return stageId;
     return 'New Application';
   };
 
-  // getStageNameById는 constants/stages에서 import하여 사용
-
-  // 필터에 따라 후보자 목록 선택
+  // ─── 필터링 ─────────────────────────────────────────────────
   const candidatesToFilter = 
     archiveFilter === 'archived' ? archivedCandidates :
     archiveFilter === 'confirmed' ? confirmedCandidates :
     initialCandidates;
 
-  // 검색 및 필터링
   const filteredCandidates = candidatesToFilter.filter(candidate => {
-    // 아카이브 필터일 때 아카이브 사유 필터링
     if (archiveFilter === 'archived' && selectedArchiveReason !== 'all') {
-      if ((candidate as any).archive_reason !== selectedArchiveReason) {
-        return false;
-      }
+      if ((candidate as any).archive_reason !== selectedArchiveReason) return false;
     }
-
-    // 단계 필터링 (Active 필터일 때만)
     if (archiveFilter === 'active' && selectedStage !== 'all') {
       const candidateStage = getStageName(candidate.current_stage_id);
       const selectedStageName = getStageNameById(selectedStage);
-      // null 체크 추가: 둘 다 null이 아니고 같은 경우만 통과
-      if (!candidateStage || !selectedStageName || candidateStage !== selectedStageName) {
-        return false;
-      }
+      if (!candidateStage || !selectedStageName || candidateStage !== selectedStageName) return false;
     }
-
-    // 검색 필터링
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -290,51 +311,170 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
     );
   });
 
-  // 상태별 색상 (ATS Status Colors 적용)
-  const getStatusColor = (status: string) => {
-    const colors = {
-      pending: 'bg-amber-100 text-amber-700',
-      in_progress: 'bg-blue-100 text-blue-700',
-      confirmed: 'bg-blue-100 text-blue-700',
-      rejected: 'bg-rose-100 text-rose-700',
-      issue: 'bg-amber-100 text-amber-700',
-    };
-    return colors[status as keyof typeof colors] || 'bg-slate-100 text-slate-700';
+  // ─── 상태 관련 유틸 ─────────────────────────────────────────
+  const getStatusConfig = (status: string) => {
+    return STATUS_CONFIG[status] || { label: status, dotColor: 'bg-slate-400', bgColor: 'bg-slate-50 border-slate-200/60', textColor: 'text-slate-700' };
   };
 
-  // 상태 텍스트
-  const getStatusText = (status: string) => {
-    const texts = {
-      pending: '대기중',
-      in_progress: '진행중',
-      confirmed: '확정',
-      rejected: '거절',
-      issue: '이슈',
-    };
-    return texts[status as keyof typeof texts] || status;
-  };
-
-  // 전체 활성 후보자 수 계산 (필터링 전)
-  // Hydration 에러 방지를 위해 초기 렌더링에서는 항상 initialCandidates 사용
+  // ─── 전체 활성 후보자 수 계산 ───────────────────────────────
   const activeCandidatesCount = isMounted && archiveFilter === 'archived'
     ? archivedCandidates.length 
     : isMounted && archiveFilter === 'confirmed'
     ? confirmedCandidates.length
     : initialCandidates.length;
 
-  // Candidate 클릭 핸들러
+  // ─── 클릭 핸들러 ───────────────────────────────────────────
   const handleCandidateClick = (candidateId: string) => {
     router.push(`/candidates?selected=${candidateId}`);
   };
 
-  // Detail 패널 닫기
   const handleCloseDetail = () => {
     router.push('/candidates');
   };
 
+  // ─── 다중 선택 핸들러 ──────────────────────────────────────
+  // 개별 체크박스 토글
+  const toggleSelect = useCallback((candidateId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) {
+        next.delete(candidateId);
+      } else {
+        next.add(candidateId);
+      }
+      return next;
+    });
+  }, []);
+
+  // 전체 선택 / 해제
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredCandidates.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredCandidates.map(c => c.id)));
+    }
+  }, [selectedIds.size, filteredCandidates]);
+
+  // 선택 해제
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  // 선택된 후보자 정보
+  const selectedCandidates = filteredCandidates.filter(c => selectedIds.has(c.id));
+  const isAllSelected = filteredCandidates.length > 0 && selectedIds.size === filteredCandidates.length;
+  const isSomeSelected = selectedIds.size > 0;
+
+  // ─── Bulk Action 핸들러 ────────────────────────────────────
+  // 일괄 아카이브
+  const handleBulkArchive = async () => {
+    if (!bulkArchiveReason) {
+      toast.error('아카이브 사유를 선택해주세요.');
+      return;
+    }
+    setIsBulkArchiving(true);
+    try {
+      const result = await bulkArchiveCandidates(Array.from(selectedIds), bulkArchiveReason);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(`${result.data?.count || selectedIds.size}명의 후보자가 아카이브되었습니다.`);
+        setBulkArchiveModalOpen(false);
+        setBulkArchiveReason('');
+        clearSelection();
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('일괄 아카이브 처리 중 오류가 발생했습니다.');
+      console.error('Bulk archive error:', error);
+    } finally {
+      setIsBulkArchiving(false);
+    }
+  };
+
+  // 일괄 전형 이동
+  const handleBulkMove = async () => {
+    if (!bulkMoveTargetStage) {
+      toast.error('이동할 전형 단계를 선택해주세요.');
+      return;
+    }
+    setIsBulkMoving(true);
+    try {
+      const result = await bulkMoveToStage(Array.from(selectedIds), bulkMoveTargetStage);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(`${result.data?.count || selectedIds.size}명의 후보자가 ${result.data?.targetStageName || ''}(으)로 이동되었습니다.`);
+        setBulkMoveModalOpen(false);
+        setBulkMoveTargetStage('');
+        clearSelection();
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error('일괄 전형 이동 중 오류가 발생했습니다.');
+      console.error('Bulk move error:', error);
+    } finally {
+      setIsBulkMoving(false);
+    }
+  };
+
+  // 일괄 이메일 발송
+  const handleBulkEmail = async () => {
+    if (!bulkEmailSubject || !bulkEmailBody) {
+      toast.error('제목과 내용을 모두 입력해주세요.');
+      return;
+    }
+    setIsBulkEmailing(true);
+    try {
+      let successCount = 0;
+      let failCount = 0;
+
+      // 각 후보자에게 개별 이메일 발송 (순차적으로)
+      for (const candidate of selectedCandidates) {
+        try {
+          const formData = new FormData();
+          formData.append('candidate_id', candidate.id);
+          formData.append('to_email', candidate.email);
+          formData.append('subject', bulkEmailSubject);
+          formData.append('body', bulkEmailBody);
+
+          const result = await sendEmailToCandidate(formData);
+          if (result.error) {
+            failCount++;
+            console.error(`이메일 발송 실패 (${candidate.name}):`, result.error);
+          } else {
+            successCount++;
+          }
+        } catch (err) {
+          failCount++;
+          console.error(`이메일 발송 오류 (${candidate.name}):`, err);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`${successCount}명에게 이메일이 발송되었습니다.`);
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount}명에게 이메일 발송에 실패했습니다.`);
+      }
+
+      setBulkEmailModalOpen(false);
+      setBulkEmailSubject('');
+      setBulkEmailBody('');
+      clearSelection();
+      router.refresh();
+    } catch (error) {
+      toast.error('일괄 이메일 발송 중 오류가 발생했습니다.');
+      console.error('Bulk email error:', error);
+    } finally {
+      setIsBulkEmailing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/50 p-6">
-      {/* 메인 콘텐츠 영역 - 거대한 카드로 감싸기 */}
+      {/* 메인 콘텐츠 영역 */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
@@ -350,7 +490,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {/* 필터 버튼 그룹 - 통일된 스타일 (Outline/Ghost) */}
+            {/* 필터 버튼 그룹 */}
             <div className="flex gap-2">
               <Button
                 onClick={() => setArchiveFilter('active')}
@@ -380,7 +520,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 입사확정
               </Button>
             </div>
-            {/* 후보자 추가 버튼 - Primary (VNTG Gradient) */}
+            {/* 후보자 추가 버튼 */}
             <Button
               onClick={() => setAddCandidateModalOpen(true)}
               className="h-10 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white border-0"
@@ -391,8 +531,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           </div>
         </div>
 
-        {/* Stage Filters - Segmented Control 스타일 */}
-        {/* Active 필터일 때는 단계별 필터 표시 */}
+        {/* Stage Filters */}
         {archiveFilter === 'active' && (
           <div className="mb-6 overflow-x-auto">
             <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
@@ -427,7 +566,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           </div>
         )}
 
-        {/* Archive Reason Filters - 아카이브 필터일 때 아카이브 사유별 필터 표시 */}
+        {/* Archive Reason Filters */}
         {archiveFilter === 'archived' && (
           <div className="mb-6 overflow-x-auto">
             <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
@@ -484,11 +623,66 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           </div>
         )}
 
+        {/* ══════════════════════════════════════════════════════════
+            Floating Bulk Action Bar
+            Notion / Linear 스타일 하단 Floating 바
+           ══════════════════════════════════════════════════════════ */}
+        {isSomeSelected && (
+          <div className="fixed bottom-6 left-1/2 z-50 bulk-action-bar-enter">
+            <div className="flex items-center gap-2 bg-slate-900 text-white rounded-xl px-4 py-2.5 shadow-2xl shadow-slate-900/30 border border-slate-700">
+              {/* 선택 카운트 & 해제 */}
+              <div className="flex items-center gap-2 pr-3 border-r border-slate-700">
+                <div className="w-6 h-6 rounded-md bg-[#5287FF] flex items-center justify-center">
+                  <Check className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="text-sm font-medium whitespace-nowrap">{selectedIds.size}명 선택</span>
+                <button
+                  onClick={clearSelection}
+                  className="ml-1 p-1 rounded-md hover:bg-slate-700 transition-colors"
+                  title="선택 해제"
+                >
+                  <X className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              </div>
+
+              {/* 액션 버튼들 */}
+              <div className="flex items-center gap-1.5 pl-1">
+                {/* 전형 이동 */}
+                <button
+                  onClick={() => setBulkMoveModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
+                >
+                  <ArrowRightCircle className="w-4 h-4 text-violet-400" />
+                  전형 이동
+                </button>
+
+                {/* 이메일 */}
+                <button
+                  onClick={() => setBulkEmailModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
+                >
+                  <Mail className="w-4 h-4 text-sky-400" />
+                  이메일
+                </button>
+
+                {/* 아카이브 */}
+                <button
+                  onClick={() => setBulkArchiveModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
+                >
+                  <Archive className="w-4 h-4 text-orange-400" />
+                  아카이브
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Candidates List */}
         {(isLoadingArchived && archiveFilter === 'archived') || (isLoadingConfirmed && archiveFilter === 'confirmed') ? (
           <div className="p-12 text-center bg-slate-50 rounded-xl">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#5287FF] mx-auto mb-4"></div>
-            <p className="text-muted-foreground">아카이브된 후보자를 불러오는 중...</p>
+            <p className="text-muted-foreground">후보자를 불러오는 중...</p>
           </div>
         ) : filteredCandidates.length === 0 ? (
           <div className="p-12 text-center bg-slate-50 rounded-xl">
@@ -514,9 +708,27 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    {/* 체크박스 컬럼 */}
+                    <th className="w-12 px-4 py-4">
+                      <button
+                        onClick={toggleSelectAll}
+                        className={cn(
+                          "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150",
+                          isAllSelected
+                            ? "bg-[#5287FF] border-[#5287FF]"
+                            : isSomeSelected
+                            ? "bg-[#5287FF]/20 border-[#5287FF]"
+                            : "border-slate-300 hover:border-slate-400"
+                        )}
+                      >
+                        {isAllSelected && <Check className="w-3 h-3 text-white" />}
+                        {!isAllSelected && isSomeSelected && (
+                          <div className="w-2 h-0.5 bg-[#5287FF] rounded-full" />
+                        )}
+                      </button>
+                    </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">CANDIDATE</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">POSITION</th>
-                    {/* All Stages를 선택했을 때만 Stage 컬럼 표시 */}
                     {selectedStage === 'all' && (
                       <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">STAGE</th>
                     )}
@@ -529,29 +741,50 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                 <tbody>
                   {filteredCandidates.map((candidate) => {
                     const stageName = getStageName(candidate.current_stage_id);
-                    // AI Match Insight 점수 사용 (ai_score가 null이면 0으로 표시)
                     const matchScore = candidate.ai_score ?? 0;
+                    const isChecked = selectedIds.has(candidate.id);
+                    const statusCfg = getStatusConfig(candidate.status);
                     
                     return (
                       <tr
                         key={candidate.id}
                         onClick={() => handleCandidateClick(candidate.id)}
-                        className={`hover:bg-blue-50/50 cursor-pointer transition-colors border-b border-slate-100/50 ${
-                          selectedCandidateId === candidate.id ? 'bg-blue-50/30' : ''
-                        }`}
+                        className={cn(
+                          "cursor-pointer transition-colors border-b border-slate-100/50",
+                          isChecked 
+                            ? "bg-blue-50/60 hover:bg-blue-50/80" 
+                            : "hover:bg-blue-50/40",
+                          selectedCandidateId === candidate.id && "bg-blue-50/30"
+                        )}
                       >
+                        {/* 체크박스 */}
+                        <td className="w-12 px-4 py-4">
+                          <button
+                            onClick={(e) => toggleSelect(candidate.id, e)}
+                            className={cn(
+                              "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150",
+                              isChecked 
+                                ? "bg-[#5287FF] border-[#5287FF]"
+                                : "border-slate-300 hover:border-[#5287FF]"
+                            )}
+                          >
+                            {isChecked && <Check className="w-3 h-3 text-white" />}
+                          </button>
+                        </td>
+
                         {/* CANDIDATE */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-50 text-[#5287FF] font-medium flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-full bg-blue-50 text-[#5287FF] font-medium flex items-center justify-center flex-shrink-0">
                               {candidate.name.charAt(0).toUpperCase()}
                             </div>
-                            <div>
-                              <div className="font-medium text-foreground">{candidate.name}</div>
-                              <div className="text-sm text-muted-foreground">{candidate.email}</div>
+                            <div className="min-w-0">
+                              <div className="font-medium text-foreground truncate">{candidate.name}</div>
+                              <div className="text-sm text-muted-foreground truncate">{candidate.email}</div>
                             </div>
                           </div>
                         </td>
+
                         {/* POSITION */}
                         <td className="px-6 py-4">
                           <div className="text-sm text-foreground">
@@ -559,7 +792,8 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                             <div className="text-muted-foreground text-xs mt-1">Seoul, Korea</div>
                           </div>
                         </td>
-                        {/* STAGE - All Stages를 선택했을 때만 표시 */}
+
+                        {/* STAGE */}
                         {selectedStage === 'all' && (
                           <td className="px-6 py-4">
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
@@ -567,6 +801,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                             </span>
                           </td>
                         )}
+
                         {/* MATCH */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -585,22 +820,29 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                             )}
                           </div>
                         </td>
+
                         {/* APPLIED */}
                         <td className="px-6 py-4">
                           <div className="text-sm text-muted-foreground">
                             {new Date(candidate.created_at).toISOString().split('T')[0]}
                           </div>
                         </td>
-                        {/* STATUS */}
+
+                        {/* STATUS - 실제 DB 데이터 기반 상태 배지 (Dot 스타일) */}
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(candidate.status)}`}>
-                            {getStatusText(candidate.status)}
+                          <span className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border",
+                            statusCfg.bgColor,
+                            statusCfg.textColor,
+                          )}>
+                            <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
+                            {statusCfg.label}
                           </span>
                         </td>
+
                         {/* Actions */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            {/* 오퍼 단계일 때 입사 확정 버튼 */}
                             {getStageNameByStageId(candidate.current_stage_id) === 'Offer' && (
                               <button
                                 onClick={async (e) => {
@@ -621,7 +863,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                                     console.error('Confirm hire error:', error);
                                   }
                                 }}
-                                className="p-1 hover:bg-green-100 rounded transition-colors"
+                                className="p-1.5 hover:bg-green-100 rounded-lg transition-colors"
                                 title="입사 확정"
                               >
                                 <CheckCircle2 size={16} className="text-green-600" />
@@ -633,7 +875,7 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
                                 setSelectedCandidateForArchive({ id: candidate.id, name: candidate.name });
                                 setArchiveModalOpen(true);
                               }}
-                              className="p-1 hover:bg-slate-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                               title="아카이브"
                             >
                               <Archive size={16} className="text-slate-400" />
@@ -657,16 +899,15 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         )}
       </div>
 
-      {/* 중앙 집중형 모달: Candidate Detail */}
+      {/* ══════════════════════════════════════════════════════════
+          모달: Candidate Detail
+         ══════════════════════════════════════════════════════════ */}
       <Dialog open={!!selectedCandidateId} onOpenChange={(open) => {
-        if (!open) {
-          handleCloseDetail();
-        }
+        if (!open) handleCloseDetail();
       }}>
         <DialogContent 
           className="!w-[95vw] !max-w-5xl !max-h-[90vh] p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden"
         >
-          {/* 접근성을 위한 숨겨진 제목 */}
           <DialogTitle className="sr-only">
             {candidateDetail ? `${candidateDetail.name} 상세 정보` : '후보자 상세 정보'}
           </DialogTitle>
@@ -698,7 +939,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         </DialogContent>
       </Dialog>
 
-      {/* 아카이브 모달 */}
+      {/* ══════════════════════════════════════════════════════════
+          모달: 개별 아카이브
+         ══════════════════════════════════════════════════════════ */}
       {selectedCandidateForArchive && (
         <ArchiveCandidateModal
           candidateId={selectedCandidateForArchive.id}
@@ -712,7 +955,9 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
         />
       )}
 
-      {/* 후보자 추가 모달 */}
+      {/* ══════════════════════════════════════════════════════════
+          모달: 후보자 추가
+         ══════════════════════════════════════════════════════════ */}
       <AddCandidateModal
         isOpen={addCandidateModalOpen}
         onClose={() => {
@@ -720,6 +965,254 @@ export function CandidatesClient({ initialCandidates, stageCounts = {}, error }:
           router.refresh();
         }}
       />
+
+      {/* ══════════════════════════════════════════════════════════
+          Bulk 모달: 일괄 아카이브
+         ══════════════════════════════════════════════════════════ */}
+      <Dialog open={bulkArchiveModalOpen} onOpenChange={setBulkArchiveModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="w-5 h-5 text-orange-600" />
+              일괄 아카이브
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* 선택된 후보자 미리보기 */}
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+              <p className="text-xs text-slate-500 mb-2 font-medium">선택된 후보자 ({selectedIds.size}명)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedCandidates.slice(0, 8).map(c => (
+                  <span key={c.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white rounded-md text-xs font-medium text-slate-700 border border-slate-200">
+                    <span className="w-4 h-4 rounded-full bg-blue-50 text-[#5287FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                      {c.name.charAt(0)}
+                    </span>
+                    {c.name}
+                  </span>
+                ))}
+                {selectedCandidates.length > 8 && (
+                  <span className="text-xs text-slate-500 px-2 py-0.5">+{selectedCandidates.length - 8}명</span>
+                )}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              아카이브된 후보자는 기본 목록에서 제외되지만, 필터를 통해 조회할 수 있습니다.
+            </p>
+
+            {/* 아카이브 사유 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                아카이브 사유 <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={bulkArchiveReason}
+                onChange={(e) => setBulkArchiveReason(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#5287FF]/30 focus:border-[#5287FF] transition-all"
+              >
+                <option value="">사유를 선택하세요</option>
+                {ARCHIVE_REASONS.map((reason) => (
+                  <option key={reason.id} value={reason.id}>
+                    {reason.label}
+                  </option>
+                ))}
+              </select>
+              {bulkArchiveReason && (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  {ARCHIVE_REASONS.find(r => r.id === bulkArchiveReason)?.description}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => { setBulkArchiveModalOpen(false); setBulkArchiveReason(''); }}
+              disabled={isBulkArchiving}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleBulkArchive}
+              disabled={isBulkArchiving || !bulkArchiveReason}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {isBulkArchiving ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />처리 중...</>
+              ) : (
+                <><Archive className="w-4 h-4 mr-2" />{selectedIds.size}명 아카이브</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════
+          Bulk 모달: 일괄 전형 이동
+         ══════════════════════════════════════════════════════════ */}
+      <Dialog open={bulkMoveModalOpen} onOpenChange={setBulkMoveModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightCircle className="w-5 h-5 text-violet-600" />
+              일괄 전형 이동
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* 선택된 후보자 미리보기 */}
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+              <p className="text-xs text-slate-500 mb-2 font-medium">선택된 후보자 ({selectedIds.size}명)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedCandidates.slice(0, 8).map(c => (
+                  <span key={c.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white rounded-md text-xs font-medium text-slate-700 border border-slate-200">
+                    <span className="w-4 h-4 rounded-full bg-blue-50 text-[#5287FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                      {c.name.charAt(0)}
+                    </span>
+                    {c.name}
+                  </span>
+                ))}
+                {selectedCandidates.length > 8 && (
+                  <span className="text-xs text-slate-500 px-2 py-0.5">+{selectedCandidates.length - 8}명</span>
+                )}
+              </div>
+            </div>
+
+            {/* 이동할 전형 단계 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                이동할 전형 단계 <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-1.5">
+                {Object.entries(STAGE_ID_TO_NAME_MAP).map(([stageId, stageName]) => {
+                  const isSelected = bulkMoveTargetStage === stageId;
+                  return (
+                    <button
+                      key={stageId}
+                      type="button"
+                      onClick={() => setBulkMoveTargetStage(stageId)}
+                      className={cn(
+                        "w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all border",
+                        isSelected
+                          ? "bg-[#5287FF]/10 border-[#5287FF]/30 text-[#5287FF] ring-1 ring-[#5287FF]/20"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{stageName}</span>
+                        {isSelected && <Check className="w-4 h-4 text-[#5287FF]" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => { setBulkMoveModalOpen(false); setBulkMoveTargetStage(''); }}
+              disabled={isBulkMoving}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleBulkMove}
+              disabled={isBulkMoving || !bulkMoveTargetStage}
+              className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white"
+            >
+              {isBulkMoving ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />이동 중...</>
+              ) : (
+                <><ArrowRightCircle className="w-4 h-4 mr-2" />{selectedIds.size}명 이동</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════
+          Bulk 모달: 일괄 이메일 발송
+         ══════════════════════════════════════════════════════════ */}
+      <Dialog open={bulkEmailModalOpen} onOpenChange={setBulkEmailModalOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-5 h-5 text-sky-600" />
+              일괄 이메일 발송
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* 수신자 미리보기 */}
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+              <p className="text-xs text-slate-500 mb-2 font-medium">수신자 ({selectedIds.size}명)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedCandidates.slice(0, 6).map(c => (
+                  <span key={c.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white rounded-md text-xs font-medium text-slate-700 border border-slate-200">
+                    <span className="w-4 h-4 rounded-full bg-blue-50 text-[#5287FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                      {c.name.charAt(0)}
+                    </span>
+                    {c.name}
+                    <span className="text-slate-400 text-[10px]">{c.email}</span>
+                  </span>
+                ))}
+                {selectedCandidates.length > 6 && (
+                  <span className="text-xs text-slate-500 px-2 py-0.5">+{selectedCandidates.length - 6}명</span>
+                )}
+              </div>
+            </div>
+
+            {/* 제목 */}
+            <div>
+              <label htmlFor="bulk-email-subject" className="block text-sm font-medium text-slate-700 mb-1.5">
+                제목 <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="bulk-email-subject"
+                type="text"
+                value={bulkEmailSubject}
+                onChange={(e) => setBulkEmailSubject(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#5287FF]/30 focus:border-[#5287FF] transition-all"
+                placeholder="이메일 제목을 입력하세요"
+              />
+            </div>
+
+            {/* 내용 */}
+            <div>
+              <label htmlFor="bulk-email-body" className="block text-sm font-medium text-slate-700 mb-1.5">
+                내용 <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="bulk-email-body"
+                value={bulkEmailBody}
+                onChange={(e) => setBulkEmailBody(e.target.value)}
+                rows={8}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#5287FF]/30 focus:border-[#5287FF] transition-all resize-none"
+                placeholder="이메일 내용을 입력하세요"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => { setBulkEmailModalOpen(false); setBulkEmailSubject(''); setBulkEmailBody(''); }}
+              disabled={isBulkEmailing}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleBulkEmail}
+              disabled={isBulkEmailing || !bulkEmailSubject || !bulkEmailBody}
+              className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white"
+            >
+              {isBulkEmailing ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />발송 중...</>
+              ) : (
+                <><Mail className="w-4 h-4 mr-2" />{selectedIds.size}명에게 발송</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

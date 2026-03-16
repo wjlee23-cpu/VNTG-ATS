@@ -180,33 +180,26 @@ export function MatchScoreSection({ candidate, hasResumeFile = false }: MatchSco
   if (!hasCompletedData || score === null) {
     // 파일이 업로드되었지만 분석이 완료되지 않은 경우
     if (hasResumeFile) {
-      // pending 상태인 경우
-      if (isPending) {
+      // pending 또는 null 상태인 경우 스켈레톤 UI 표시
+      if (isPending || candidate.ai_analysis_status === null) {
         return (
           <div className="mb-6 bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-blue-50/50 border border-indigo-100 rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="w-5 h-5 text-indigo-500" />
               <h3 className="text-lg font-semibold text-foreground">AI Match Insight</h3>
             </div>
-            <div className="text-center py-8 text-slate-500">
-              <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-indigo-500" />
-              <p className="text-sm">분석 준비 중입니다...</p>
-            </div>
+            <LoadingSkeleton />
           </div>
         );
       }
-      // 파일이 업로드되었지만 분석 상태가 명확하지 않은 경우 (null 또는 기타 상태)
-      // 이 경우에도 섹션을 표시하여 사용자에게 정보 제공
+      // 기타 상태 (예상치 못한 상태)
       return (
         <div className="mb-6 bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-blue-50/50 border border-indigo-100 rounded-xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="w-5 h-5 text-indigo-500" />
             <h3 className="text-lg font-semibold text-foreground">AI Match Insight</h3>
           </div>
-          <div className="text-center py-8 text-slate-500">
-            <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-indigo-500" />
-            <p className="text-sm">AI 분석이 곧 시작됩니다...</p>
-          </div>
+          <LoadingSkeleton />
         </div>
       );
     }

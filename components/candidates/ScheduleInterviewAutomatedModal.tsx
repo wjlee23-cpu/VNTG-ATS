@@ -134,7 +134,7 @@ export function ScheduleInterviewAutomatedModal({
   return (
     <Drawer open={isOpen} onOpenChange={onClose} direction="right">
       <DrawerContent 
-        className="h-full w-full sm:w-[600px] sm:max-w-[90vw] bg-white/80 backdrop-blur-md border-l border-white/20 shadow-2xl"
+        className="h-full w-full sm:w-[600px] sm:max-w-[90vw] bg-white border-l border-slate-100 shadow-2xl"
       >
         <DrawerHeader className="border-b border-slate-200/50 pb-4">
           <div className="flex items-center justify-between">
@@ -155,19 +155,19 @@ export function ScheduleInterviewAutomatedModal({
         </DrawerHeader>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-6">
-            {/* 후보자 정보 카드 */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/50">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+          <div className="p-6 bg-white space-y-8">
+            {/* 후보자 정보 */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
                 후보자
               </label>
               <p className="text-base font-medium text-slate-900">{candidateName}</p>
             </div>
 
-            {/* 날짜 선택 카드 */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/50 space-y-4">
-              <label className="block text-sm font-medium text-slate-700">
-                <CalendarIcon className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+            {/* 날짜 선택 */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
+                <CalendarIcon className="w-4 h-4 text-[#5287FF]" />
                 일정 검색 기간
               </label>
               <div className="grid grid-cols-2 gap-4">
@@ -181,7 +181,7 @@ export function ScheduleInterviewAutomatedModal({
                         type="button"
                         id="start_date"
                         className={cn(
-                          "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm",
+                          "w-full justify-start text-left font-normal px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 transition-all text-sm",
                           !formData.start_date && "text-slate-500"
                         )}
                       >
@@ -193,7 +193,7 @@ export function ScheduleInterviewAutomatedModal({
                         )}
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-3 bg-white rounded-xl shadow-lg border border-slate-100" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.start_date ? new Date(formData.start_date) : undefined}
@@ -225,7 +225,7 @@ export function ScheduleInterviewAutomatedModal({
                         type="button"
                         id="end_date"
                         className={cn(
-                          "w-full justify-start text-left font-normal px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm",
+                          "w-full justify-start text-left font-normal px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 transition-all text-sm",
                           !formData.end_date && "text-slate-500"
                         )}
                       >
@@ -237,7 +237,7 @@ export function ScheduleInterviewAutomatedModal({
                         )}
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-3 bg-white rounded-xl shadow-lg border border-slate-100" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.end_date ? new Date(formData.end_date) : undefined}
@@ -263,23 +263,23 @@ export function ScheduleInterviewAutomatedModal({
               </div>
             </div>
 
-            {/* 면접 시간 선택 카드 - Segmented Control 스타일 */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/50 space-y-3">
-              <label className="block text-sm font-medium text-slate-700">
-                <Clock className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+            {/* 면접 시간 선택 - Vercel 스타일 Segmented Control */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
+                <Clock className="w-4 h-4 text-[#5287FF]" />
                 면접 시간
               </label>
-              <div className="flex gap-2 flex-wrap">
+              <div className="bg-slate-100/80 p-1.5 rounded-xl flex items-center w-full max-w-md">
                 {durationOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => setFormData({ ...formData, duration_minutes: option.value })}
                     className={cn(
-                      "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                      "flex-1 py-2 text-sm rounded-lg transition-all",
                       formData.duration_minutes === option.value
-                        ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white shadow-md"
-                        : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+                        ? "font-bold bg-white text-slate-900 shadow-sm"
+                        : "font-medium text-slate-500 hover:text-slate-700"
                     )}
                   >
                     {option.label}
@@ -288,9 +288,9 @@ export function ScheduleInterviewAutomatedModal({
               </div>
             </div>
 
-            {/* 면접 단계 선택 카드 */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/50 space-y-3">
-              <label htmlFor="stage_id" className="block text-sm font-medium text-slate-700">
+            {/* 면접 단계 선택 */}
+            <div>
+              <label htmlFor="stage_id" className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
                 면접 단계
               </label>
               <select
@@ -298,7 +298,7 @@ export function ScheduleInterviewAutomatedModal({
                 required
                 value={formData.stage_id}
                 onChange={(e) => setFormData({ ...formData, stage_id: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5287FF] focus:border-transparent bg-white text-slate-900 text-sm"
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 transition-all text-slate-900 text-sm"
               >
                 {Object.entries(STAGE_ID_TO_NAME_MAP).map(([id, name]) => (
                   <option key={id} value={id}>
@@ -308,38 +308,38 @@ export function ScheduleInterviewAutomatedModal({
               </select>
             </div>
 
-            {/* 일정 옵션 개수 선택 카드 - Segmented Control 스타일 */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/50 space-y-3">
-              <label className="block text-sm font-medium text-slate-700">
-                <CalendarIcon className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+            {/* 일정 옵션 개수 - Vercel 스타일 Segmented Control */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
+                <CalendarIcon className="w-4 h-4 text-[#5287FF]" />
                 일정 옵션 개수
               </label>
-              <div className="flex gap-2 flex-wrap">
+              <div className="bg-slate-100/80 p-1.5 rounded-xl flex items-center w-full max-w-md">
                 {numOptionsList.map((num) => (
                   <button
                     key={num}
                     type="button"
                     onClick={() => setFormData({ ...formData, num_options: num.toString() })}
                     className={cn(
-                      "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                      "flex-1 py-2 text-sm rounded-lg transition-all",
                       formData.num_options === num.toString()
-                        ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white shadow-md"
-                        : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+                        ? "font-bold bg-white text-slate-900 shadow-sm"
+                        : "font-medium text-slate-500 hover:text-slate-700"
                     )}
                   >
                     {num}개
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 mt-2">
                 면접관들의 공통 가능 일정 중 선택할 옵션 개수입니다.
               </p>
             </div>
 
-            {/* 면접관 선택 카드 - Avatar 토글 UI */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/50 space-y-3">
-              <label className="block text-sm font-medium text-slate-700">
-                <Users className="w-4 h-4 inline mr-2 text-[#5287FF]" />
+            {/* 면접관 선택 - Avatar 토글 UI */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
+                <Users className="w-4 h-4 text-[#5287FF]" />
                 면접관 선택
                 <span className="text-xs font-normal text-slate-500 ml-2">
                   (최소 1명 이상)
@@ -369,7 +369,7 @@ export function ScheduleInterviewAutomatedModal({
                               "flex flex-col items-center gap-2 p-3 rounded-xl transition-all min-w-[80px]",
                               isSelected
                                 ? "bg-blue-50/50 ring-2 ring-[#5287FF] shadow-sm"
-                                : "bg-white border border-slate-200 hover:bg-blue-50/30 hover:border-slate-300"
+                                : "bg-slate-50 border border-slate-200 hover:bg-blue-50/30 hover:border-slate-300"
                             )}
                           >
                             <Avatar className={cn(
@@ -448,11 +448,11 @@ export function ScheduleInterviewAutomatedModal({
           </div>
         </form>
 
-        <DrawerFooter className="border-t border-slate-200/50 pt-4">
+        <DrawerFooter className="border-t border-slate-100 pt-4 mt-8">
           <div className="flex gap-3 justify-end">
             <Button 
               type="button" 
-              variant="outline" 
+              variant="ghost" 
               onClick={onClose} 
               disabled={isLoading}
               className="px-6"
@@ -466,7 +466,7 @@ export function ScheduleInterviewAutomatedModal({
               className={cn(
                 "px-6 transition-all",
                 isFormValid
-                  ? "bg-gradient-to-r from-[#0248FF] to-[#5287FF] text-white hover:opacity-90 shadow-md"
+                  ? "bg-brand-main text-white shadow-md shadow-brand-main/20 hover:opacity-90"
                   : "bg-slate-200 text-slate-400 cursor-not-allowed"
               )}
             >

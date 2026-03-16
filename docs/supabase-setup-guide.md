@@ -167,6 +167,99 @@ supabase gen types typescript --local > lib/supabase/types.ts
    - Storage 버킷 생성: `resumes`
    - RLS 정책 설정
 
+## Storage Bucket 설정
+
+이력서 파일 업로드 기능을 사용하려면 `resumes` Storage bucket을 생성하고 RLS 정책을 설정해야 합니다.
+
+### 로컬 개발 환경
+
+로컬 개발 환경에서는 `supabase/config.toml` 파일에 bucket 설정이 이미 포함되어 있습니다.
+
+1. **Supabase 로컬 서버 재시작**
+   ```bash
+   # Supabase가 실행 중이면 중지
+   supabase stop
+   
+   # Supabase 재시작
+   supabase start
+   ```
+
+2. **Bucket 생성 확인**
+   - Supabase Studio (http://localhost:54323) 접속
+   - 좌측 메뉴에서 "Storage" 클릭
+   - `resumes` bucket이 생성되어 있는지 확인
+
+3. **RLS 정책 설정**
+   - SQL Editor에서 다음 마이그레이션 파일 실행:
+     ```bash
+     # supabase/migrations/20250101000000_setup_storage_bucket_rls.sql
+     ```
+   - 또는 Supabase Studio > SQL Editor에서 파일 내용 복사하여 실행
+
+### 프로덕션 환경
+
+프로덕션 환경에서는 스크립트를 사용하여 bucket을 생성합니다.
+
+1. **환경 변수 확인**
+   `.env` 파일에 다음 변수가 설정되어 있는지 확인:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   ```
+
+2. **Bucket 생성 스크립트 실행**
+   ```bash
+   npx tsx scripts/setup-storage-bucket.ts
+   ```
+   
+   이 스크립트는:
+   - `resumes` bucket이 이미 존재하는지 확인
+   - 없으면 Private bucket으로 생성 (이력서는 민감 정보)
+   - 파일 크기 제한: 50MB
+   - 허용 MIME 타입: PDF, DOC, DOCX
+
+3. **RLS 정책 설정**
+   
+   **방법 A: 마이그레이션 파일 사용 (권장)**
+   ```bash
+   # Supabase 대시보드 > SQL Editor에서 실행
+   # supabase/migrations/20250101000000_setup_storage_bucket_rls.sql
+   ```
+   
+   **방법 B: 수동 설정**
+   - Supabase 대시보드 > Storage > Policies
+   - `resumes` bucket 선택
+   - 다음 정책 추가:
+     - **SELECT**: 리크루터(recruiter) 이상 권한만 조회 가능
+     - **INSERT**: 리크루터 이상 권한만 업로드 가능
+     - **UPDATE**: 리크루터 이상 권한만 수정 가능
+     - **DELETE**: 리크루터 이상 권한만 삭제 가능
+
+### Storage RLS 정책 상세
+
+Storage RLS 정책은 `storage.objects` 테이블에 적용되며, 다음 조건을 확인합니다:
+
+- 사용자가 로그인되어 있어야 함 (`auth.uid()` 존재)
+- 사용자의 역할이 `admin` 또는 `recruiter`여야 함
+- 접근하려는 파일이 `resumes` bucket에 있어야 함
+
+정책 SQL은 `supabase/migrations/20250101000000_setup_storage_bucket_rls.sql` 파일에 포함되어 있습니다.
+
+### 문제 해결
+
+#### 오류: "Bucket not found"
+- 로컬 환경: `supabase/config.toml`에 bucket 설정이 있는지 확인하고 Supabase를 재시작
+- 프로덕션 환경: `scripts/setup-storage-bucket.ts` 스크립트 실행
+
+#### 오류: "permission denied" (파일 업로드 시)
+- Storage RLS 정책이 올바르게 설정되었는지 확인
+- 사용자의 역할이 `recruiter` 또는 `admin`인지 확인
+- Supabase 대시보드 > Storage > Policies에서 정책 확인
+
+#### 오류: "File size limit exceeded"
+- 업로드하려는 파일이 50MB를 초과하지 않는지 확인
+- 필요시 `supabase/config.toml`의 `file_size_limit` 값 조정
+
 4. **애플리케이션 테스트**
    - 회원가입/로그인 테스트
    - 프로세스 생성 테스트

@@ -17,7 +17,9 @@ import { sendEmailViaGmail, listMessages, getMessage } from '@/lib/email/gmail';
 export async function sendEmailToCandidate(formData: FormData) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const supabase = await createClient();
+    const isAdmin = user.role === 'admin';
+    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
+    const supabase = isAdmin ? createServiceClient() : await createClient();
 
     // 현재 사용자의 Google Workspace 토큰 조회 (Gmail API 사용을 위해)
     const { data: currentUserData, error: userTokenError } = await supabase
@@ -43,7 +45,7 @@ export async function sendEmailToCandidate(formData: FormData) {
     // 후보자 접근 권한 확인
     await verifyCandidateAccess(candidateId);
 
-    // 후보자 정보 조회 (이메일 확인)
+    // 후보자 정보 조회 (이메일 확인) - 관리자는 이미 Service Client 사용 중이므로 RLS 우회
     const { data: candidate, error: candidateError } = await supabase
       .from('candidates')
       .select('id, email, name')
