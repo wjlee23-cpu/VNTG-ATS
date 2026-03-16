@@ -116,9 +116,9 @@ export function getGoogleAuthUrl(): string {
   ]
 
   return oauth2Client.generateAuthUrl({
-    access_type: 'offline', // refresh token 받기 위해 필수
+    access_type: 'offline', // refresh token 받기 위해 필수 (최초 1회 발급)
     scope: scopes,
-    prompt: 'consent', // 캘린더 연동 시 항상 동의 화면 표시하여 refresh token 확실히 받기
+    // prompt 생략: 최초 연동 시에만 구글이 동의 화면 표시, 이후에는 재인증 요청 없이 refresh_token으로 갱신
   })
 }
 
