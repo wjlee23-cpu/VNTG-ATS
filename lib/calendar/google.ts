@@ -123,7 +123,10 @@ export function getGoogleAuthUrl(): string {
 }
 
 /**
- * 토큰 만료 시 자동 갱신
+ * refresh_token으로 새 access_token 발급 후 반환.
+ * API 호출 전에 호출하면 만료된 access_token 없이 항상 유효한 토큰을 사용할 수 있음.
+ * (getAccessToken()은 만료 정보가 없으면 갱신을 하지 않아 만료된 토큰이 반환될 수 있으므로,
+ *  refresh_token으로 명시적으로 갱신하는 방식으로 통일)
  */
 export async function refreshAccessTokenIfNeeded(
   accessToken: string,
@@ -142,26 +145,15 @@ export async function refreshAccessTokenIfNeeded(
       refresh_token: refreshToken,
     })
 
-    // 토큰이 만료되었는지 확인하고, 필요시 갱신
-    const tokenInfo = await oauth2Client.getAccessToken()
-    const newToken = tokenInfo.token
+    // refresh_token으로 항상 새 access_token 발급 (만료 여부와 무관하게 갱신하여 401 방지)
+    const { credentials } = await oauth2Client.refreshAccessToken()
+    const newToken = credentials.access_token
 
     if (!newToken) {
-      // getAccessToken이 null을 반환하면 수동으로 갱신 시도
-      const { credentials } = await oauth2Client.refreshAccessToken()
-      if (!credentials.access_token) {
-        throw new Error('토큰 갱신에 실패했습니다. 구글 캘린더를 재연동해주세요.')
-      }
-
-      // 갱신된 토큰이 기존 토큰과 다르면 DB에 저장 (userId가 있을 때만)
-      if (userId && credentials.access_token !== accessToken) {
-        await persistAccessTokenToDB(userId, credentials.access_token)
-      }
-
-      return credentials.access_token
+      throw new Error('토큰 갱신에 실패했습니다. 구글 캘린더를 재연동해주세요.')
     }
 
-    // 토큰이 갱신된 경우 (기존 토큰과 다를 때) DB에 저장
+    // 갱신된 토큰을 DB에 저장 (userId가 있을 때만)
     if (userId && newToken !== accessToken) {
       await persistAccessTokenToDB(userId, newToken)
     }
