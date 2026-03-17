@@ -12,13 +12,15 @@ import { withErrorHandling } from '@/api/utils/errors';
  * @param content 코멘트 내용
  * @param mentionedUserIds 멘션된 사용자 ID 목록 (선택)
  * @param parentCommentId 부모 코멘트 ID (대댓글인 경우)
+ * @param skipRevalidate 캐시 무효화(revalidatePath)를 건너뛸지 여부 (기본값: false)
  * @returns 생성된 코멘트 데이터
  */
 export async function createComment(
   candidateId: string,
   content: string,
   mentionedUserIds?: string[],
-  parentCommentId?: string
+  parentCommentId?: string,
+  skipRevalidate?: boolean
 ) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
@@ -88,8 +90,11 @@ export async function createComment(
       }
     }
 
-    // 캐시 무효화
-    revalidatePath(`/dashboard/candidates/${validatedCandidateId}`);
+    // 캐시 무효화 (skipRevalidate가 true이면 건너뜀)
+    // 클라이언트에서 타임라인을 직접 업데이트하는 경우 서버 캐시 무효화가 불필요합니다.
+    if (!skipRevalidate) {
+      revalidatePath(`/dashboard/candidates/${validatedCandidateId}`);
+    }
 
     return data;
   });

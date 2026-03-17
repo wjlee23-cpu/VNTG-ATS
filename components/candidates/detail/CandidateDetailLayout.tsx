@@ -34,6 +34,8 @@ interface CandidateDetailLayoutProps {
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
   onAddComment: () => void;
+  onRefreshTimeline?: () => void | Promise<void>;
+  onSwitchToTimeline?: () => void;
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
@@ -67,6 +69,8 @@ export function CandidateDetailLayout({
   expandedEmails,
   onToggleEmailExpand,
   onAddComment,
+  onRefreshTimeline,
+  onSwitchToTimeline,
   onCancelSchedule,
   onDeleteSchedule,
   onRescheduleSchedule,
@@ -78,6 +82,11 @@ export function CandidateDetailLayout({
   onFileSelect,
 }: CandidateDetailLayoutProps) {
   const [activeTab, setActiveTab] = useState<TabType>('ai-insight');
+
+  // 코멘트 작성 시 Activity Timeline 탭으로 전환
+  const handleSwitchToTimeline = () => {
+    setActiveTab('timeline');
+  };
 
   return (
     <div className="flex h-[820px] w-full max-w-[1080px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
@@ -148,6 +157,8 @@ export function CandidateDetailLayout({
             currentStageId={currentStageId}
             canManageCandidate={canManageCandidate}
             onAddComment={onAddComment}
+            onRefreshTimeline={onRefreshTimeline}
+            onSwitchToTimeline={handleSwitchToTimeline}
             onCancelSchedule={onCancelSchedule}
             onDeleteSchedule={onDeleteSchedule}
             onRescheduleSchedule={onRescheduleSchedule}

@@ -563,6 +563,7 @@ export function CandidateDetailClient({
           expandedEmails={expandedEmails}
           onToggleEmailExpand={toggleEmailExpand}
           onAddComment={() => setIsCommentModalOpen(true)}
+          onRefreshTimeline={refreshTimelineEvents}
           onCancelSchedule={handleCancelScheduleFromTimeline}
           onDeleteSchedule={handleDeleteScheduleFromTimeline}
           onRescheduleSchedule={handleRescheduleScheduleFromTimeline}

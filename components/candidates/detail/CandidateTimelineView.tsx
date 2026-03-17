@@ -8,6 +8,9 @@ import { formatDate, formatRelativeTime } from '@/lib/candidate-detail-utils';
 import { getTimelineEventTitle } from './timeline-utils';
 import { TimelineEventContent } from './TimelineEventContent';
 import type { TimelineEvent } from '@/types/candidate-detail';
+import { createComment } from '@/api/actions/comments';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 interface CandidateTimelineViewProps {
   candidateName: string;
@@ -18,6 +21,8 @@ interface CandidateTimelineViewProps {
   currentStageId: string | null;
   canManageCandidate: boolean;
   onAddComment: () => void;
+  onRefreshTimeline?: () => void | Promise<void>;
+  onSwitchToTimeline?: () => void;
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
@@ -33,11 +38,15 @@ export function CandidateTimelineView({
   currentStageId,
   canManageCandidate,
   onAddComment,
+  onRefreshTimeline,
+  onSwitchToTimeline,
   onCancelSchedule,
   onDeleteSchedule,
   onRescheduleSchedule,
 }: CandidateTimelineViewProps) {
+  const router = useRouter();
   const [commentText, setCommentText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const currentUserInitial = '나'; // TODO: 실제 사용자 정보에서 가져오기
 
   // 이벤트 타입에 따른 배지 스타일 결정
@@ -118,10 +127,49 @@ export function CandidateTimelineView({
     }
   };
 
-  const handleCommentSubmit = () => {
-    if (commentText.trim()) {
-      onAddComment();
-      setCommentText('');
+  // 코멘트 전송 핸들러 - 직접 코멘트를 생성합니다
+  const handleCommentSubmit = async () => {
+    // 내용 검증
+    if (!commentText.trim()) {
+      toast.error('코멘트 내용을 입력해주세요.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // skipRevalidate: true로 설정하여 전체 페이지 리프레시 방지
+      // 클라이언트에서 타임라인을 직접 업데이트하므로 서버 캐시 무효화가 불필요합니다.
+      const result = await createComment(
+        candidateId,
+        commentText.trim(),
+        undefined, // mentionedUserIds
+        undefined, // parentCommentId
+        true // skipRevalidate: true - 리프레시 방지
+      );
+
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('코멘트가 저장되었습니다.');
+        setCommentText('');
+        // Activity Timeline 탭으로 전환
+        if (onSwitchToTimeline) {
+          onSwitchToTimeline();
+        }
+        // 타임라인만 새로고침 (전체 페이지 새로고침 방지)
+        if (onRefreshTimeline) {
+          await onRefreshTimeline();
+        } else {
+          // 폴백: 콜백이 없으면 router.refresh() 사용
+          router.refresh();
+        }
+      }
+    } catch (error) {
+      toast.error('코멘트 저장 중 오류가 발생했습니다.');
+      console.error('Comment error:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -150,7 +198,8 @@ export function CandidateTimelineView({
               <textarea
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                className="w-full bg-[#FCFCFC] border border-neutral-200 rounded-lg pl-4 pr-20 py-3 text-sm focus:outline-none focus:border-neutral-900 focus:bg-white focus:ring-1 focus:ring-neutral-900 transition-all resize-none placeholder:text-neutral-400"
+                disabled={isSubmitting}
+                className="w-full bg-[#FCFCFC] border border-neutral-200 rounded-lg pl-4 pr-20 py-3 text-sm focus:outline-none focus:border-neutral-900 focus:bg-white focus:ring-1 focus:ring-neutral-900 transition-all resize-none placeholder:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 rows={2}
                 placeholder={`${candidateName} 후보자에 대한 평가나 메모를 남겨주세요...`}
               />
@@ -165,9 +214,9 @@ export function CandidateTimelineView({
                 <button
                   type="button"
                   onClick={handleCommentSubmit}
-                  disabled={!commentText.trim()}
+                  disabled={!commentText.trim() || isSubmitting}
                   className="p-1.5 bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="전송"
+                  title={isSubmitting ? '전송 중...' : '전송'}
                 >
                   <Send className="w-4 h-4" />
                 </button>
