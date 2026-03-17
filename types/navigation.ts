@@ -10,7 +10,6 @@ export type AppView =
   | 'templates'
   | 'offers'
   | 'jd-requests'
-  | 'schedules'
   // Detail views
   | 'candidate-detail'
   | 'job-create'
@@ -36,7 +35,6 @@ export function viewToPath(view: AppView, params?: Record<string, string>): stri
     'templates': '/templates',
     'offers': '/offers',
     'jd-requests': '/jd-requests',
-    'schedules': '/schedules',
     'candidate-detail': params?.id ? `/candidates/${params.id}` : '/candidates',
     'job-create': '/jobs/create',
     'job-edit': params?.id ? `/jobs/${params.id}/edit` : '/jobs',
@@ -70,7 +68,6 @@ export function pathToView(pathname: string): AppView {
   if (pathname === '/jd/create') return 'jd-create';
   if (pathname.match(/^\/jd\/[^/]+\/review$/)) return 'jd-review';
   if (pathname.startsWith('/jd-requests')) return 'jd-requests';
-  if (pathname.startsWith('/schedules')) return 'schedules';
   if (pathname.startsWith('/career')) return 'career-page';
   if (pathname.startsWith('/apply')) return 'apply';
   

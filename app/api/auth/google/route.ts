@@ -2,21 +2,25 @@ import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
 
 /**
- * 구글 로그인 시작점 (모든 권한 포함)
+ * 구글 로그인 / 캘린더 연동 시작점 (모든 권한 포함)
  * 캘린더, Gmail 권한을 포함하여 처음부터 모든 권한을 받습니다.
- * 
+ *
  * 🔑 핵심 로직:
  * - 기본적으로 prompt: 'select_account' 사용 → 계정 선택만, 동의 화면 생략
  * - 처음 사용하는 구글 계정은 자동으로 동의 화면이 표시됨 (구글이 알아서 처리)
- * - 이미 권한을 승인한 계정은 계정 선택만으로 바로 로그인됨
+ * - 이미 권한을 승인한 계정은 계정 선택만으로 바로 로그인/연동됨
  * - 콜백에서 refresh_token이 없고 DB에도 없는 경우에만 prompt: 'consent'로 재시도
- * 
- * GET /api/auth/google?next=/dashboard
+ *
+ * 사용 예시:
+ * - 로그인:  GET /api/auth/google?next=/dashboard
+ * - 캘린더: GET /api/auth/google?type=connect&next=/dashboard
  */
 export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
     const next = requestUrl.searchParams.get('next') || '/dashboard';
+    // login / connect 플로우 구분
+    const type = requestUrl.searchParams.get('type') || 'login';
     // 콜백에서 재시도 요청이 올 수 있음 (refresh_token 미발급 시)
     const forceConsent = requestUrl.searchParams.get('force_consent') === 'true';
 
@@ -45,7 +49,8 @@ export async function GET(request: Request) {
     } = {
       access_type: 'offline', // refresh token 받기 위해 필수
       scope: scopes,
-      state: encodeURIComponent(JSON.stringify({ next, type: 'login' })),
+      // 어떤 플로우로 호출됐는지(state.type) 함께 전달
+      state: encodeURIComponent(JSON.stringify({ next, type })),
     };
 
     if (forceConsent) {

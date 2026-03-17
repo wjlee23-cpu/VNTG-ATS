@@ -18,17 +18,17 @@ export const SCORING_WEIGHTS = {
       range: [12, 16], // 12시~16시
     },
   },
-  
+
   /**
    * 모든 면접관이 가능한 경우 보너스 점수
    */
   allInterviewersBonus: 20,
-  
+
   /**
    * 부분적 충돌 허용 시, 가능한 면접관 수에 곱하는 배수
    */
   partialConflictMultiplier: 2,
-  
+
   /**
    * 요일별 선호도 보너스
    * 화요일~목요일을 선호

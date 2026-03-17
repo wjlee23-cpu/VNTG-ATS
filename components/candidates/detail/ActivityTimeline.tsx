@@ -9,6 +9,7 @@ import { formatDate, formatRelativeTime } from '@/lib/candidate-detail-utils';
 import { getTimelineEventTitle, getTimelineEventColor } from './timeline-utils';
 import { TimelineEventContent } from './TimelineEventContent';
 import type { TimelineEvent } from '@/types/candidate-detail';
+import { CANDIDATE_STATUS_CONFIG } from '@/constants/candidates';
 
 interface ActivityTimelineProps {
   events: TimelineEvent[];
@@ -21,6 +22,10 @@ interface ActivityTimelineProps {
   onSyncEmails: () => void;
   onAddComment: () => void;
   onAddEvaluation: () => void;
+  // 일정 관련 액션 콜백 (후보자 상세 컨테이너에서 주입)
+  onCancelSchedule?: (scheduleId: string) => void;
+  onDeleteSchedule?: (scheduleId: string) => void;
+  onRescheduleSchedule?: (scheduleId: string) => void;
 }
 
 /** Activity Timeline 카드: 이벤트 목록 + 동기화/코멘트/평가 버튼 */
@@ -35,6 +40,9 @@ export function ActivityTimeline({
   onSyncEmails,
   onAddComment,
   onAddEvaluation,
+  onCancelSchedule,
+  onDeleteSchedule,
+  onRescheduleSchedule,
 }: ActivityTimelineProps) {
   const showUserAvatar = (event: TimelineEvent) => {
     const types = [
@@ -52,28 +60,34 @@ export function ActivityTimeline({
 
   return (
     <Card className="shadow-md hover:shadow-lg transition-shadow duration-200 card-modern">
-      <CardHeader>
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
+      <CardHeader className="border-b border-slate-100 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* 제목 + 동기화 아이콘 */}
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-main to-brand-dark flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
+              <MessageSquare className="w-5 h-5 text-white" />
+            </div>
+            <CardTitle className="text-base md:text-lg font-semibold text-slate-900">
+              Activity Timeline
+            </CardTitle>
             {canManageCandidate && (
               <Button
                 onClick={onSyncEmails}
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 hover:bg-primary/10 transition-all duration-200"
+                size="icon"
+                className="ml-1 w-8 h-8 rounded-full text-primary hover:bg-primary/10 flex items-center justify-center"
                 disabled={isSyncingEmails}
                 title="이메일 동기화"
               >
-                {isSyncingEmails ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-primary" />
-                ) : (
-                  <RefreshCw className="w-4 h-4 text-primary" />
-                )}
+                <RefreshCw
+                  className={`w-4 h-4 ${isSyncingEmails ? 'animate-spin' : ''}`}
+                />
               </Button>
             )}
           </div>
-          <div className="flex gap-2">
+
+          {/* 액션 버튼들: 작은 화면에서는 왼쪽 정렬, 큰 화면에서는 오른쪽 정렬 */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-start sm:justify-end w-full sm:w-auto">
             <Button
               onClick={onAddComment}
               variant="outline"
@@ -88,7 +102,7 @@ export function ActivityTimeline({
                 onClick={onAddEvaluation}
                 variant="outline"
                 size="sm"
-                className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200"
+              className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Evaluation
@@ -135,7 +149,7 @@ export function ActivityTimeline({
                       </div>
                     )}
                   </div>
-                  <div className="flex-1 pb-6 min-w-0">
+                  <div className="flex-1 pb-6">
                     <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-3 hover:shadow-md transition-all duration-200">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`text-sm font-semibold ${getTimelineEventColor(event.type)}`}>
@@ -157,6 +171,10 @@ export function ActivityTimeline({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
+                          // 일정 관리 액션들은 아직 UI 리디자인 단계에서 사용할 예정
+                          onCancelSchedule={onCancelSchedule}
+                          onDeleteSchedule={onDeleteSchedule}
+                          onRescheduleSchedule={onRescheduleSchedule}
                         />
                       </div>
                     </div>

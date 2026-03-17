@@ -16,7 +16,7 @@ import { confirmHire } from '@/api/actions/offers';
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
-import { scheduleInterviewAutomated } from '@/api/actions/schedules';
+import { scheduleInterviewAutomated, deleteSchedule, cancelSchedule, rescheduleInterview } from '@/api/actions/schedules';
 import { getUsers } from '@/api/queries/users';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -78,6 +78,10 @@ export function CandidateDetailClient({
     stage_id: 'stage-6',
     interviewer_ids: [] as string[],
     num_options: '2',
+    exclude_start_hour: '11',
+    exclude_start_minute: '30',
+    exclude_end_hour: '12',
+    exclude_end_minute: '30',
   });
   const [scheduleWarning, setScheduleWarning] = useState<string | null>(null);
   const currentStageId =
@@ -99,6 +103,7 @@ export function CandidateDetailClient({
   });
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isMovingStage, setIsMovingStage] = useState(false);
+  const [scheduleActionLoadingId, setScheduleActionLoadingId] = useState<string | null>(null);
 
   const refreshCandidateData = async () => {
     try {
@@ -442,6 +447,72 @@ export function CandidateDetailClient({
     }
   };
 
+  // 타임라인에서 일정 취소
+  const handleCancelScheduleFromTimeline = async (scheduleId: string) => {
+    if (!confirm('이 면접 일정을 취소하시겠습니까? 구글 캘린더의 이벤트도 함께 삭제됩니다.')) return;
+    setScheduleActionLoadingId(scheduleId);
+    try {
+      const result = await cancelSchedule(scheduleId);
+      if ((result as { error?: string }).error) {
+        toast.error((result as { error: string }).error);
+      } else {
+        toast.success('면접 일정이 취소되었습니다.');
+        refreshCandidateData().catch(() => {});
+        refreshTimelineEvents().catch(() => {});
+      }
+    } catch (error) {
+      console.error('[CandidateDetailClient] 면접 일정 취소 실패:', error);
+      toast.error('면접 일정 취소 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleActionLoadingId(null);
+    }
+  };
+
+  // 타임라인에서 일정 삭제
+  const handleDeleteScheduleFromTimeline = async (scheduleId: string) => {
+    if (!confirm('정말로 이 면접 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+    setScheduleActionLoadingId(scheduleId);
+    try {
+      const result = await deleteSchedule(scheduleId);
+      if ((result as { error?: string }).error) {
+        toast.error((result as { error: string }).error);
+      } else {
+        toast.success('면접 일정이 삭제되었습니다.');
+        refreshCandidateData().catch(() => {});
+        refreshTimelineEvents().catch(() => {});
+      }
+    } catch (error) {
+      console.error('[CandidateDetailClient] 면접 일정 삭제 실패:', error);
+      toast.error('면접 일정 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleActionLoadingId(null);
+    }
+  };
+
+  // 타임라인에서 일정 재조율
+  const handleRescheduleScheduleFromTimeline = async (scheduleId: string) => {
+    if (!confirm('이 면접 일정을 기준으로 새로운 일정 옵션을 재조율하시겠습니까?')) return;
+    setScheduleActionLoadingId(scheduleId);
+    try {
+      const formData = new FormData();
+      formData.append('rescheduling_reason', '관리자 요청');
+      formData.append('num_options', '2');
+      const result = await rescheduleInterview(scheduleId, formData);
+      if ((result as { error?: string }).error) {
+        toast.error((result as { error: string }).error);
+      } else {
+        toast.success('재조율이 완료되었습니다.');
+        refreshCandidateData().catch(() => {});
+        refreshTimelineEvents().catch(() => {});
+      }
+    } catch (error) {
+      console.error('[CandidateDetailClient] 면접 일정 재조율 실패:', error);
+      toast.error('재조율 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleActionLoadingId(null);
+    }
+  };
+
   const getCurrentStageName = (): string => {
     if (!currentStageId) return 'New Application';
     if (STAGE_ID_TO_NAME_MAP[currentStageId]) return STAGE_ID_TO_NAME_MAP[currentStageId];
@@ -554,6 +625,9 @@ export function CandidateDetailClient({
                   onSyncEmails={handleSyncEmails}
                   onAddComment={() => setIsCommentModalOpen(true)}
                   onAddEvaluation={() => setIsEvaluationModalOpen(true)}
+                  onCancelSchedule={handleCancelScheduleFromTimeline}
+                  onDeleteSchedule={handleDeleteScheduleFromTimeline}
+                  onRescheduleSchedule={handleRescheduleScheduleFromTimeline}
                 />
               </>
             ) : (

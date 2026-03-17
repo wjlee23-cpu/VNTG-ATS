@@ -258,6 +258,24 @@ export async function GET(request: Request) {
         .eq('id', authUser.id)
         .single();
 
+      // ─── refresh_token 자동 재시도 로직 (connect 플로우) ───
+      // 로그인 플로우와 동일하게, DB 어디에도 refresh_token이 없다면
+      // prompt: 'consent'를 강제로 띄워서 한 번 더 권한을 요청합니다.
+      const hasNewRefreshToken = !!tokens.refresh_token;
+      const hasExistingRefreshToken = !!existingUserData?.calendar_refresh_token;
+
+      if (!hasNewRefreshToken && !hasExistingRefreshToken) {
+        console.log('[OAuth 콜백][connect] refresh_token 없음 → force_consent로 재시도');
+
+        // 캘린더 전용 OAuth 엔드포인트로 재요청 (type=connect 명시)
+        return NextResponse.redirect(
+          new URL(
+            `/api/auth/google?next=${encodeURIComponent(next)}&type=connect&force_consent=true`,
+            requestUrl.origin
+          )
+        );
+      }
+
       const updateData: {
         calendar_provider: string;
         calendar_access_token: string;

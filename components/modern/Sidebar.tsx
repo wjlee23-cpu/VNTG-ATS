@@ -12,8 +12,7 @@ import {
   Gift,
   Settings,
   FileEdit,
-  Zap,
-  Clock
+  Zap
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { pathToView, type AppView } from '@/types/navigation';
@@ -53,8 +52,6 @@ export function Sidebar() {
     { icon: BarChart3, label: 'Analytics', view: 'analytics' as AppView, path: '/analytics' },
     { icon: UserCircle, label: 'Team', view: 'team' as AppView, path: '/team' },
     { icon: FileText, label: 'Templates', view: 'templates' as AppView, path: '/templates' },
-    // 관리자만 표시되는 메뉴
-    ...(isAdmin ? [{ icon: Clock, label: 'Schedule Management', view: 'schedules' as AppView, path: '/schedules' }] : []),
   ];
 
   const bottomNavItems = [

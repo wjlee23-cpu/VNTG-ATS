@@ -34,6 +34,10 @@ interface TimelineEventContentProps {
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
   candidateId: string;
+  // 일정 관련 액션 콜백 (타임라인 헤더에서 내려옴)
+  onCancelSchedule?: (scheduleId: string) => void;
+  onDeleteSchedule?: (scheduleId: string) => void;
+  onRescheduleSchedule?: (scheduleId: string) => void;
 }
 
 /** 타임라인 이벤트 타입별 본문 렌더링 */
@@ -42,6 +46,9 @@ export function TimelineEventContent({
   expandedEmails,
   onToggleEmailExpand,
   candidateId,
+  onCancelSchedule,
+  onDeleteSchedule,
+  onRescheduleSchedule,
 }: TimelineEventContentProps) {
   const router = useRouter();
 
@@ -231,6 +238,7 @@ export function TimelineEventContent({
       const originalDateRange = event.content?.original_date_range as
         | { start: string; end: string }
         | undefined;
+      const scheduleId = (event.content?.schedule_id as string | undefined) || event.id;
       return (
         <div className="space-y-3">
           <p className="text-sm text-gray-700">
@@ -278,17 +286,41 @@ export function TimelineEventContent({
               )}
             </div>
           )}
-          <div className="mt-3">
-            <Button
-              onClick={() => router.push(`/schedules?candidate=${candidateId}`)}
-              variant="outline"
-              size="sm"
-              className="border-border bg-card hover:bg-blue-50 hover:text-blue-700 transition-colors duration-200"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              일정 조율 관리로 이동
-            </Button>
-          </div>
+          {scheduleId && (onRescheduleSchedule || onCancelSchedule || onDeleteSchedule) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {onRescheduleSchedule && (
+                <Button
+                  onClick={() => onRescheduleSchedule(scheduleId)}
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-400/40 text-blue-600 hover:bg-blue-50 transition-colors duration-200"
+                >
+                  <Settings className="w-4 h-4 mr-1.5" />
+                  재조율
+                </Button>
+              )}
+              {onCancelSchedule && (
+                <Button
+                  onClick={() => onCancelSchedule(scheduleId)}
+                  variant="outline"
+                  size="sm"
+                  className="border-rose-400/40 text-rose-600 hover:bg-rose-50 transition-colors duration-200"
+                >
+                  일정 취소
+                </Button>
+              )}
+              {onDeleteSchedule && (
+                <Button
+                  onClick={() => onDeleteSchedule(scheduleId)}
+                  variant="ghost"
+                  size="sm"
+                  className="text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors duration-200"
+                >
+                  완전 삭제
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       );
     }

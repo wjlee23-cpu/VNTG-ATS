@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ArrowRight,
   User,
   Calendar,
   CalendarRange,
@@ -11,6 +10,7 @@ import {
   Users,
   Loader2,
   AlertTriangle,
+  Ban,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,6 +21,7 @@ import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { cn } from '@/components/ui/utils';
+import { BackButton } from '@/components/common/BackButton';
 
 const DURATION_OPTIONS = [
   { value: '30', label: '30분' },
@@ -37,6 +38,10 @@ interface ScheduleFormData {
   stage_id: string;
   interviewer_ids: string[];
   num_options: string;
+  exclude_start_hour: string;
+  exclude_start_minute: string;
+  exclude_end_hour: string;
+  exclude_end_minute: string;
 }
 
 interface UserOption {
@@ -74,15 +79,9 @@ export function CandidateSchedulingForm({
   onBack,
 }: CandidateSchedulingFormProps) {
   return (
-    <div>
-      <Button
-        onClick={onBack}
-        variant="ghost"
-        className="mb-6 -ml-3 px-3 py-2 w-fit flex items-center gap-2 hover:bg-slate-100 hover:text-slate-900 rounded-md transition-colors text-slate-600"
-      >
-        <ArrowRight className="w-4 h-4 rotate-180" />
-        <span>뒤로 가기</span>
-      </Button>
+    <div className="space-y-4">
+      {/* 상단 공통 뒤로 가기 버튼: 카드와 동일한 좌측 기준선에서 정렬 */}
+      <BackButton onClick={onBack} className="mb-2" />
 
       <form onSubmit={onSubmit} className="space-y-6">
         <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
@@ -206,6 +205,93 @@ export function CandidateSchedulingForm({
 
         <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
           <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
+            <Ban className="size-5 text-slate-400" />
+            제외 시간
+            <span className="text-xs font-normal text-slate-500 ml-2">(점심시간 등)</span>
+          </h3>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 mb-3">
+              면접 일정에서 제외할 시간대를 설정하세요. 예: 점심시간 11:30 ~ 12:30
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="exclude_start" className="block text-xs font-medium text-slate-700 mb-2">
+                  시작 시간
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    id="exclude_start_hour"
+                    value={formData.exclude_start_hour || '11'}
+                    onChange={(e) => onFormDataChange({ exclude_start_hour: e.target.value })}
+                    className="flex-1 bg-white border border-slate-200 hover:border-slate-300 focus:border-brand-main focus:ring-4 focus:ring-brand-main/10 rounded-xl px-3 py-2.5 transition-all text-sm text-slate-900 focus:outline-none"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i.toString().padStart(2, '0')}>
+                        {i.toString().padStart(2, '0')}시
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    id="exclude_start_minute"
+                    value={formData.exclude_start_minute || '30'}
+                    onChange={(e) => onFormDataChange({ exclude_start_minute: e.target.value })}
+                    className="flex-1 bg-white border border-slate-200 hover:border-slate-300 focus:border-brand-main focus:ring-4 focus:ring-brand-main/10 rounded-xl px-3 py-2.5 transition-all text-sm text-slate-900 focus:outline-none"
+                  >
+                    {[0, 15, 30, 45].map((m) => (
+                      <option key={m} value={m.toString().padStart(2, '0')}>
+                        {m.toString().padStart(2, '0')}분
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="exclude_end" className="block text-xs font-medium text-slate-700 mb-2">
+                  종료 시간
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    id="exclude_end_hour"
+                    value={formData.exclude_end_hour || '12'}
+                    onChange={(e) => onFormDataChange({ exclude_end_hour: e.target.value })}
+                    className="flex-1 bg-white border border-slate-200 hover:border-slate-300 focus:border-brand-main focus:ring-4 focus:ring-brand-main/10 rounded-xl px-3 py-2.5 transition-all text-sm text-slate-900 focus:outline-none"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i.toString().padStart(2, '0')}>
+                        {i.toString().padStart(2, '0')}시
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    id="exclude_end_minute"
+                    value={formData.exclude_end_minute || '30'}
+                    onChange={(e) => onFormDataChange({ exclude_end_minute: e.target.value })}
+                    className="flex-1 bg-white border border-slate-200 hover:border-slate-300 focus:border-brand-main focus:ring-4 focus:ring-brand-main/10 rounded-xl px-3 py-2.5 transition-all text-sm text-slate-900 focus:outline-none"
+                  >
+                    {[0, 15, 30, 45].map((m) => (
+                      <option key={m} value={m.toString().padStart(2, '0')}>
+                        {m.toString().padStart(2, '0')}분
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="bg-blue-50/50 border border-blue-200/50 rounded-lg p-3 text-xs text-slate-600">
+              <p>
+                <strong>현재 설정:</strong> {formData.exclude_start_hour || '11'}시{' '}
+                {formData.exclude_start_minute || '30'}분 ~ {formData.exclude_end_hour || '12'}시{' '}
+                {formData.exclude_end_minute || '30'}분
+              </p>
+              <p className="mt-1 text-slate-500">
+                이 시간대에 걸치는 면접 일정은 제안되지 않습니다.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-100 rounded-xl p-6 shadow-sm card-modern">
+          <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2.5">
             <Users className="size-5 text-slate-400" />
             면접관 선택
             <span className="text-xs font-normal text-slate-500 ml-2">(최소 1명 이상)</span>
@@ -217,7 +303,7 @@ export function CandidateSchedulingForm({
             </div>
           ) : (
             <>
-              <div className="flex gap-3 overflow-x-auto md:grid md:grid-cols-4 lg:grid-cols-5 md:overflow-x-visible pb-2">
+              <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-4 lg:grid-cols-5 md:overflow-x-visible">
                 {users.length === 0 ? (
                   <p className="text-sm text-slate-500 text-center py-4 w-full">
                     면접관이 없습니다. 먼저 면접관을 등록해주세요.
@@ -231,7 +317,7 @@ export function CandidateSchedulingForm({
                         type="button"
                         onClick={() => onToggleInterviewer(user.id)}
                         className={cn(
-                          'flex flex-col items-center gap-2 p-3.5 rounded-xl transition-all min-w-[80px] md:min-w-0',
+                          'flex flex-col items-center gap-2 p-3.5 rounded-xl transition-all min-w-[80px]',
                           isSelected
                             ? 'bg-blue-50/50 ring-2 ring-[#5287FF] shadow-sm'
                             : 'bg-slate-50 border border-slate-200 hover:bg-blue-50/30 hover:border-slate-300',
@@ -253,7 +339,7 @@ export function CandidateSchedulingForm({
                           </AvatarFallback>
                         </Avatar>
                         <div className="text-center">
-                          <p className="text-xs font-bold text-slate-700 truncate max-w-[70px]">
+                          <p className="text-xs font-bold text-slate-700 break-words">
                             {user.email.split('@')[0]}
                           </p>
                           {user.role === 'admin' && (

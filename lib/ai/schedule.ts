@@ -6,7 +6,7 @@ import {
   BUSINESS_HOURS, 
   SLOT_INTERVAL_MINUTES, 
   MIN_SLOT_INTERVAL_MINUTES, 
-  MAX_SCHEDULE_OPTIONS 
+  MAX_SCHEDULE_OPTIONS,
 } from './schedule-constants'
 
 export interface ScheduleOption {
@@ -27,6 +27,18 @@ export interface ScheduleRequest {
   durationMinutes?: number
   allowPartialConflict?: boolean // 부분적 충돌 허용 옵션 (면접관 중 일부만 가능해도 제안)
   minAvailableInterviewers?: number // 최소 필요한 면접관 수 (기본값: 모든 면접관)
+  /**
+   * 제외할 시간대 목록
+   * - 예: 점심시간(11:30~12:30) 등
+   * - startHour/startMinute ~ endHour/endMinute 구간과 겹치는 슬롯은 생성하지 않음
+   * - 지정되지 않은 경우 빈 배열 (제외 시간 없음)
+   */
+  excludedTimeRanges?: Array<{
+    startHour: number
+    startMinute: number
+    endHour: number
+    endMinute: number
+  }>
 }
 
 /**
@@ -83,7 +95,13 @@ function findAvailableSlotsOptimized(
   endDate: Date,
   durationMinutes: number,
   allowPartialConflict: boolean,
-  minAvailableInterviewers: number
+  minAvailableInterviewers: number,
+  excludedTimeRanges: Array<{
+    startHour: number
+    startMinute: number
+    endHour: number
+    endMinute: number
+  }>
 ): Array<{
   slot: Date
   slotEnd: Date
@@ -121,9 +139,26 @@ function findAvailableSlotsOptimized(
       for (let minute = 0; minute < 60; minute += SLOT_INTERVAL_MINUTES) {
         const slot = new Date(dayStart)
         slot.setHours(hour, minute, 0, 0)
-        
+
         if (slot < startDate || slot > endDate) continue
-        
+
+        // 제외 시간대(점심시간 등)에 포함되는 슬롯은 스킵
+        const slotLocalHour = slot.getHours()
+        const slotLocalMinute = slot.getMinutes()
+
+        const isExcluded = excludedTimeRanges.some(range => {
+          const slotTotalMinutes = slotLocalHour * 60 + slotLocalMinute
+          const rangeStartMinutes = range.startHour * 60 + range.startMinute
+          const rangeEndMinutes = range.endHour * 60 + range.endMinute
+
+          // 슬롯 시작 시각이 제외 구간 안에 있는지 체크 (경계 포함)
+          return slotTotalMinutes >= rangeStartMinutes && slotTotalMinutes < rangeEndMinutes
+        })
+
+        if (isExcluded) {
+          continue
+        }
+
         const slotEnd = addMinutes(slot, durationMinutes)
         
         // 이 슬롯에 대해 가능한 면접관 찾기
@@ -327,7 +362,8 @@ export async function findAvailableTimeSlots(
     endDate, 
     durationMinutes = 60,
     allowPartialConflict = false,
-    minAvailableInterviewers = interviewerIds.length
+    minAvailableInterviewers = interviewerIds.length,
+    excludedTimeRanges = [],
   } = request
 
   // 최적화된 알고리즘으로 슬롯 생성
@@ -338,7 +374,8 @@ export async function findAvailableTimeSlots(
     endDate,
     durationMinutes,
     allowPartialConflict,
-    minAvailableInterviewers
+    minAvailableInterviewers,
+    excludedTimeRanges
   )
 
   // 슬롯 필터링 및 정렬
