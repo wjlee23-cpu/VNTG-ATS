@@ -586,6 +586,7 @@ export function CandidateDetailClient({
           onFileSelect={(file) => {
             setSelectedDocument(file);
             setPdfLoadError(null);
+            setIsDocumentPreviewOpen(true);
           }}
         />
       ) : (
@@ -668,6 +669,7 @@ export function CandidateDetailClient({
                 id: selectedDocument.id,
                 file_url: selectedDocument.file_url,
                 file_type: selectedDocument.file_type,
+                original_name: selectedDocument.original_name,
               }
             : null
         }

@@ -125,7 +125,7 @@ export function CandidateTimelineView({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-white relative">
+    <div className="flex-1 flex flex-col bg-white relative min-h-0">
       {/* 헤더 (탭은 CandidateDetailLayout에서 처리하므로 여기서는 필터만) */}
       <header className="h-16 border-b border-neutral-100 px-8 flex items-center justify-between shrink-0">
         <div className="flex gap-6 h-full">
@@ -138,7 +138,7 @@ export function CandidateTimelineView({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-8 min-h-0">
         {/* 코멘트 입력 영역 */}
         <div className="mb-10">
           <div className="relative flex items-start gap-3">

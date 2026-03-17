@@ -99,7 +99,7 @@ export function CandidateDetailLayout({
       />
 
       {/* 우측 메인 콘텐츠 영역 */}
-      <div className="flex-1 flex flex-col bg-white relative">
+      <div className="flex-1 flex flex-col bg-white relative min-h-0">
         {/* 탭 헤더 */}
         <header className="h-16 border-b border-neutral-100 px-8 flex items-center justify-between shrink-0">
           <div className="flex gap-6 h-full">

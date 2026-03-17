@@ -1,7 +1,7 @@
 'use client';
 
 import { X, Download, FileText, FileIcon, ExternalLink } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 interface DocumentPreviewModalProps {
@@ -97,6 +97,9 @@ export function DocumentPreviewModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl w-full h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">
+          문서 미리보기: {getFileName()}
+        </DialogTitle>
         {/* 헤더 */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div className="flex items-center gap-3 flex-1 min-w-0">
