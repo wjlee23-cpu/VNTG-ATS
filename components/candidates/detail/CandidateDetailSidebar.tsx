@@ -1,18 +1,25 @@
-'use client';
+"use client";
 
 // 후보자 상세 좌측 사이드바 컴포넌트
 // - 프로필, 현재 전형 단계, 일정 등록/입사 확정/전형 이동, 이메일/아카이브 액션을 제공
-import { Mail, Archive, Calendar, CheckCircle2, Loader2, ArrowRightLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import {
+  Mail,
+  Archive,
+  Calendar,
+  CheckCircle2,
+  Loader2,
+  MoveRight,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import type { Candidate } from '@/types/candidates';
+} from "@/components/ui/dropdown-menu";
+import type { Candidate } from "@/types/candidates";
 
 interface StageOption {
   id: string;
@@ -54,7 +61,7 @@ export function CandidateDetailSidebar({
   onArchiveClick,
 }: CandidateDetailSidebarProps) {
   // Offer 단계 여부 체크 (입사 확정 버튼 노출 여부 결정)
-  const isOfferStage = currentStageName === 'Offer';
+  const isOfferStage = currentStageName === "Offer";
 
   return (
     <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col overflow-y-auto min-w-[280px]">
@@ -64,9 +71,13 @@ export function CandidateDetailSidebar({
             {candidate.name.charAt(0).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{candidate.name}</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+          {candidate.name}
+        </h1>
         {candidate.job_posts?.title && (
-          <p className="text-sm md:text-base text-muted-foreground mb-3">{candidate.job_posts.title}</p>
+          <p className="text-sm md:text-base text-muted-foreground mb-3">
+            {candidate.job_posts.title}
+          </p>
         )}
         {currentStageId && (
           <Badge
@@ -101,6 +112,63 @@ export function CandidateDetailSidebar({
 
       {canManageCandidate && (
         <div className="mt-4 space-y-2 w-full">
+          {/* 전형 이동 버튼 */}
+          {!isOfferStage && (
+            <DropdownMenu onOpenChange={(open) => open && onLoadStages()}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  disabled={isMovingStage}
+                  className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <MoveRight className="w-4 h-4 mr-2 flex-shrink-0" />
+                  전형 이동
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-[calc(100vw-3rem)] sm:w-[var(--radix-dropdown-menu-trigger-width)] min-w-[200px] max-h-[300px] overflow-y-auto"
+              >
+                {isLoadingStages ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
+                    <span className="text-sm text-muted-foreground">
+                      단계 목록 로딩 중...
+                    </span>
+                  </div>
+                ) : availableStages.length === 0 ? (
+                  <div className="py-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      이동 가능한 단계가 없습니다.
+                    </p>
+                  </div>
+                ) : (
+                  availableStages.map((stage) => (
+                    <DropdownMenuItem
+                      key={stage.id}
+                      onClick={() => onMoveToStage(stage.id)}
+                      disabled={stage.isCurrent || isMovingStage}
+                      className={
+                        stage.isCurrent
+                          ? "opacity-50 cursor-not-allowed"
+                          : "cursor-pointer"
+                      }
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span>{stage.name}</span>
+                        {stage.isCurrent && (
+                          <Badge variant="secondary" className="text-xs ml-2">
+                            현재
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           <Button
             onClick={onEmailClick}
             variant="ghost"
@@ -117,64 +185,6 @@ export function CandidateDetailSidebar({
             <Archive className="w-4 h-4 mr-2" />
             아카이브
           </Button>
-        </div>
-      )}
-
-      {/* 전형 이동 버튼: 사이드바 하단에 고정되는 아이콘+텍스트 버튼 */}
-      {canManageCandidate && !isOfferStage && (
-        <div className="mt-auto pt-4">
-          <DropdownMenu onOpenChange={(open) => open && onLoadStages()}>
-            <DropdownMenuTrigger asChild>
-              {/* Flex 레이아웃으로 아이콘과 텍스트를 중앙 정렬 - 줄바꿈 완전 방지 */}
-              <button
-                type="button"
-                disabled={isMovingStage}
-                className="w-full h-11 min-h-[44px] px-4 rounded-lg border-2 border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium text-xs sm:text-sm flex items-center justify-center gap-2 flex-nowrap overflow-hidden"
-                style={{ lineHeight: '1' }}
-              >
-                <ArrowRightLeft className="w-4 h-4 flex-shrink-0" style={{ flexShrink: 0 }} />
-                <span className="hidden sm:inline whitespace-nowrap flex-shrink-0" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-                  전형 이동
-                </span>
-                <span className="sm:hidden inline whitespace-nowrap flex-shrink-0" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-                  이동
-                </span>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="w-[calc(100vw-3rem)] sm:w-[var(--radix-dropdown-menu-trigger-width)] min-w-[200px] max-h-[300px] overflow-y-auto"
-            >
-              {isLoadingStages ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
-                  <span className="text-sm text-muted-foreground">단계 목록 로딩 중...</span>
-                </div>
-              ) : availableStages.length === 0 ? (
-                <div className="py-4 text-center">
-                  <p className="text-sm text-muted-foreground">이동 가능한 단계가 없습니다.</p>
-                </div>
-              ) : (
-                availableStages.map((stage) => (
-                  <DropdownMenuItem
-                    key={stage.id}
-                    onClick={() => onMoveToStage(stage.id)}
-                    disabled={stage.isCurrent || isMovingStage}
-                    className={stage.isCurrent ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span>{stage.name}</span>
-                      {stage.isCurrent && (
-                        <Badge variant="secondary" className="text-xs ml-2">
-                          현재
-                        </Badge>
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       )}
     </div>
