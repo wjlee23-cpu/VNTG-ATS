@@ -1,7 +1,6 @@
 'use client';
 
-import { Users } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 
 type ArchiveFilter = 'active' | 'archived' | 'confirmed';
 
@@ -12,66 +11,63 @@ interface CandidatesHeaderProps {
   onAddCandidateClick: () => void;
 }
 
-/** 후보자 페이지 상단: 제목, 필터 탭(Active/Archived/입사확정), Add Candidate 버튼 */
+/** 후보자 페이지 상단: 제목, 필터 탭(Active/Archived/Hired), Add Candidate 버튼 */
 export function CandidatesHeader({
   archiveFilter,
   onArchiveFilterChange,
   activeCandidatesCount,
   onAddCandidateClick,
 }: CandidatesHeaderProps) {
-  const countLabel =
-    archiveFilter === 'archived'
-      ? `${activeCandidatesCount} archived candidates`
-      : archiveFilter === 'confirmed'
-        ? `${activeCandidatesCount} confirmed candidates`
-        : `${activeCandidatesCount} active candidates`;
-
   return (
-    <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+    <div className="flex items-center justify-between mb-10">
       <div className="flex items-center gap-3">
-        <Users className="w-8 h-8 text-foreground" />
-        <h1 className="text-3xl font-bold text-foreground">Candidates</h1>
-        <span className="bg-blue-50 text-[#5287FF] rounded-full px-3 py-1 text-sm font-medium">
-          {countLabel}
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Candidates</h1>
+        <span className="px-2 py-0.5 bg-neutral-100 text-neutral-500 border border-neutral-200 rounded-md text-xs font-medium">
+          {activeCandidatesCount}
         </span>
       </div>
+      
       <div className="flex items-center gap-3">
-        <div className="flex gap-2">
-          <Button
+        <div className="flex p-1 bg-neutral-200/40 rounded-lg border border-neutral-200/50">
+          <button
             onClick={() => onArchiveFilterChange('active')}
-            variant="outline"
-            className={`h-10 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 ${
-              archiveFilter === 'active' ? 'bg-slate-50 border-slate-300' : ''
+            className={`px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors rounded-md ${
+              archiveFilter === 'active'
+                ? 'font-semibold bg-white text-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.05)]'
+                : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
             Active
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={() => onArchiveFilterChange('archived')}
-            variant="outline"
-            className={`h-10 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 ${
-              archiveFilter === 'archived' ? 'bg-slate-50 border-slate-300' : ''
+            className={`px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors rounded-md ${
+              archiveFilter === 'archived'
+                ? 'font-semibold bg-white text-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.05)]'
+                : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
             Archived
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={() => onArchiveFilterChange('confirmed')}
-            variant="outline"
-            className={`h-10 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 ${
-              archiveFilter === 'confirmed' ? 'bg-slate-50 border-slate-300' : ''
+            className={`px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors rounded-md ${
+              archiveFilter === 'confirmed'
+                ? 'font-semibold bg-white text-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.05)]'
+                : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            입사확정
-          </Button>
+            Hired
+          </button>
         </div>
-        <Button
+        
+        <button
           onClick={onAddCandidateClick}
-          className="h-10 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white border-0"
+          className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.08)] active:scale-[0.98]"
         >
-          <Users className="w-4 h-4 mr-2" />
+          <Plus className="w-4 h-4 text-neutral-300" />
           Add Candidate
-        </Button>
+        </button>
       </div>
     </div>
   );

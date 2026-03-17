@@ -17,37 +17,28 @@ export function StageFilters({
   totalCount,
 }: StageFiltersProps) {
   return (
-    <div className="mb-6 overflow-x-auto">
-      <div className="bg-slate-100 p-1 rounded-lg inline-flex gap-1 min-w-max">
-        {RECRUITMENT_STAGES.map((stage) => {
-          const count =
-            stage.id === 'all' ? totalCount : stageCounts[stage.name] || 0;
-          const isSelected = selectedStage === stage.id;
-          return (
-            <button
-              key={stage.id}
-              onClick={() => onStageChange(stage.id)}
-              className={`
-                px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all
-                ${
-                  isSelected
-                    ? 'bg-white shadow-sm text-foreground'
-                    : 'text-slate-600 hover:bg-slate-50/50'
-                }
-              `}
-            >
-              {stage.label}
-              {count > 0 && (
-                <span
-                  className={`ml-2 ${isSelected ? 'text-foreground' : 'text-slate-500'}`}
-                >
-                  ({count})
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+    <div className="px-2 flex overflow-x-auto border-b border-neutral-100">
+      {RECRUITMENT_STAGES.map((stage) => {
+        const count =
+          stage.id === 'all' ? totalCount : stageCounts[stage.name] || 0;
+        const isSelected = selectedStage === stage.id;
+        return (
+          <button
+            key={stage.id}
+            onClick={() => onStageChange(stage.id)}
+            className={`px-4 py-3 border-b-2 whitespace-nowrap transition-colors ${
+              isSelected
+                ? 'border-neutral-900 text-sm font-semibold text-neutral-900'
+                : 'border-transparent text-sm font-medium text-neutral-500 hover:text-neutral-900'
+            }`}
+          >
+            {stage.label}
+            <span className={isSelected ? 'text-neutral-400 font-normal ml-1' : 'ml-1 opacity-60'}>
+              {count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
