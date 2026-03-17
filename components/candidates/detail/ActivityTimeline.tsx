@@ -61,21 +61,27 @@ export function ActivityTimeline({
   return (
     <Card className="shadow-md hover:shadow-lg transition-shadow duration-200 card-modern">
       <CardHeader className="border-b border-slate-100 pb-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          {/* 제목 + 동기화 아이콘 */}
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-main to-brand-dark flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
+        {/* Flex 레이아웃: 왼쪽(아이콘+제목)과 오른쪽(버튼 그룹)으로 분리 */}
+        <div className="flex items-center justify-between gap-3">
+          {/* 왼쪽: 아이콘 + 제목 */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-main to-brand-dark flex items-center justify-center shadow-lg shadow-blue-500/30">
               <MessageSquare className="w-5 h-5 text-white" />
             </div>
-            <CardTitle className="text-base md:text-lg font-semibold text-slate-900">
+            <CardTitle className="text-base md:text-lg font-semibold text-slate-900 whitespace-nowrap">
               Activity Timeline
             </CardTitle>
+          </div>
+
+          {/* 오른쪽: 버튼 그룹 */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* 이메일 동기화 아이콘 */}
             {canManageCandidate && (
               <Button
                 onClick={onSyncEmails}
                 variant="ghost"
                 size="icon"
-                className="ml-1 w-8 h-8 rounded-full text-primary hover:bg-primary/10 flex items-center justify-center"
+                className="w-8 h-8 rounded-full text-primary hover:bg-primary/10 flex-shrink-0"
                 disabled={isSyncingEmails}
                 title="이메일 동기화"
               >
@@ -84,25 +90,25 @@ export function ActivityTimeline({
                 />
               </Button>
             )}
-          </div>
 
-          {/* 액션 버튼들: 작은 화면에서는 왼쪽 정렬, 큰 화면에서는 오른쪽 정렬 */}
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-start sm:justify-end w-full sm:w-auto">
+            {/* Add Comment 버튼 */}
             <Button
               onClick={onAddComment}
               variant="outline"
               size="sm"
-              className="border-blue-500/30 text-blue-600 hover:bg-blue-50 transition-all duration-200"
+              className="border-blue-500/30 text-blue-600 hover:bg-blue-50 transition-all duration-200 whitespace-nowrap flex-shrink-0"
             >
               <MessageSquare className="w-4 h-4 mr-2" />
               Add Comment
             </Button>
+
+            {/* Add Evaluation 버튼 */}
             {currentStageId && (
               <Button
                 onClick={onAddEvaluation}
                 variant="outline"
                 size="sm"
-              className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200"
+                className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200 whitespace-nowrap flex-shrink-0"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Evaluation

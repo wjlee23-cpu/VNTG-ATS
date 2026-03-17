@@ -548,6 +548,9 @@ export function CandidateDetailClient({
         <X className="w-5 h-5" />
       </button>
 
+      {/* 그리드 레이아웃: 모바일은 세로 배치, 데스크탑은 좌우 분할 */}
+      {/* 사이드바: md:col-span-4 (33%), lg:col-span-3 (25%) */}
+      {/* 콘텐츠: md:col-span-8 (67%), lg:col-span-9 (75%) */}
       <div className="relative flex flex-col md:grid md:grid-cols-12 h-full max-h-[90vh] overflow-hidden">
         <CandidateDetailSidebar
           candidate={candidate}
@@ -565,6 +568,7 @@ export function CandidateDetailClient({
           onArchiveClick={() => setIsArchiveModalOpen(true)}
         />
 
+        {/* 메인 콘텐츠 영역: 스크롤 가능 */}
         <div className="md:col-span-8 lg:col-span-9 bg-slate-50 p-6 md:p-8 overflow-y-auto">
           <div
             className={cn(

@@ -57,7 +57,7 @@ export function CandidateDetailSidebar({
   const isOfferStage = currentStageName === 'Offer';
 
   return (
-    <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col overflow-y-auto">
+    <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col overflow-y-auto min-w-[280px]">
       <div className="flex flex-col items-center md:items-start text-center md:text-left mb-6">
         <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-slate-200 shadow-md mb-4">
           <AvatarFallback className="bg-primary/10 text-primary text-3xl md:text-4xl font-bold">
@@ -85,7 +85,7 @@ export function CandidateDetailSidebar({
           className="w-full h-12 text-base px-4 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
         >
           <Calendar className="size-5 flex-shrink-0" />
-          <span className="break-words">일정 등록</span>
+          <span className="whitespace-nowrap flex-shrink-0">일정 등록</span>
         </Button>
       )}
 
@@ -95,7 +95,7 @@ export function CandidateDetailSidebar({
           className="w-full h-12 mt-3 text-base px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
         >
           <CheckCircle2 className="size-5 flex-shrink-0" />
-          <span className="break-words">입사 확정</span>
+          <span className="whitespace-nowrap flex-shrink-0">입사 확정</span>
         </Button>
       )}
 
@@ -125,14 +125,20 @@ export function CandidateDetailSidebar({
         <div className="mt-auto pt-4">
           <DropdownMenu onOpenChange={(open) => open && onLoadStages()}>
             <DropdownMenuTrigger asChild>
-              {/* Shadcn Button과 정렬 규칙을 맞춘 커스텀 버튼 */}
+              {/* Flex 레이아웃으로 아이콘과 텍스트를 중앙 정렬 - 줄바꿈 완전 방지 */}
               <button
                 type="button"
                 disabled={isMovingStage}
-                className="w-full h-11 px-4 rounded-lg border-2 border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium text-sm flex items-center justify-center gap-2"
+                className="w-full h-11 min-h-[44px] px-4 rounded-lg border-2 border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium text-xs sm:text-sm flex items-center justify-center gap-2 flex-nowrap overflow-hidden"
+                style={{ lineHeight: '1' }}
               >
-                <ArrowRightLeft className="w-4 h-4 flex-shrink-0" />
-                <span className="break-words">전형 이동</span>
+                <ArrowRightLeft className="w-4 h-4 flex-shrink-0" style={{ flexShrink: 0 }} />
+                <span className="hidden sm:inline whitespace-nowrap flex-shrink-0" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  전형 이동
+                </span>
+                <span className="sm:hidden inline whitespace-nowrap flex-shrink-0" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  이동
+                </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

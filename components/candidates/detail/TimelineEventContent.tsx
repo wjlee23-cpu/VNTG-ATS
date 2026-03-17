@@ -287,13 +287,13 @@ export function TimelineEventContent({
             </div>
           )}
           {scheduleId && (onRescheduleSchedule || onCancelSchedule || onDeleteSchedule) && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex items-center justify-end gap-2 flex-nowrap">
               {onRescheduleSchedule && (
                 <Button
                   onClick={() => onRescheduleSchedule(scheduleId)}
                   variant="outline"
                   size="sm"
-                  className="border-blue-400/40 text-blue-600 hover:bg-blue-50 transition-colors duration-200"
+                  className="border-blue-400/40 text-blue-600 hover:bg-blue-50 transition-colors duration-200 whitespace-nowrap flex-shrink-0"
                 >
                   <Settings className="w-4 h-4 mr-1.5" />
                   재조율
@@ -304,7 +304,7 @@ export function TimelineEventContent({
                   onClick={() => onCancelSchedule(scheduleId)}
                   variant="outline"
                   size="sm"
-                  className="border-rose-400/40 text-rose-600 hover:bg-rose-50 transition-colors duration-200"
+                  className="border-rose-400/40 text-rose-600 hover:bg-rose-50 transition-colors duration-200 whitespace-nowrap flex-shrink-0"
                 >
                   일정 취소
                 </Button>
@@ -314,7 +314,7 @@ export function TimelineEventContent({
                   onClick={() => onDeleteSchedule(scheduleId)}
                   variant="ghost"
                   size="sm"
-                  className="text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors duration-200"
+                  className="text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors duration-200 whitespace-nowrap flex-shrink-0"
                 >
                   완전 삭제
                 </Button>
