@@ -60,15 +60,15 @@ export function ActivityTimeline({
 
   return (
     <Card className="shadow-md hover:shadow-lg transition-shadow duration-200 card-modern">
-      <CardHeader className="border-b border-slate-100 pb-4">
+      <CardHeader className="border-b border-neutral-200 pb-4">
         {/* Flex 레이아웃: 왼쪽(아이콘+제목)과 오른쪽(버튼 그룹)으로 분리 */}
         <div className="flex items-center justify-between gap-3">
-          {/* 왼쪽: 아이콘 + 제목 */}
+          {/* 왼쪽: 아이콘 + 제목 (DS 2.0: Neutral 기반) */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-main to-brand-dark flex items-center justify-center shadow-lg shadow-blue-500/30">
-              <MessageSquare className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-neutral-100 flex items-center justify-center">
+              <MessageSquare className="w-5 h-5 text-neutral-900" />
             </div>
-            <CardTitle className="text-base md:text-lg font-semibold text-slate-900 whitespace-nowrap">
+            <CardTitle className="text-base md:text-lg font-semibold text-neutral-900 whitespace-nowrap">
               Activity Timeline
             </CardTitle>
           </div>
@@ -81,7 +81,7 @@ export function ActivityTimeline({
                 onClick={onSyncEmails}
                 variant="ghost"
                 size="icon"
-                className="w-8 h-8 rounded-full text-primary hover:bg-primary/10 flex-shrink-0"
+                className="w-8 h-8 rounded-full flex-shrink-0"
                 disabled={isSyncingEmails}
                 title="이메일 동기화"
               >
@@ -91,12 +91,12 @@ export function ActivityTimeline({
               </Button>
             )}
 
-            {/* Add Comment 버튼 */}
+            {/* Add Comment 버튼 (DS 2.0: Neutral outline) */}
             <Button
               onClick={onAddComment}
               variant="outline"
               size="sm"
-              className="border-blue-500/30 text-blue-600 hover:bg-blue-50 transition-all duration-200 whitespace-nowrap flex-shrink-0"
+              className="whitespace-nowrap flex-shrink-0"
             >
               <MessageSquare className="w-4 h-4 mr-2" />
               Add Comment
@@ -108,7 +108,7 @@ export function ActivityTimeline({
                 onClick={onAddEvaluation}
                 variant="outline"
                 size="sm"
-                className="border-primary/30 text-primary hover:bg-primary/10 transition-all duration-200 whitespace-nowrap flex-shrink-0"
+                className="whitespace-nowrap flex-shrink-0"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Evaluation
@@ -151,12 +151,12 @@ export function ActivityTimeline({
                       </Avatar>
                     ) : (
                       <div className="w-12 h-12 flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-brand-main ring-4 ring-brand-main/20" />
+                        <div className="w-2 h-2 rounded-full bg-neutral-400 ring-4 ring-neutral-200" />
                       </div>
                     )}
                   </div>
                   <div className="flex-1 pb-6">
-                    <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-3 hover:shadow-md transition-all duration-200">
+                    <div className="bg-white border border-neutral-200 shadow-sm rounded-lg p-3 hover:shadow-md transition-all duration-200">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`text-sm font-semibold ${getTimelineEventColor(event.type)}`}>
                           {getTimelineEventTitle(event)}

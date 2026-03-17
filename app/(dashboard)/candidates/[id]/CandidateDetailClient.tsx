@@ -27,13 +27,8 @@ import { CommentModal } from '@/components/candidates/CommentModal';
 import { DocumentPreviewModal } from '@/components/candidates/DocumentPreviewModal';
 import { MatchScoreSection } from '@/components/candidates/MatchScoreSection';
 import { getFileName } from '@/lib/candidate-detail-utils';
-import { CandidateDetailSidebar } from '@/components/candidates/detail/CandidateDetailSidebar';
-import { ContactCard } from '@/components/candidates/detail/ContactCard';
-import { CompensationCard } from '@/components/candidates/detail/CompensationCard';
-import { SkillsCard } from '@/components/candidates/detail/SkillsCard';
-import { DocumentsCard } from '@/components/candidates/detail/DocumentsCard';
-import { ActivityTimeline } from '@/components/candidates/detail/ActivityTimeline';
-import { CandidateSchedulingForm } from '@/components/candidates/detail/CandidateSchedulingForm';
+import { CandidateDetailLayout } from '@/components/candidates/detail/CandidateDetailLayout';
+import { CandidateScheduleForm } from '@/components/candidates/detail/CandidateScheduleForm';
 import { cn } from '@/components/ui/utils';
 
 interface CandidateDetailClientProps {
@@ -548,11 +543,9 @@ export function CandidateDetailClient({
         <X className="w-5 h-5" />
       </button>
 
-      {/* 그리드 레이아웃: 모바일은 세로 배치, 데스크탑은 좌우 분할 */}
-      {/* 사이드바: md:col-span-4 (33%), lg:col-span-3 (25%) */}
-      {/* 콘텐츠: md:col-span-8 (67%), lg:col-span-9 (75%) */}
-      <div className="relative flex flex-col md:grid md:grid-cols-12 h-full max-h-[90vh] overflow-hidden">
-        <CandidateDetailSidebar
+      {/* VNTG Design System 2.0 레이아웃 */}
+      {viewMode === 'detail' ? (
+        <CandidateDetailLayout
           candidate={candidate}
           currentStageName={currentStageName}
           currentStageId={currentStageId}
@@ -566,92 +559,60 @@ export function CandidateDetailClient({
           onConfirmHire={handleConfirmHire}
           onEmailClick={() => setIsEmailModalOpen(true)}
           onArchiveClick={() => setIsArchiveModalOpen(true)}
+          timelineEvents={timelineEventsState}
+          expandedEmails={expandedEmails}
+          onToggleEmailExpand={toggleEmailExpand}
+          onAddComment={() => setIsCommentModalOpen(true)}
+          onCancelSchedule={handleCancelScheduleFromTimeline}
+          onDeleteSchedule={handleDeleteScheduleFromTimeline}
+          onRescheduleSchedule={handleRescheduleScheduleFromTimeline}
+          resumeFiles={resumeFiles}
+          canViewCompensation={canViewCompensation}
+          onEditContact={() => setIsEditMode(true)}
+          onViewCompensation={() => setShowCompensation(true)}
+          onFileUpload={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pdf,.doc,.docx';
+            input.onchange = (e) => {
+              const file = (e.target as HTMLInputElement).files?.[0];
+              if (file) {
+                const event = { target: { files: [file] } } as React.ChangeEvent<HTMLInputElement>;
+                handleFileUpload(event);
+              }
+            };
+            input.click();
+          }}
+          onFileSelect={(file) => {
+            setSelectedDocument(file);
+            setPdfLoadError(null);
+          }}
         />
-
-        {/* 메인 콘텐츠 영역: 스크롤 가능 */}
-        <div className="md:col-span-8 lg:col-span-9 bg-slate-50 p-6 md:p-8 overflow-y-auto">
-          <div
-            className={cn(
-              'transition-all duration-300',
-              viewMode === 'scheduling' ? 'opacity-100 translate-x-0' : 'opacity-100 translate-x-0',
-            )}
-          >
-            {viewMode === 'detail' ? (
-              <>
-                <MatchScoreSection
-                  candidate={candidate as Parameters<typeof MatchScoreSection>[0]['candidate']}
-                  hasResumeFile={resumeFiles.length > 0}
-                />
-                <ContactCard
-                  candidate={candidate}
-                  canManageCandidate={canManageCandidate}
-                  canViewCompensation={canViewCompensation}
-                  isEditMode={isEditMode}
-                  editFormData={editFormData}
-                  onEditFormChange={(data) => setEditFormData((prev) => ({ ...prev, ...data }))}
-                  onSaveEdit={handleSaveEdit}
-                  onCancelEdit={handleCancelEdit}
-                  onSetEditMode={setIsEditMode}
-                />
-                {canViewCompensation && (
-                  <CompensationCard
-                    candidate={candidate}
-                    showCompensation={showCompensation}
-                    onShowCompensationChange={setShowCompensation}
-                  />
-                )}
-                <SkillsCard skills={skills} />
-                <DocumentsCard
-                  resumeFiles={resumeFiles}
-                  selectedDocument={selectedDocument}
-                  onSelectDocument={(file) => {
-                    setSelectedDocument(file);
-                    setPdfLoadError(null);
-                  }}
-                  pdfLoadError={pdfLoadError}
-                  onPdfLoadErrorClear={() => setPdfLoadError(null)}
-                  onPdfLoadError={(msg) => setPdfLoadError(msg)}
-                  onFileUpload={handleFileUpload}
-                  onFileDownload={handleFileDownload}
-                  onFileDelete={handleFileDelete}
-                  isLoadingFiles={isLoadingFiles}
-                  canManageCandidate={canManageCandidate}
-                  isUploadingFile={isUploadingFile}
-                />
-                <ActivityTimeline
-                  events={timelineEventsState}
-                  expandedEmails={expandedEmails}
-                  onToggleEmailExpand={toggleEmailExpand}
-                  candidateId={candidate.id}
-                  currentStageId={currentStageId}
-                  canManageCandidate={canManageCandidate}
-                  isSyncingEmails={isSyncingEmails}
-                  onSyncEmails={handleSyncEmails}
-                  onAddComment={() => setIsCommentModalOpen(true)}
-                  onAddEvaluation={() => setIsEvaluationModalOpen(true)}
-                  onCancelSchedule={handleCancelScheduleFromTimeline}
-                  onDeleteSchedule={handleDeleteScheduleFromTimeline}
-                  onRescheduleSchedule={handleRescheduleScheduleFromTimeline}
-                />
-              </>
-            ) : (
-              <CandidateSchedulingForm
-                candidateName={candidate.name}
-                formData={scheduleFormData}
-                onFormDataChange={(data) => setScheduleFormData((prev) => ({ ...prev, ...data }))}
-                users={users}
-                isLoadingUsers={isLoadingUsers}
-                scheduleWarning={scheduleWarning}
-                isLoadingSchedule={isLoadingSchedule}
-                isValid={isScheduleFormValid}
-                onSubmit={handleScheduleSubmit}
-                onToggleInterviewer={toggleInterviewer}
-                onBack={() => setViewMode('detail')}
-              />
-            )}
-          </div>
-        </div>
-      </div>
+      ) : (
+        <CandidateScheduleForm
+          candidate={candidate}
+          currentStageName={currentStageName}
+          currentStageId={currentStageId}
+          formData={scheduleFormData}
+          onFormDataChange={(data) => setScheduleFormData((prev) => ({ ...prev, ...data }))}
+          users={users}
+          isLoadingUsers={isLoadingUsers}
+          scheduleWarning={scheduleWarning}
+          isLoadingSchedule={isLoadingSchedule}
+          isValid={isScheduleFormValid}
+          onSubmit={handleScheduleSubmit}
+          onToggleInterviewer={toggleInterviewer}
+          onBack={() => setViewMode('detail')}
+          availableStages={availableStages}
+          isLoadingStages={isLoadingStages}
+          isMovingStage={isMovingStage}
+          onMoveToStage={handleMoveToStage}
+          onLoadStages={loadAvailableStages}
+          onConfirmHire={handleConfirmHire}
+          onEmailClick={() => setIsEmailModalOpen(true)}
+          onArchiveClick={() => setIsArchiveModalOpen(true)}
+        />
+      )}
 
       <EmailModal
         candidateId={candidate.id}

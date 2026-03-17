@@ -64,36 +64,36 @@ export function CandidateDetailSidebar({
   const isOfferStage = currentStageName === "Offer";
 
   return (
-    <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col overflow-y-auto min-w-[280px]">
+    <div className="md:col-span-4 lg:col-span-3 bg-white p-6 border-b md:border-b-0 md:border-r border-neutral-200 flex flex-col overflow-y-auto min-w-[280px]">
       <div className="flex flex-col items-center md:items-start text-center md:text-left mb-6">
-        <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-slate-200 shadow-md mb-4">
-          <AvatarFallback className="bg-primary/10 text-primary text-3xl md:text-4xl font-bold">
+        <Avatar className="w-20 h-20 md:w-24 md:h-24 border-2 border-neutral-200 shadow-md mb-4">
+          <AvatarFallback className="bg-neutral-100 text-neutral-900 text-3xl md:text-4xl font-bold">
             {candidate.name.charAt(0).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+        <h1 className="text-2xl md:text-3xl font-bold text-neutral-900 mb-2">
           {candidate.name}
         </h1>
         {candidate.job_posts?.title && (
-          <p className="text-sm md:text-base text-muted-foreground mb-3">
+          <p className="text-sm md:text-base text-neutral-600 mb-3">
             {candidate.job_posts.title}
           </p>
         )}
         {currentStageId && (
           <Badge
-            variant="secondary"
-            className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 text-sm font-medium px-3 py-1"
+            variant="default"
+            className="text-sm font-medium px-3 py-1"
           >
             {currentStageName}
           </Badge>
         )}
       </div>
 
-      {/* 상단 주요 액션 버튼들: 일정 등록 / 입사 확정 */}
+      {/* 상단 주요 액션 버튼들: 일정 등록 / 입사 확정 (DS 2.0: 블랙 Primary) */}
       {canManageCandidate && (
         <Button
           onClick={onScheduleClick}
-          className="w-full h-12 text-base px-4 py-3 bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+          className="w-full h-12 text-base px-4 py-3 flex items-center justify-center gap-2"
         >
           <Calendar className="size-5 flex-shrink-0" />
           <span className="whitespace-nowrap flex-shrink-0">일정 등록</span>
@@ -103,7 +103,7 @@ export function CandidateDetailSidebar({
       {canManageCandidate && isOfferStage && (
         <Button
           onClick={onConfirmHire}
-          className="w-full h-12 mt-3 text-base px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+          className="w-full h-12 mt-3 text-base px-4 py-3 flex items-center justify-center gap-2"
         >
           <CheckCircle2 className="size-5 flex-shrink-0" />
           <span className="whitespace-nowrap flex-shrink-0">입사 확정</span>
@@ -119,7 +119,7 @@ export function CandidateDetailSidebar({
                 <Button
                   variant="ghost"
                   disabled={isMovingStage}
-                  className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                  className="w-full justify-start"
                 >
                   <MoveRight className="w-4 h-4 mr-2 flex-shrink-0" />
                   전형 이동
@@ -172,7 +172,7 @@ export function CandidateDetailSidebar({
           <Button
             onClick={onEmailClick}
             variant="ghost"
-            className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+            className="w-full justify-start"
           >
             <Mail className="w-4 h-4 mr-2" />
             Email
@@ -180,7 +180,7 @@ export function CandidateDetailSidebar({
           <Button
             onClick={onArchiveClick}
             variant="ghost"
-            className="w-full justify-start text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+            className="w-full justify-start"
           >
             <Archive className="w-4 h-4 mr-2" />
             아카이브

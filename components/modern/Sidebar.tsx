@@ -64,8 +64,8 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-16 bg-background border-r border-border flex-col items-center py-6 gap-2 z-50">
-      {/* Logo */}
-      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center mb-6 shadow-lg shadow-brand-main/20">
+      {/* Logo (DS 2.0: Neutral 기반) */}
+      <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center mb-6">
         <Zap className="text-white" size={20} />
       </div>
 
@@ -80,10 +80,10 @@ export function Sidebar() {
               key={item.view}
               onClick={() => handleNavigate(item.path)}
               className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative",
+                "w-10 h-10 rounded-lg flex items-center justify-center transition-all group relative",
                 isActive
-                  ? 'bg-brand-main/10 text-brand-main'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  ? 'bg-neutral-100 text-neutral-900'
+                  : 'text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100'
               )}
               title={item.label}
             >
@@ -94,9 +94,9 @@ export function Sidebar() {
                 {item.label}
               </div>
 
-              {/* Active Indicator */}
+              {/* Active Indicator (DS 2.0: Neutral) */}
               {isActive && (
-                <div className="absolute left-0 w-1 h-6 bg-brand-main rounded-r-full" />
+                <div className="absolute left-0 w-1 h-6 bg-neutral-900 rounded-r-full" />
               )}
             </button>
           );
@@ -114,10 +114,10 @@ export function Sidebar() {
               key={item.id}
               onClick={() => handleNavigate(item.path)}
               className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative",
+                "w-10 h-10 rounded-lg flex items-center justify-center transition-all group relative",
                 isActive
-                  ? 'bg-brand-main/10 text-brand-main'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  ? 'bg-neutral-100 text-neutral-900'
+                  : 'text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100'
               )}
               title={item.label}
             >
@@ -128,9 +128,9 @@ export function Sidebar() {
                 {item.label}
               </div>
 
-              {/* Active Indicator */}
+              {/* Active Indicator (DS 2.0: Neutral) */}
               {isActive && (
-                <div className="absolute left-0 w-1 h-6 bg-brand-main rounded-r-full" />
+                <div className="absolute left-0 w-1 h-6 bg-neutral-900 rounded-r-full" />
               )}
             </button>
           );
