@@ -51,12 +51,13 @@ export function CandidateTimelineView({
         return 'px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-600';
       case 'schedule_created':
       case 'schedule_confirmed':
-        return 'px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-500';
+      case 'schedule_regenerated':
+        return 'px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200/60 text-[10px] font-bold text-neutral-500 tracking-wider uppercase';
       case 'email':
       case 'email_received':
         return 'px-2 py-0.5 rounded bg-blue-50 text-[11px] font-medium text-blue-600';
       default:
-        return 'px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-500';
+        return 'px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200/60 text-[10px] font-bold text-neutral-500 tracking-wider uppercase';
     }
   };
 
@@ -71,6 +72,7 @@ export function CandidateTimelineView({
         return '메모';
       case 'schedule_created':
       case 'schedule_confirmed':
+      case 'schedule_regenerated':
         return '일정';
       case 'email':
       case 'email_received':
@@ -80,13 +82,12 @@ export function CandidateTimelineView({
     }
   };
 
-  // 작성자 정보 추출
+  // 작성자 정보 추출 (HTML 샘플 형식: · wjlee23)
   const getAuthorInfo = (event: TimelineEvent) => {
     const user = event.created_by_user as { name?: string; email?: string; role?: string } | null;
     if (!user) return null;
     const name = user.name || user.email?.split('@')[0] || '';
-    const role = user.role || '';
-    return { name, role };
+    return name;
   };
 
   // 상대 시간 포맷 (HTML 샘플 기준: "오늘, 오후 4:30", "어제, 오전 10:20", "2026. 2. 18")
@@ -189,7 +190,7 @@ export function CandidateTimelineView({
               return (
                 <div key={event.id} className={`relative pl-8 ${isLast ? '' : 'pb-10'} group`}>
                   {/* 타임라인 점 */}
-                  <div className="absolute -left-[5px] top-1.5 w-[9px] h-[9px] rounded-full bg-neutral-300 ring-4 ring-white group-hover:bg-neutral-900 transition-colors"></div>
+                  <div className="absolute -left-[5px] top-1.5 w-[9px] h-[9px] rounded-full bg-neutral-200 ring-4 ring-white group-hover:bg-neutral-900 transition-colors"></div>
                   
                   {/* 이벤트 헤더 */}
                   <div className="flex items-center justify-between mb-2">
@@ -206,19 +207,8 @@ export function CandidateTimelineView({
                     </time>
                   </div>
                   
-                  {/* 작성자 정보 */}
-                  {authorInfo && (
-                    <div className="text-sm text-neutral-500 mb-2">
-                      작성자:{' '}
-                      <span className="font-medium text-neutral-700">
-                        {authorInfo.name}
-                        {authorInfo.role && ` (${authorInfo.role})`}
-                      </span>
-                    </div>
-                  )}
-
                   {/* 이벤트 본문 */}
-                  <div className="mt-2">
+                  <div className="text-sm text-neutral-600 leading-relaxed max-w-2xl">
                     {event.type === 'stage_evaluation' ? (
                       <div className="p-4 rounded-lg border border-neutral-200 bg-white max-w-2xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-2 mb-3">
@@ -268,17 +258,15 @@ export function CandidateTimelineView({
                         />
                       </div>
                     ) : (
-                      <div className="text-sm text-neutral-500 leading-relaxed max-w-2xl">
-                        <TimelineEventContent
-                          event={event}
-                          expandedEmails={expandedEmails}
-                          onToggleEmailExpand={onToggleEmailExpand}
-                          candidateId={candidateId}
-                          onCancelSchedule={onCancelSchedule}
-                          onDeleteSchedule={onDeleteSchedule}
-                          onRescheduleSchedule={onRescheduleSchedule}
-                        />
-                      </div>
+                      <TimelineEventContent
+                        event={event}
+                        expandedEmails={expandedEmails}
+                        onToggleEmailExpand={onToggleEmailExpand}
+                        candidateId={candidateId}
+                        onCancelSchedule={onCancelSchedule}
+                        onDeleteSchedule={onDeleteSchedule}
+                        onRescheduleSchedule={onRescheduleSchedule}
+                      />
                     )}
                   </div>
                 </div>

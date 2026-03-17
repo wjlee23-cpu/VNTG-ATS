@@ -7,10 +7,12 @@ import {
   ArrowDownLeft,
   ArrowUp,
   ArrowDown,
-  Settings,
+  Settings2,
+  CalendarOff,
+  Trash2,
+  Calendar,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { formatEmailBodyForDisplay, isLongEmail } from '@/lib/candidate-detail-utils';
 import type { TimelineEvent } from '@/types/candidate-detail';
@@ -239,32 +241,45 @@ export function TimelineEventContent({
         | { start: string; end: string }
         | undefined;
       const scheduleId = (event.content?.schedule_id as string | undefined) || event.id;
+      // 작성자 정보 추출 (HTML 샘플 형식: · wjlee23)
+      const user = event.created_by_user as { name?: string; email?: string } | null;
+      const authorName = user?.name || user?.email?.split('@')[0] || '';
       return (
         <div className="space-y-3">
-          <p className="text-sm text-gray-700">
-            {event.content?.message || '면접 일정 자동화가 시작되었습니다.'}
+          <p className="text-sm text-neutral-900 mb-3">
+            {event.content?.message || '면접 일정 자동화가 시작되었습니다. 면접관들의 수락을 기다리는 중입니다.'}
+            {authorName && (
+              <span className="text-neutral-400 font-normal ml-1">· {authorName}</span>
+            )}
           </p>
           {scheduleOptions && scheduleOptions.length > 0 && (
-            <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
-              <p className="text-xs font-medium text-foreground mb-2">
-                생성된 일정 옵션 ({scheduleOptions.length}개):
+            <div className="bg-[#FCFCFC] border border-neutral-200 rounded-lg p-3">
+              <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2.5">
+                생성된 일정 옵션 ({scheduleOptions.length}개)
               </p>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {scheduleOptions.map((option, index) => {
                   const date = new Date(option.scheduled_at);
+                  const formattedDate = date.toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    weekday: 'short',
+                  });
+                  const formattedTime = date.toLocaleTimeString('ko-KR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true,
+                  });
                   return (
                     <div
                       key={option.id || index}
-                      className="text-xs text-foreground p-2 bg-card rounded border border-border"
+                      className="flex items-center gap-2.5 bg-white border border-neutral-100 p-2.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
                     >
-                      <span className="font-medium">옵션 {index + 1}:</span>{' '}
-                      {date.toLocaleDateString('ko-KR', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        weekday: 'short',
-                      })}{' '}
-                      {date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                      <Calendar className="w-4 h-4 text-neutral-400" />
+                      <span className="text-xs font-medium text-neutral-700">
+                        옵션 {index + 1}: {formattedDate} {formattedTime}
+                      </span>
                     </div>
                   );
                 })}
@@ -287,37 +302,33 @@ export function TimelineEventContent({
             </div>
           )}
           {scheduleId && (onRescheduleSchedule || onCancelSchedule || onDeleteSchedule) && (
-            <div className="mt-3 flex items-center justify-end gap-2 flex-nowrap">
+            <div className="flex items-center gap-4 mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               {onRescheduleSchedule && (
-                <Button
+                <button
                   onClick={() => onRescheduleSchedule(scheduleId)}
-                  variant="outline"
-                  size="sm"
-                  className="border-blue-400/40 text-blue-600 hover:bg-blue-50 transition-colors duration-200 whitespace-nowrap flex-shrink-0"
+                  className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-900 transition-colors"
                 >
-                  <Settings className="w-4 h-4 mr-1.5" />
+                  <Settings2 className="w-3.5 h-3.5" />
                   재조율
-                </Button>
+                </button>
               )}
               {onCancelSchedule && (
-                <Button
+                <button
                   onClick={() => onCancelSchedule(scheduleId)}
-                  variant="outline"
-                  size="sm"
-                  className="border-rose-400/40 text-rose-600 hover:bg-rose-50 transition-colors duration-200 whitespace-nowrap flex-shrink-0"
+                  className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-red-600 transition-colors"
                 >
+                  <CalendarOff className="w-3.5 h-3.5" />
                   일정 취소
-                </Button>
+                </button>
               )}
               {onDeleteSchedule && (
-                <Button
+                <button
                   onClick={() => onDeleteSchedule(scheduleId)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors duration-200 whitespace-nowrap flex-shrink-0"
+                  className="flex items-center gap-1.5 text-xs font-medium text-neutral-300 hover:text-red-600 transition-colors ml-auto"
                 >
+                  <Trash2 className="w-3.5 h-3.5" />
                   완전 삭제
-                </Button>
+                </button>
               )}
             </div>
           )}
