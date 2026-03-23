@@ -99,7 +99,7 @@ export function CandidateDetailLayout({
   );
 
   return (
-    <div className="flex h-[820px] w-full min-w-0 max-w-[1280px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
+    <div className="flex h-full min-h-0 w-full min-w-0 max-w-[1280px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
       <CandidateSidebar
         candidate={candidate}
         currentStageName={currentStageName}

@@ -40,7 +40,8 @@ export function CandidateDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="!w-[95vw] !max-w-5xl !max-h-[90vh] min-w-0 p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden">
+      {/* 줌(브라우저 배율)이 달라져도 내부 스크롤 영역이 잘리지 않도록, max-h만 두지 말고 실제 높이(height)를 부여합니다. */}
+      <DialogContent className="!w-[95vw] !max-w-5xl h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] min-w-0 p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden">
         <DialogTitle className="sr-only">
           {candidate
             ? `${candidate.name} 상세 정보`
