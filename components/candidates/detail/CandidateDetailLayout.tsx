@@ -1,9 +1,10 @@
 'use client';
 
-// VNTG Design System 2.0 - 후보자 상세 레이아웃 (탭 전환 통합)
+// VNTG Design System 2.0 - 후보자 상세 레이아웃 (Profile / AI Insight / Timeline)
 import { useState } from 'react';
 import { CandidateSidebar } from './CandidateSidebar';
-import { CandidateAIInsightView } from './CandidateAIInsightView';
+import { CandidateProfileTab } from './CandidateProfileTab';
+import { CandidateInsightTab } from './CandidateInsightTab';
 import { CandidateTimelineView } from './CandidateTimelineView';
 import type { Candidate } from '@/types/candidates';
 import type { TimelineEvent, ResumeFile } from '@/types/candidate-detail';
@@ -29,7 +30,6 @@ interface CandidateDetailLayoutProps {
   onConfirmHire: () => void;
   onEmailClick: () => void;
   onArchiveClick: () => void;
-  // 타임라인 관련
   timelineEvents: TimelineEvent[];
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
@@ -39,16 +39,14 @@ interface CandidateDetailLayoutProps {
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
-  // AI 인사이트 관련
   resumeFiles: ResumeFile[];
   canViewCompensation: boolean;
-  onEditContact?: () => void;
-  onViewCompensation?: () => void;
+  onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
   onFileUpload?: () => void;
   onFileSelect?: (file: ResumeFile) => void;
 }
 
-type TabType = 'ai-insight' | 'timeline';
+type TabType = 'profile' | 'insight' | 'timeline';
 
 /** 후보자 상세 레이아웃 - VNTG Design System 2.0 */
 export function CandidateDetailLayout({
@@ -76,21 +74,32 @@ export function CandidateDetailLayout({
   onRescheduleSchedule,
   resumeFiles,
   canViewCompensation,
-  onEditContact,
-  onViewCompensation,
+  onOpenProfileSectionEdit,
   onFileUpload,
   onFileSelect,
 }: CandidateDetailLayoutProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('ai-insight');
+  const [activeTab, setActiveTab] = useState<TabType>('profile');
 
-  // 코멘트 작성 시 Activity Timeline 탭으로 전환
   const handleSwitchToTimeline = () => {
     setActiveTab('timeline');
   };
 
+  const tabBtn = (tab: TabType, label: string) => (
+    <button
+      type="button"
+      onClick={() => setActiveTab(tab)}
+      className={`h-full border-b-2 transition-colors ${
+        activeTab === tab
+          ? 'border-neutral-900 text-sm font-semibold text-neutral-900'
+          : 'border-transparent text-sm font-medium text-neutral-400 hover:text-neutral-900'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
-    <div className="flex h-[820px] w-full max-w-[1080px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
-      {/* 좌측 사이드바 */}
+    <div className="flex h-[820px] w-full max-w-[1280px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
       <CandidateSidebar
         candidate={candidate}
         currentStageName={currentStageName}
@@ -107,47 +116,28 @@ export function CandidateDetailLayout({
         onArchiveClick={onArchiveClick}
       />
 
-      {/* 우측 메인 콘텐츠 영역 */}
       <div className="flex-1 flex flex-col bg-white relative min-h-0">
-        {/* 탭 헤더 */}
-        <header className="h-16 border-b border-neutral-100 px-8 flex items-center justify-between shrink-0">
-          <div className="flex gap-6 h-full">
-            <button
-              onClick={() => setActiveTab('ai-insight')}
-              className={`h-full border-b-2 transition-colors ${
-                activeTab === 'ai-insight'
-                  ? 'border-neutral-900 text-sm font-semibold text-neutral-900'
-                  : 'border-transparent text-sm font-medium text-neutral-400 hover:text-neutral-900'
-              }`}
-            >
-              AI Insight
-            </button>
-            <button
-              onClick={() => setActiveTab('timeline')}
-              className={`h-full border-b-2 transition-colors ${
-                activeTab === 'timeline'
-                  ? 'border-neutral-900 text-sm font-semibold text-neutral-900'
-                  : 'border-transparent text-sm font-medium text-neutral-400 hover:text-neutral-900'
-              }`}
-            >
-              Activity Timeline
-            </button>
+        <header className="h-16 border-b border-neutral-100 px-8 flex items-center shrink-0 bg-white z-10">
+          <div className="flex gap-8 h-full">
+            {tabBtn('profile', 'Profile')}
+            {tabBtn('insight', 'AI Insight')}
+            {tabBtn('timeline', 'Activity Timeline')}
           </div>
         </header>
 
-        {/* 탭 콘텐츠 */}
-        {activeTab === 'ai-insight' ? (
-          <CandidateAIInsightView
+        {activeTab === 'profile' && (
+          <CandidateProfileTab
             candidate={candidate}
             resumeFiles={resumeFiles}
             canManageCandidate={canManageCandidate}
             canViewCompensation={canViewCompensation}
-            onEditContact={onEditContact}
-            onViewCompensation={onViewCompensation}
+            onOpenProfileSectionEdit={onOpenProfileSectionEdit}
             onFileUpload={onFileUpload}
             onFileSelect={onFileSelect}
           />
-        ) : (
+        )}
+        {activeTab === 'insight' && <CandidateInsightTab candidate={candidate} />}
+        {activeTab === 'timeline' && (
           <CandidateTimelineView
             candidateName={candidate.name}
             events={timelineEvents}

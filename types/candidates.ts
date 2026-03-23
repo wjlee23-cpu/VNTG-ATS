@@ -19,6 +19,16 @@ export interface CandidateParsedData {
   resume_file_name?: string;
   resume_file_size?: number;
   resume_uploaded_at?: string;
+  /** 생년월일 등 파싱 결과 (표시용) */
+  birth_date?: string;
+  portfolio_url?: string;
+  github_url?: string;
+}
+
+/** DB ai_interview_questions JSONB 항목 */
+export interface AiInterviewQuestionItem {
+  question: string;
+  intent?: string;
 }
 
 /** 목록/상세 공통 후보자 타입 (상세 API 응답은 추가 필드 포함) */
@@ -54,6 +64,10 @@ export interface Candidate {
   current_salary?: string | null;
   expected_salary?: string | null;
   skills?: string[] | null;
+  /** DB 컬럼 (상세 조회 시) */
+  education?: string | null;
+  experience?: string | null;
+  ai_interview_questions?: AiInterviewQuestionItem[] | null;
 }
 
 /** 아카이브 필터용 확장 (archived 목록에서 archive_reason 사용) */

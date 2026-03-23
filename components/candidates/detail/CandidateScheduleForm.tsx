@@ -9,7 +9,6 @@ import {
   Calendar,
   X,
   Plus,
-  ArrowRight,
   Loader2,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -126,7 +125,11 @@ export function CandidateScheduleForm({
   };
 
   return (
-    <div className="flex h-[820px] w-full max-w-[1080px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
+    // 브라우저 배율(줌) 변화에 따라 보이는 화면 높이가 달라져도
+    // 하단 버튼이 화면 밖으로 밀려 가려지지 않도록 "가변 높이"로 구성합니다.
+    // - 기본 디자인 높이: 820px
+    // - 실제 화면에서는 100dvh(동적 viewport height)를 기준으로 줄어들 수 있음
+    <div className="flex h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1080px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
       {/* 좌측 사이드바 */}
       <CandidateSidebar
         candidate={candidate}
@@ -454,7 +457,8 @@ export function CandidateScheduleForm({
                 </>
               ) : (
                 <>
-                  자동화 시작 <ArrowRight className="w-4 h-4" />
+                  {/* 버튼 옆 화살표 아이콘은 제거하고 텍스트만 표시합니다. */}
+                  자동화 시작
                 </>
               )}
             </button>

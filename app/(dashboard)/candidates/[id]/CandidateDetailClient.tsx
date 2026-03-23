@@ -25,9 +25,9 @@ import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateM
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
 import { CommentModal } from '@/components/candidates/CommentModal';
 import { DocumentPreviewModal } from '@/components/candidates/DocumentPreviewModal';
-import { MatchScoreSection } from '@/components/candidates/MatchScoreSection';
 import { getFileName } from '@/lib/candidate-detail-utils';
 import { CandidateDetailLayout } from '@/components/candidates/detail/CandidateDetailLayout';
+import { CandidateProfileEditDialog } from '@/components/candidates/detail/CandidateProfileEditDialog';
 import { CandidateScheduleForm } from '@/components/candidates/detail/CandidateScheduleForm';
 import { cn } from '@/components/ui/utils';
 
@@ -63,7 +63,6 @@ export function CandidateDetailClient({
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [showCompensation, setShowCompensation] = useState(false);
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [users, setUsers] = useState<Array<{ id: string; email: string; role: string }>>([]);
@@ -89,7 +88,9 @@ export function CandidateDetailClient({
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  /** null: 닫힘 | basic: 이메일·연락처 | compensation: 연봉 */
+  const [profileEditMode, setProfileEditMode] = useState<null | 'basic' | 'compensation'>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [editFormData, setEditFormData] = useState({
     email: initialCandidate.email,
     phone: initialCandidate.phone || '',
@@ -145,6 +146,22 @@ export function CandidateDetailClient({
         .catch((err) => console.error('[CandidateDetailClient] AI 분석 시작 실패:', err));
     }
   }, [resumeFiles.length, candidate.ai_analysis_status, candidate.job_post_id, candidate.id]);
+
+  useEffect(() => {
+    if (profileEditMode !== null) return;
+    setEditFormData({
+      email: candidate.email,
+      phone: candidate.phone || '',
+      current_salary: candidate.current_salary || '',
+      expected_salary: candidate.expected_salary || '',
+    });
+  }, [
+    candidate.email,
+    candidate.phone,
+    candidate.current_salary,
+    candidate.expected_salary,
+    profileEditMode,
+  ]);
 
   useEffect(() => {
     if (candidate.ai_analysis_status !== 'processing') return;
@@ -346,24 +363,46 @@ export function CandidateDetailClient({
     !isLoadingUsers;
 
   const handleSaveEdit = async () => {
+    if (!profileEditMode) return;
+    setIsSavingProfile(true);
     try {
       const formData = new FormData();
       formData.append('name', candidate.name);
-      formData.append('email', editFormData.email);
-      formData.append('phone', editFormData.phone);
-      if (editFormData.current_salary != null) formData.append('current_salary', editFormData.current_salary);
-      if (editFormData.expected_salary != null)
+      if (profileEditMode === 'basic') {
+        formData.append('email', editFormData.email);
+        formData.append('phone', editFormData.phone);
+        formData.append('current_salary', candidate.current_salary ?? '');
+        formData.append('expected_salary', candidate.expected_salary ?? '');
+      } else {
+        formData.append('email', candidate.email);
+        formData.append('phone', candidate.phone || '');
+        formData.append('current_salary', editFormData.current_salary);
         formData.append('expected_salary', editFormData.expected_salary);
+      }
       const result = await updateCandidate(candidate.id, formData);
       if (result.error) toast.error(result.error);
       else {
-        toast.success('후보자 정보가 수정되었습니다.');
-        setIsEditMode(false);
+        toast.success(
+          profileEditMode === 'basic' ? '기본 정보가 수정되었습니다.' : '연봉 정보가 수정되었습니다.',
+        );
+        setProfileEditMode(null);
         refreshCandidateData().catch(() => {});
       }
     } catch (err) {
       toast.error((err as Error).message || '수정 중 오류가 발생했습니다.');
+    } finally {
+      setIsSavingProfile(false);
     }
+  };
+
+  const openProfileSectionEdit = (section: 'basic' | 'compensation') => {
+    setEditFormData({
+      email: candidate.email,
+      phone: candidate.phone || '',
+      current_salary: candidate.current_salary || '',
+      expected_salary: candidate.expected_salary || '',
+    });
+    setProfileEditMode(section);
   };
 
   const handleCancelEdit = () => {
@@ -373,7 +412,7 @@ export function CandidateDetailClient({
       current_salary: candidate.current_salary || '',
       expected_salary: candidate.expected_salary || '',
     });
-    setIsEditMode(false);
+    setProfileEditMode(null);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -569,8 +608,7 @@ export function CandidateDetailClient({
           onRescheduleSchedule={handleRescheduleScheduleFromTimeline}
           resumeFiles={resumeFiles}
           canViewCompensation={canViewCompensation}
-          onEditContact={() => setIsEditMode(true)}
-          onViewCompensation={() => setShowCompensation(true)}
+          onOpenProfileSectionEdit={openProfileSectionEdit}
           onFileUpload={() => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -679,6 +717,15 @@ export function CandidateDetailClient({
           setIsDocumentPreviewOpen(false);
           setSelectedDocument(null);
         }}
+      />
+      <CandidateProfileEditDialog
+        open={profileEditMode !== null}
+        mode={profileEditMode}
+        form={editFormData}
+        onFormChange={(patch) => setEditFormData((prev) => ({ ...prev, ...patch }))}
+        onSave={handleSaveEdit}
+        onCancel={handleCancelEdit}
+        isSaving={isSavingProfile}
       />
     </>
   );

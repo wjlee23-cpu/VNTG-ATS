@@ -134,9 +134,9 @@ export function ScheduleInterviewAutomatedModal({
   return (
     <Drawer open={isOpen} onOpenChange={onClose} direction="right">
       <DrawerContent 
-        className="h-full w-full sm:w-[600px] sm:max-w-[90vw] bg-white border-l border-neutral-200 shadow-2xl"
+        className="h-full w-full sm:w-[600px] sm:max-w-[90vw] bg-white border-l border-neutral-200 shadow-2xl flex flex-col overflow-hidden"
       >
-        <DrawerHeader className="border-b border-neutral-200 pb-4">
+        <DrawerHeader className="border-b border-neutral-200 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <DrawerTitle className="text-2xl font-semibold text-neutral-900">
               인터뷰 스케줄링 자동화
@@ -154,8 +154,8 @@ export function ScheduleInterviewAutomatedModal({
           </DrawerDescription>
         </DrawerHeader>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6 bg-white space-y-8">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-6 pb-8 bg-white space-y-8">
             {/* 후보자 정보 */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-neutral-900 mb-3">
@@ -448,7 +448,7 @@ export function ScheduleInterviewAutomatedModal({
           </div>
         </form>
 
-        <DrawerFooter className="border-t border-neutral-200 pt-4 mt-8">
+        <DrawerFooter className="border-t border-neutral-200 pt-4 pb-6 px-6 flex-shrink-0 bg-white">
           <div className="flex gap-3 justify-end">
             <Button 
               type="button" 

@@ -3,8 +3,7 @@
 // VNTG Design System 2.0 - 후보자 액티비티 타임라인 뷰
 // 샘플화면3.html 기반의 초미니멀리즘 디자인 적용
 import { useState } from 'react';
-import { Paperclip, Send, Filter } from 'lucide-react';
-import { formatDate, formatRelativeTime } from '@/lib/candidate-detail-utils';
+import { Paperclip, Send } from 'lucide-react';
 import { getTimelineEventTitle } from './timeline-utils';
 import { TimelineEventContent } from './TimelineEventContent';
 import type { TimelineEvent } from '@/types/candidate-detail';
@@ -91,14 +90,6 @@ export function CandidateTimelineView({
     }
   };
 
-  // 작성자 정보 추출 (HTML 샘플 형식: · wjlee23)
-  const getAuthorInfo = (event: TimelineEvent) => {
-    const user = event.created_by_user as { name?: string; email?: string; role?: string } | null;
-    if (!user) return null;
-    const name = user.name || user.email?.split('@')[0] || '';
-    return name;
-  };
-
   // 상대 시간 포맷 (HTML 샘플 기준: "오늘, 오후 4:30", "어제, 오전 10:20", "2026. 2. 18")
   const formatTimeForDisplay = (dateString: string) => {
     const date = new Date(dateString);
@@ -175,18 +166,6 @@ export function CandidateTimelineView({
 
   return (
     <div className="flex-1 flex flex-col bg-white relative min-h-0">
-      {/* 헤더 (탭은 CandidateDetailLayout에서 처리하므로 여기서는 필터만) */}
-      <header className="h-16 border-b border-neutral-100 px-8 flex items-center justify-between shrink-0">
-        <div className="flex gap-6 h-full">
-          {/* 탭은 상위 레이아웃에서 처리 */}
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="p-2 text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors">
-            <Filter className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
       <div className="flex-1 overflow-y-auto p-8 min-h-0">
         {/* 코멘트 입력 영역 */}
         <div className="mb-10">
@@ -233,7 +212,6 @@ export function CandidateTimelineView({
         ) : (
           <div className="relative border-l border-neutral-200 ml-[15px] pb-8">
             {events.map((event, index) => {
-              const authorInfo = getAuthorInfo(event);
               const isLast = index === events.length - 1;
               
               return (

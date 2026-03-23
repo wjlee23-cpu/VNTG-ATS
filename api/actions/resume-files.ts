@@ -148,6 +148,7 @@ export async function uploadResumeFile(candidateId: string, formData: FormData) 
         ai_summary: null,
         ai_strengths: null,
         ai_weaknesses: null,
+        ai_interview_questions: [],
         ai_analysis_status: 'pending',
       })
       .eq('id', candidateId);
@@ -264,6 +265,7 @@ export async function deleteResumeFile(fileId: string) {
           ai_summary: null,
           ai_strengths: null,
           ai_weaknesses: null,
+          ai_interview_questions: [],
           ai_analysis_status: null,
         })
         .eq('id', candidate.id);
