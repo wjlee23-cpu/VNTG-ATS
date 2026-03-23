@@ -31,10 +31,11 @@ export function CandidateInsightTab({ candidate }: CandidateInsightTabProps) {
   const interviewQs = normalizeInterviewQuestions(candidate.ai_interview_questions);
 
   return (
-    <div className="flex-1 flex flex-col bg-white relative min-h-0">
-      <div className="flex-1 overflow-y-auto p-8 min-h-0">
-        <div className="rounded-xl border border-neutral-200 bg-[#FCFCFC] p-6 mb-8 flex flex-col sm:flex-row gap-8 items-center">
-          <div className="flex flex-col items-center justify-center min-w-[140px] sm:pr-8 sm:border-r border-neutral-200 w-full sm:w-auto">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white relative">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-8">
+        {/* Grid: flex 대신 1열이 남은 폭을 확실히 가져가도록 minmax(0,1fr) 사용 */}
+        <div className="mb-8 grid grid-cols-1 gap-6 rounded-xl border border-neutral-200 bg-[#FCFCFC] p-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-8">
+          <div className="flex flex-col items-center justify-center border-b border-neutral-200 pb-6 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-8">
             <div className="flex items-baseline gap-1">
               <span className="text-5xl font-bold tracking-tighter text-neutral-900">{score ?? '—'}</span>
               {score !== null && <span className="text-lg font-medium text-neutral-400">/100</span>}
@@ -46,12 +47,12 @@ export function CandidateInsightTab({ candidate }: CandidateInsightTabProps) {
               </div>
             )}
           </div>
-          <div className="flex-1 w-full">
-            <h3 className="text-sm font-semibold text-neutral-900 flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-[#2563eb]" />
-              AI JD Match Analysis
-            </h3>
-            <p className="text-sm text-neutral-600 leading-relaxed">
+          <div className="min-w-0 max-w-full">
+            <div className="mb-2 flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#2563eb]" aria-hidden />
+              <span className="text-sm font-semibold leading-snug text-neutral-900">AI JD Match Analysis</span>
+            </div>
+            <p className="text-sm leading-relaxed text-neutral-600 [overflow-wrap:anywhere]">
               {summary || 'AI 분석 결과가 아직 없습니다. 이력서를 업로드하면 분석이 시작됩니다.'}
             </p>
           </div>

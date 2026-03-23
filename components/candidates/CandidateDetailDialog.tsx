@@ -40,13 +40,13 @@ export function CandidateDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="!w-[95vw] !max-w-5xl !max-h-[90vh] p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden">
+      <DialogContent className="!w-[95vw] !max-w-5xl !max-h-[90vh] min-w-0 p-0 overflow-hidden rounded-3xl shadow-2xl bg-slate-50/80 backdrop-blur-2xl [&>button]:hidden">
         <DialogTitle className="sr-only">
           {candidate
             ? `${candidate.name} 상세 정보`
             : '후보자 상세 정보'}
         </DialogTitle>
-        <div className="h-full overflow-hidden">
+        <div className="h-full min-h-0 min-w-0 overflow-hidden">
           {isLoading ? (
             <CandidateDetailSkeleton />
           ) : error ? (

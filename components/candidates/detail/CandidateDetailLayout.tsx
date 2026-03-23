@@ -99,7 +99,7 @@ export function CandidateDetailLayout({
   );
 
   return (
-    <div className="flex h-[820px] w-full max-w-[1280px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
+    <div className="flex h-[820px] w-full min-w-0 max-w-[1280px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
       <CandidateSidebar
         candidate={candidate}
         currentStageName={currentStageName}
@@ -116,7 +116,8 @@ export function CandidateDetailLayout({
         onArchiveClick={onArchiveClick}
       />
 
-      <div className="flex-1 flex flex-col bg-white relative min-h-0">
+      {/* min-w-0: 중첩 flex에서 탭 콘텐츠가 가로 0에 가깝게 줄어드는 것 방지 */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white relative">
         <header className="h-16 border-b border-neutral-100 px-8 flex items-center shrink-0 bg-white z-10">
           <div className="flex gap-8 h-full">
             {tabBtn('profile', 'Profile')}
