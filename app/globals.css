@@ -450,9 +450,7 @@ html {
   place-content: center;
   transition: all 0.2s;
   cursor: pointer;
-}
-
-.custom-checkbox::before {
+}.custom-checkbox::before {
   content: "";
   width: 0.65em;
   height: 0.65em;

@@ -442,3 +442,108 @@ export async function getEventAttendeesStatus(
     )
   }
 }
+
+export interface EventWatchInfo {
+  channelId: string
+  resourceId: string
+  expiration?: string
+}
+
+/**
+ * Google Calendar 이벤트에 대해 Push Notification watch 채널을 등록합니다.
+ * - address: 구글이 호출할 공개 웹훅 URL (반드시 https)
+ * - token: 구글이 X-Goog-Channel-Token 헤더로 함께 전달하는 값 (매핑/검증 용도)
+ */
+export async function watchCalendarEvent(
+  accessToken: string,
+  refreshToken: string,
+  eventId: string,
+  params: {
+    address: string
+    channelId: string
+    token: string
+  }
+): Promise<EventWatchInfo> {
+  try {
+    const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
+    const calendar = await getCalendarClient(token)
+
+    const response = await calendar.events.watch({
+      calendarId: 'primary',
+      eventId,
+      requestBody: {
+        id: params.channelId,
+        type: 'web_hook',
+        address: params.address,
+        token: params.token,
+      },
+    })
+
+    if (!response.data?.id || !response.data?.resourceId) {
+      throw new Error('watch 등록 결과에서 id/resourceId를 확인할 수 없습니다.')
+    }
+
+    return {
+      channelId: response.data.id,
+      resourceId: response.data.resourceId,
+      expiration: response.data.expiration,
+    }
+  } catch (error: any) {
+    if (
+      error?.code === 401 ||
+      error?.message?.includes('invalid authentication credentials') ||
+      error?.response?.status === 401
+    ) {
+      throw new Error(
+        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
+          '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)',
+      )
+    }
+
+    if (error?.message?.includes('재연동')) throw error
+
+    throw new Error(`이벤트 watch 등록 실패: ${error?.message || '알 수 없는 오류'}`)
+  }
+}
+
+/**
+ * Google Calendar 이벤트 watch 채널을 중지(stop)합니다.
+ * - stop은 channels.stop API를 사용합니다.
+ */
+export async function stopCalendarEventWatch(
+  accessToken: string,
+  refreshToken: string,
+  params: {
+    channelId: string
+    resourceId: string
+  }
+): Promise<void> {
+  try {
+    const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
+    const calendar = await getCalendarClient(token)
+
+    await calendar.channels.stop({
+      requestBody: {
+        id: params.channelId,
+        resourceId: params.resourceId,
+      },
+    })
+  } catch (error: any) {
+    // stop은 이미 만료된 채널일 수 있으므로 "재연동 필요" 정도만 명확히 전달합니다.
+    if (
+      error?.code === 401 ||
+      error?.message?.includes('invalid authentication credentials') ||
+      error?.response?.status === 401
+    ) {
+      throw new Error(
+        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
+          '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)',
+      )
+    }
+
+    if (error?.message?.includes('재연동')) throw error
+
+    // stop 실패는 치명적이지 않도록 로그만 남기고 에러를 던지지 않습니다.
+    console.error('이벤트 watch 중지 실패:', error)
+  }
+}

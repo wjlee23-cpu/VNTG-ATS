@@ -7,13 +7,23 @@ import { getCandidateById } from '@/api/queries/candidates';
 import { validateRequired, validateUUID, validateFutureDate, validateNumberRange, validateNonEmptyArray } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
-import { getBusyTimes, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, getEventAttendeesStatus, refreshAccessTokenIfNeeded } from '@/lib/calendar/google';
+import {
+  getBusyTimes,
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+  getEventAttendeesStatus,
+  refreshAccessTokenIfNeeded,
+  watchCalendarEvent,
+  stopCalendarEventWatch,
+} from '@/lib/calendar/google';
 import { findAvailableTimeSlots } from '@/lib/ai/schedule';
 import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gmail';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
 import { getStageNameByStageId } from '@/constants/stages';
+import { randomUUID } from 'crypto';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -284,7 +294,7 @@ export async function deleteSchedule(id: string) {
     // schedule_options 별도 조회 (구글 캘린더 이벤트 ID 포함)
     const { data: scheduleOptions, error: optionsError } = await supabase
       .from('schedule_options')
-      .select('id, google_event_id')
+      .select('id, google_event_id, watch_channel_id, watch_resource_id')
       .eq('schedule_id', id)
       .not('google_event_id', 'is', null);
 
@@ -309,6 +319,34 @@ export async function deleteSchedule(id: string) {
         for (const option of scheduleOptions) {
           if (option.google_event_id) {
             try {
+              // 1) 먼저 watch 채널을 중지 (이후 calendar event 삭제)
+              if (option.watch_channel_id && option.watch_resource_id) {
+                await stopCalendarEventWatch(
+                  organizer.calendar_access_token,
+                  organizer.calendar_refresh_token,
+                  {
+                    channelId: option.watch_channel_id,
+                    resourceId: option.watch_resource_id,
+                  },
+                );
+
+                // watch 매핑 값 정리 (선택: 실패해도 계속 진행)
+                const { error: clearWatchError } = await supabase
+                  .from('schedule_options')
+                  .update({
+                    watch_channel_id: null,
+                    watch_resource_id: null,
+                    watch_token: null,
+                    watch_expiration: null,
+                  })
+                  .eq('id', option.id);
+
+                if (clearWatchError) {
+                  console.error('watch 매핑 정리 실패:', clearWatchError);
+                }
+              }
+
+              // 2) 구글 캘린더 이벤트 삭제
               await deleteCalendarEvent(
                 organizer.calendar_access_token,
                 organizer.calendar_refresh_token,
@@ -879,6 +917,21 @@ export async function scheduleInterviewAutomated(formData: FormData) {
 
     // 각 일정 옵션에 대해 구글 캘린더 block 일정 생성
     const scheduleOptions = [];
+
+    // 웹훅으로 사용할 공개 주소(구글이 호출하는 URL)
+    const webhookAddressBase =
+      process.env.GOOGLE_CALENDAR_WEBHOOK_URL ||
+      (process.env.NEXT_PUBLIC_APP_URL
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/google-calendar-events`
+        : '');
+
+    if (!webhookAddressBase) {
+      throw new Error(
+        '웹훅 주소를 찾을 수 없습니다. `GOOGLE_CALENDAR_WEBHOOK_URL` 또는 `NEXT_PUBLIC_APP_URL`을 .env에 설정해주세요.',
+      );
+    }
+
+    const webhookAddress = webhookAddressBase.replace(/\/$/, '');
     
     for (const slot of selectedSlots) {
       const endTime = new Date(slot.scheduledAt);
@@ -961,6 +1014,43 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           console.error('이벤트 삭제 실패:', deleteError);
         }
         throw new Error(`일정 옵션 저장 실패: ${optionError?.message || '알 수 없는 오류'}`);
+      }
+
+      // 구글 캘린더 이벤트 watch 등록 (웹훅으로 응답 변경 감지)
+      // - watch 등록 실패는 일정 생성 실패로 처리하지 않음 (수동 확인/cron으로 대체 가능)
+      try {
+        if (option.google_event_id) {
+          const channelId = `calwatch-${schedule.id}-${option.id}`;
+          const watchToken = randomUUID();
+
+          const watchInfo = await watchCalendarEvent(organizerToken, organizer.calendar_refresh_token!, option.google_event_id, {
+            address: webhookAddress,
+            channelId,
+            token: watchToken,
+          });
+
+          const { error: watchUpdateError } = await supabase
+            .from('schedule_options')
+            .update({
+              watch_channel_id: watchInfo.channelId,
+              watch_resource_id: watchInfo.resourceId,
+              watch_token: watchToken,
+              watch_expiration: watchInfo.expiration ? new Date(watchInfo.expiration) : null,
+            })
+            .eq('id', option.id);
+
+          if (watchUpdateError) {
+            console.error('watch 정보 저장 실패:', watchUpdateError);
+          } else {
+            // 이후 로직에서 scheduleOptions 목록에 watch 값이 필요할 수 있으므로 option 객체에도 반영
+            (option as any).watch_channel_id = watchInfo.channelId;
+            (option as any).watch_resource_id = watchInfo.resourceId;
+            (option as any).watch_token = watchToken;
+            (option as any).watch_expiration = watchInfo.expiration ? new Date(watchInfo.expiration) : null;
+          }
+        }
+      } catch (watchError) {
+        console.error('이벤트 watch 등록 실패 (계속 진행):', watchError);
       }
 
       scheduleOptions.push(option);
@@ -1613,11 +1703,15 @@ async function regenerateScheduleOptions(scheduleId: string) {
  * 구글 캘린더 API로 각 block 일정의 참석자 응답 확인
  * 모두 수락한 일정이 있으면 후보자에게 전송
  */
-export async function checkInterviewerResponses(scheduleId: string) {
+export async function checkInterviewerResponses(
+  scheduleId: string,
+  opts?: {
+    // 웹훅 경로에서는 세션이 없으므로 인증/접근권한 검증을 생략합니다.
+    bypassAuth?: boolean;
+  },
+) {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
-    
-    // Service Role Client를 사용하여 RLS 정책 우회 (타임라인 이벤트 생성 안정성을 위해)
+    // 웹훅/서버 내부 처리에서는 세션이 없으므로 Service Role Client로 RLS를 우회합니다.
     const supabase = createServiceClient();
 
     // 스케줄 및 옵션 조회
@@ -1639,7 +1733,9 @@ export async function checkInterviewerResponses(scheduleId: string) {
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    await verifyCandidateAccess(schedule.candidate_id);
+    if (!opts?.bypassAuth) {
+      await verifyCandidateAccess(schedule.candidate_id);
+    }
 
     // workflow_status가 pending_interviewers가 아니면 확인 불필요
     if (schedule.workflow_status !== 'pending_interviewers') {
@@ -1669,18 +1765,34 @@ export async function checkInterviewerResponses(scheduleId: string) {
 
     // 각 옵션의 면접관 응답 확인
     let allAcceptedOption: typeof options[0] | null = null;
-    const updatedOptions: Array<{ id: string; allDeclined: boolean; hasResponse: boolean }> = [];
+    type UpdatedOption = {
+      id: string;
+      googleEventExists: boolean;
+      allDeclined: boolean;
+      hasAllResponded: boolean;
+    };
+    const updatedOptions: UpdatedOption[] = [];
 
     for (const option of options) {
       if (!option.google_event_id) {
-        updatedOptions.push({ id: option.id, allDeclined: false, hasResponse: false });
+        updatedOptions.push({
+          id: option.id,
+          googleEventExists: false,
+          allDeclined: false,
+          hasAllResponded: false,
+        });
         continue;
       }
 
       // 첫 번째 면접관의 토큰 사용
       const organizer = interviewers.find(inv => inv.calendar_access_token);
       if (!organizer || !organizer.calendar_access_token || !organizer.calendar_refresh_token) {
-        updatedOptions.push({ id: option.id, allDeclined: false, hasResponse: false });
+        updatedOptions.push({
+          id: option.id,
+          googleEventExists: true,
+          allDeclined: false,
+          hasAllResponded: false,
+        });
         continue;
       }
 
@@ -1691,38 +1803,50 @@ export async function checkInterviewerResponses(scheduleId: string) {
           option.google_event_id
         );
 
+        // 옵션의 이전 저장값(변경 감지 및 부분 충돌 메타데이터 보존용)
+        const previousResponsesAny = (option.interviewer_responses as any) || {};
+        const previousMetadata = previousResponsesAny?._metadata;
+
+        // 부분 충돌로 인해 "초대에서 제외된 면접관"은 completion 판정에서 제외합니다.
+        const missingInterviewers = Array.isArray(previousMetadata?.missingInterviewers)
+          ? (previousMetadata.missingInterviewers as string[])
+          : [];
+        const activeInterviewers = interviewers.filter((inv) => !missingInterviewers.includes(inv.id));
+
         // 면접관별 응답 상태 업데이트
         const interviewerResponses: Record<string, string> = {};
-        let allAccepted = true;
-        let allDeclined = true;
-        let hasResponse = false;
+        let allAccepted = activeInterviewers.length > 0;
+        let allDeclined = activeInterviewers.length > 0;
+        let hasAllResponded = activeInterviewers.length > 0;
 
         for (const interviewer of interviewers) {
           const response = responses[interviewer.email] || 'needsAction';
           interviewerResponses[interviewer.id] = response;
-          
+
+          // 제외된 면접관은 "전원 수락/거절/완료" 판정에서 제외합니다.
+          if (missingInterviewers.includes(interviewer.id)) continue;
+
           if (response !== 'accepted') {
             allAccepted = false;
           }
-          
-          // needsAction이 아니면 응답이 있는 것으로 간주
-          if (response !== 'needsAction') {
-            hasResponse = true;
-          }
-          
-          // declined가 아니면 모두 거절된 것은 아님
+
           if (response !== 'declined') {
             allDeclined = false;
           }
-        }
 
-        // 이전 응답 상태 조회 (변경 감지용)
-        const previousResponses = (option.interviewer_responses as Record<string, string>) || {};
+          if (response === 'needsAction') {
+            hasAllResponded = false;
+          }
+        }
         
         // DB에 응답 상태 저장
+        const interviewerResponsesToStore = previousMetadata
+          ? { _metadata: previousMetadata, ...interviewerResponses }
+          : interviewerResponses;
+
         const { error: updateError } = await supabase
           .from('schedule_options')
-          .update({ interviewer_responses: interviewerResponses })
+          .update({ interviewer_responses: interviewerResponsesToStore })
           .eq('id', option.id);
 
         if (updateError) {
@@ -1731,10 +1855,15 @@ export async function checkInterviewerResponses(scheduleId: string) {
           console.log(`옵션 ${option.id}의 응답 상태 업데이트 완료:`, interviewerResponses);
           
           // 면접관 응답이 변경된 경우 타임라인 이벤트 생성
-          const changedResponses: Array<{ interviewerId: string; interviewerEmail: string; previousResponse: string; newResponse: string }> = [];
-          
+          const changedResponses: Array<{
+            interviewerId: string;
+            interviewerEmail: string;
+            previousResponse: string;
+            newResponse: string;
+          }> = [];
+
           for (const interviewer of interviewers) {
-            const previousResponse = previousResponses[interviewer.id] || 'needsAction';
+            const previousResponse = previousResponsesAny[interviewer.id] || 'needsAction';
             const newResponse = interviewerResponses[interviewer.id] || 'needsAction';
             
             if (previousResponse !== newResponse && newResponse !== 'needsAction') {
@@ -1811,11 +1940,21 @@ export async function checkInterviewerResponses(scheduleId: string) {
         }
 
         // 옵션 상태 업데이트 정보 저장
-        updatedOptions.push({ id: option.id, allDeclined, hasResponse });
+        updatedOptions.push({
+          id: option.id,
+          googleEventExists: true,
+          allDeclined,
+          hasAllResponded,
+        });
       } catch (error) {
         console.error(`옵션 ${option.id}의 응답 확인 실패:`, error);
         // 에러가 발생해도 다른 옵션은 계속 확인
-        updatedOptions.push({ id: option.id, allDeclined: false, hasResponse: false });
+        updatedOptions.push({
+          id: option.id,
+          googleEventExists: true,
+          allDeclined: false,
+          hasAllResponded: false,
+        });
       }
     }
 
@@ -1913,62 +2052,78 @@ export async function checkInterviewerResponses(scheduleId: string) {
       }
     }
 
-    // 모든 일정 옵션이 거절되었는지 확인
-    // 응답이 있고 모두 거절된 옵션만 확인 (아직 응답이 없는 옵션은 제외)
-    const respondedOptions = updatedOptions.filter(opt => opt.hasResponse);
-    const allDeclinedOptions = respondedOptions.filter(opt => opt.allDeclined);
-    
-    // 모든 응답이 있는 옵션이 거절되었고, 응답이 있는 옵션이 하나 이상 있는 경우
-    if (respondedOptions.length > 0 && respondedOptions.length === allDeclinedOptions.length) {
-      console.log(`모든 일정 옵션이 거절됨: scheduleId=${scheduleId}, 거절된 옵션 수=${allDeclinedOptions.length}`);
-      
-      // 모든 거절된 옵션의 status를 'rejected'로 업데이트
-      const declinedOptionIds = allDeclinedOptions.map(opt => opt.id);
+    // 전원 수락 옵션이 없으므로 "전원 응답 완료" 여부를 기준으로 다음 단계를 결정합니다.
+    const optionsWithGoogle = updatedOptions.filter((opt) => opt.googleEventExists);
+
+    const allOptionsResponded = optionsWithGoogle.length > 0 && optionsWithGoogle.every((opt) => opt.hasAllResponded);
+
+    if (!allOptionsResponded) {
+      console.log(`아직 일부 옵션의 응답이 남아있습니다. scheduleId=${scheduleId}`);
+      revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+      revalidatePath('/dashboard/schedules');
+      return {
+        message: '아직 모든 면접관의 응답이 완료되지 않았습니다. 계속 대기 중입니다.',
+        allAccepted: false,
+        allDeclined: false,
+      };
+    }
+
+    // allOptionsResponded=true 인 경우:
+    // 1) 모든 옵션이 전원 거절이면: 옵션 rejected 처리 후 재조율(regenerate)
+    // 2) 그 외(혼합 케이스)이면: needs_rescheduling으로 전환하고 채용담당자 액션을 기다립니다.
+    const allOptionsDeclined = optionsWithGoogle.every((opt) => opt.allDeclined);
+
+    if (allOptionsDeclined) {
+      console.log(
+        `모든 일정 옵션이 전원 거절됨: scheduleId=${scheduleId}, 거절된 옵션 수=${optionsWithGoogle.length}`,
+      );
+
+      const declinedOptionIds = optionsWithGoogle.map((opt) => opt.id);
       const { error: updateStatusError } = await supabase
         .from('schedule_options')
         .update({ status: 'rejected' })
         .in('id', declinedOptionIds);
-      
+
       if (updateStatusError) {
         console.error('거절된 옵션 status 업데이트 실패:', updateStatusError);
       } else {
         console.log(`거절된 옵션 ${declinedOptionIds.length}개의 status를 'rejected'로 업데이트 완료`);
       }
-      
-      // 새로운 일정 옵션 자동 생성 시도
+
       try {
         console.log(`새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
         const regenerateResult = await regenerateScheduleOptions(scheduleId);
-        
-        // 캐시 무효화하여 최신 상태 반영
+
         revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
         revalidatePath('/dashboard/schedules');
-        
+
         return {
-          message: regenerateResult.message || '모든 일정 옵션이 거절되어 새로운 일정 옵션이 자동으로 생성되었습니다.',
+          message:
+            regenerateResult.message ||
+            '모든 일정 옵션이 거절되어 새로운 일정 옵션이 자동으로 생성되었습니다.',
           allAccepted: false,
           allDeclined: true,
           regenerated: true,
         };
       } catch (regenerateError) {
         console.error('새로운 일정 옵션 생성 실패:', regenerateError);
-        
-        // 새로운 일정 생성 실패 시 스케줄을 취소 상태로 변경
+
         const { error: updateScheduleError } = await supabase
           .from('schedules')
           .update({ workflow_status: 'cancelled' })
           .eq('id', scheduleId);
-        
+
         if (updateScheduleError) {
           console.error('스케줄 workflow_status 업데이트 실패:', updateScheduleError);
         }
-        
-        // 캐시 무효화하여 최신 상태 반영
+
         revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
         revalidatePath('/dashboard/schedules');
-        
+
         return {
-          message: `모든 일정 옵션이 거절되었지만, 새로운 일정을 찾을 수 없습니다: ${regenerateError instanceof Error ? regenerateError.message : '알 수 없는 오류'}. 면접 일정이 취소되었습니다.`,
+          message: `모든 일정 옵션이 거절되었지만 새로운 일정을 찾을 수 없습니다: ${
+            regenerateError instanceof Error ? regenerateError.message : '알 수 없는 오류'
+          }. 면접 일정이 취소되었습니다.`,
           allAccepted: false,
           allDeclined: true,
           regenerated: false,
@@ -1977,17 +2132,51 @@ export async function checkInterviewerResponses(scheduleId: string) {
       }
     }
 
-    // 아직 일부 옵션은 대기 중이거나 일부는 거절된 상태
-    console.log(`모든 면접관이 수락한 일정이 없음: scheduleId=${scheduleId}`);
-    
-    // 캐시 무효화하여 최신 상태 반영
+    // (2) 혼합 케이스: 전원 응답 완료, 하지만 전원 수락 옵션은 없음
+    console.log(`혼합 응답 처리 필요: scheduleId=${scheduleId}`);
+
+    const organizer = interviewers.find((inv) => inv.calendar_access_token) || interviewers[0];
+    const organizerId = organizer?.id || null;
+
+    // 스케줄 상태를 needs_rescheduling으로 전환하여 채용담당자가 다시 자동화를 실행할 수 있게 합니다.
+    const { error: updateScheduleError } = await supabase
+      .from('schedules')
+      .update({
+        workflow_status: 'needs_rescheduling',
+        needs_rescheduling: true,
+        rescheduling_reason: '면접관 응답이 혼합되어 전원 수락 옵션이 존재하지 않음',
+      })
+      .eq('id', scheduleId);
+
+    if (updateScheduleError) {
+      console.error('혼합 케이스 스케줄 상태 전환 실패:', updateScheduleError);
+    }
+
+    // 타임라인 system_log 추가 (채용담당자 알림용)
+    const { error: timelineError } = await supabase.from('timeline_events').insert({
+      candidate_id: schedule.candidate_id,
+      type: 'system_log',
+      content: {
+        message:
+          '면접관들의 응답이 모두 확인되었지만, 후보자에게 전송 가능한 "전원 수락" 일정 옵션이 없습니다. 채용담당자가 일정 자동화를 다시 실행하거나 재조율이 필요합니다.',
+        schedule_id: scheduleId,
+      },
+      created_by: organizerId,
+    });
+
+    if (timelineError) {
+      console.error('혼합 케이스 타임라인 system_log 생성 실패:', timelineError);
+    }
+
     revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
     revalidatePath('/dashboard/schedules');
 
     return {
-      message: '아직 모든 면접관이 수락하지 않았습니다. 계속 대기 중입니다.',
+      message:
+        '면접관 응답이 모두 확인되었지만 전원 수락 옵션이 없습니다. needs_rescheduling 상태로 전환했습니다.',
       allAccepted: false,
       allDeclined: false,
+      mixedResponses: true,
     };
   });
 }
@@ -2105,26 +2294,8 @@ export async function checkAllPendingSchedules() {
  */
 export async function sendScheduleOptionsToCandidate(scheduleId: string) {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
-    const isAdmin = user.role === 'admin';
-    
-    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회
-    const supabase = isAdmin ? createServiceClient() : await createClient();
-
-    // 현재 사용자의 Google Workspace 토큰 조회 (Gmail API 사용을 위해)
-    const { data: currentUserData, error: userTokenError } = await supabase
-      .from('users')
-      .select('calendar_access_token, calendar_refresh_token, email')
-      .eq('id', user.userId)
-      .single();
-
-    if (userTokenError || !currentUserData) {
-      throw new Error('사용자 정보를 찾을 수 없습니다.');
-    }
-
-    if (!currentUserData.calendar_access_token || !currentUserData.calendar_refresh_token) {
-      throw new Error('Google Workspace 계정이 연동되지 않았습니다. 구글 캘린더를 먼저 연동해주세요.');
-    }
+    // 웹훅/서버 내부 처리에서는 세션이 없으므로 Service Role로 처리합니다.
+    const supabase = createServiceClient();
 
     // 스케줄 및 후보자 정보 조회
     const { data: schedule, error: scheduleError } = await supabase
@@ -2145,12 +2316,34 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    await verifyCandidateAccess(schedule.candidate_id);
-
     const candidate = schedule.candidates as { id: string; name: string; email: string; token: string } | null | undefined;
     if (!candidate) {
       throw new Error('후보자 정보를 찾을 수 없습니다.');
     }
+
+    // 스케줄의 "주최자(organizer)"를 찾아 Gmail API 발송에 사용할 토큰을 얻습니다.
+    const { data: interviewers } = await supabase
+      .from('users')
+      .select('id, email, calendar_access_token, calendar_refresh_token')
+      .in('id', schedule.interviewer_ids);
+
+    if (!interviewers || interviewers.length === 0) {
+      throw new Error('면접관 정보를 찾을 수 없습니다.');
+    }
+
+    const organizer = interviewers.find(
+      (inv: any) => inv.calendar_access_token && inv.calendar_refresh_token,
+    );
+
+    if (!organizer || !organizer.calendar_access_token || !organizer.calendar_refresh_token) {
+      throw new Error('주최자 면접관의 Google Workspace 연동 정보가 없습니다. 구글 캘린더를 먼저 연동해주세요.');
+    }
+
+    const organizerAccessToken = await refreshAccessTokenIfNeeded(
+      organizer.calendar_access_token,
+      organizer.calendar_refresh_token,
+      organizer.id,
+    );
 
     // 모든 면접관이 수락한 일정 옵션 조회 (pending 또는 accepted 상태 모두 포함)
     const { data: options, error: optionsError } = await supabase
@@ -2164,21 +2357,29 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       throw new Error('일정 옵션을 찾을 수 없습니다.');
     }
 
-    // 모든 면접관이 수락한 옵션만 필터링
-    const acceptedOptions = [];
+    // "초대에서 제외된 면접관(부분 충돌)"은 completion 판정에서 제외합니다.
+    // 즉, activeInterviewers(제외 면접관 제외) 전원이 accepted일 때만 후보자에게 전송합니다.
+    const acceptedOptions: typeof options = [];
     for (const option of options) {
-      if (!option.interviewer_responses || typeof option.interviewer_responses !== 'object') {
-        continue;
-      }
+      if (!option.interviewer_responses || typeof option.interviewer_responses !== 'object') continue;
 
-      const responses = option.interviewer_responses as Record<string, string>;
-      const allAccepted = schedule.interviewer_ids.every((interviewerId: string) => {
-        return responses[interviewerId] === 'accepted';
-      });
+      const responsesAny = option.interviewer_responses as any;
+      const metadata = responsesAny?._metadata;
+      const missingInterviewers = Array.isArray(metadata?.missingInterviewers)
+        ? (metadata.missingInterviewers as string[])
+        : [];
 
-      if (allAccepted) {
-        acceptedOptions.push(option);
-      }
+      const activeInterviewers = schedule.interviewer_ids.filter(
+        (interviewerId: string) => !missingInterviewers.includes(interviewerId),
+      );
+
+      if (activeInterviewers.length === 0) continue;
+
+      const allAccepted = activeInterviewers.every(
+        (interviewerId: string) => responsesAny[interviewerId] === 'accepted',
+      );
+
+      if (allAccepted) acceptedOptions.push(option);
     }
 
     if (acceptedOptions.length === 0) {
@@ -2250,15 +2451,16 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
     // Gmail API를 사용하여 이메일 발송
     console.log(`후보자에게 이메일 발송 시작: ${candidate.email}, 옵션 수: ${acceptedOptions.length}`);
     const emailResult = await sendEmailViaGmail(
-      currentUserData.calendar_access_token,
-      currentUserData.calendar_refresh_token,
+      organizerAccessToken,
+      organizer.calendar_refresh_token,
       {
         to: candidate.email,
-        from: currentUserData.email || user.email,
+        from: organizer.email,
         subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
         html: emailHtml,
-        replyTo: currentUserData.email || user.email,
-      }
+        replyTo: organizer.email,
+      },
+      organizer.id,
     );
 
     console.log('이메일 발송 결과:', emailResult);
@@ -2274,7 +2476,7 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       message_id: emailResult.messageId || `email-${Date.now()}`,
       subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
       body: emailHtml,
-      from_email: user.email,
+      from_email: organizer.email,
       to_email: candidate.email,
       direction: 'outbound',
       sent_at: new Date().toISOString(),
@@ -2300,7 +2502,7 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
         schedule_id: scheduleId,
         options_count: acceptedOptions.length,
       },
-      created_by: user.userId,
+      created_by: organizer.id,
     }).select();
 
     if (timelineError) {
@@ -2313,7 +2515,7 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
         candidateId: candidate.id,
         type: 'email',
         scheduleId,
-        userId: user.userId,
+        userId: organizer.id,
       });
       if (timelineError.code === '23514') {
         console.error('[타임라인] DB 스키마 제약 조건 위반 - email 타입이 허용되지 않음.');
@@ -2909,6 +3111,45 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
 
     if (!interviewers || interviewers.length === 0) {
       throw new Error('면접관 정보를 찾을 수 없습니다.');
+    }
+
+    // 재조율 시작 전: 기존 schedule_options watch 채널을 먼저 stop 처리합니다.
+    // (이후 block 일정(calendar event)을 삭제하므로, stop을 먼저 해제해두면 불필요한 웹훅 호출을 줄일 수 있습니다.)
+    const organizerForWatch = interviewers.find(
+      (inv) => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token,
+    );
+
+    if (organizerForWatch && organizerForWatch.calendar_access_token && organizerForWatch.calendar_refresh_token) {
+      const { data: optionsForWatch } = await supabase
+        .from('schedule_options')
+        .select('id, watch_channel_id, watch_resource_id')
+        .eq('schedule_id', scheduleId)
+        .not('watch_channel_id', 'is', null);
+
+      if (optionsForWatch && optionsForWatch.length > 0) {
+        for (const option of optionsForWatch) {
+          if (!option.watch_channel_id || !option.watch_resource_id) continue;
+          try {
+            await stopCalendarEventWatch(organizerForWatch.calendar_access_token, organizerForWatch.calendar_refresh_token, {
+              channelId: option.watch_channel_id,
+              resourceId: option.watch_resource_id,
+            });
+
+            // watch 매핑 값 정리 (선택)
+            await supabase
+              .from('schedule_options')
+              .update({
+                watch_channel_id: null,
+                watch_resource_id: null,
+                watch_token: null,
+                watch_expiration: null,
+              })
+              .eq('id', option.id);
+          } catch (error) {
+            console.error('watch stop 중 오류(재조율):', error);
+          }
+        }
+      }
     }
 
     // 기존 구글 캘린더 이벤트 삭제

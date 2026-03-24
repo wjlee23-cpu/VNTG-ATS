@@ -20,3 +20,27 @@
 - `components/candidates/detail/CandidateDetailLayout.tsx`
 - `components/candidates/CandidateDetailSkeleton.tsx`
 
+## 구글 캘린더 웹훅이 동작하지 않음
+
+### 증상
+- 면접관이 구글 캘린더 초대에서 `수락/거절`을 해도, `Activity Timeline`에 `interviewer_response` 이벤트가 늦게(또는 전혀) 나타나지 않음
+- 그 결과 `pending_candidate` / `needs_rescheduling`로 워크플로우가 자동 전환되지 않음
+
+### 체크리스트
+1. `GOOGLE_CALENDAR_WEBHOOK_URL` 설정이 올바른지 확인합니다.
+   - 구글은 `events.watch`에 등록된 `address`로 호출합니다.
+   - 로컬 테스트라면 ngrok 같은 공개 URL로 설정해야 합니다.
+2. 서버 로그에서 `app/api/webhooks/google-calendar-events/route.ts` 관련 로그가 찍히는지 확인합니다.
+   - watch 매핑을 찾지 못하면 `watch 매핑을 찾을 수 없습니다.`(404)가 반환됩니다.
+3. `schedule_options.watch_channel_id/watch_resource_id/watch_token` 값이 실제로 저장되는지 확인합니다.
+   - 스케줄 자동화 생성 직후(옵션 생성 후) 이 컬럼들이 비어있지 않아야 합니다.
+4. `X-Goog-Channel-Token` 헤더 값이 DB의 `schedule_options.watch_token`과 매칭되는지 확인합니다.
+   - 현재 구현은 토큰(`x-goog-channel-token`)을 우선 매칭합니다.
+
+### 빠른 재현/테스트 방법
+1. 면접 일정 자동화(`scheduleInterviewAutomated`)를 실행합니다.
+2. 면접관이 구글 캘린더 초대에서 `수락` 또는 `거절`을 수행합니다.
+3. 잠깐(수 초~수 분) 기다린 뒤 `Activity Timeline`에서 `interviewer_response` 이벤트가 추가되고,
+   - 전원 수락 시: 후보자에게 메일 전송 후 `pending_candidate`로 전환
+   - 전원 거절 또는 혼합 응답 시: `schedule_options` 상태/`needs_rescheduling` 전환을 확인합니다.
+
