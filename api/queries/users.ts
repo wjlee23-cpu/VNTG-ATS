@@ -29,3 +29,25 @@ export async function getUsers() {
     return data || [];
   });
 }
+
+/**
+ * 현재 사용자가 저장한 비가입 면접관 이메일 목록 조회
+ */
+export async function getExternalInterviewers() {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('external_interviewers')
+      .select('id, email, display_name')
+      .eq('user_id', user.userId)
+      .order('email', { ascending: true });
+
+    if (error) {
+      throw new Error(`비가입 면접관 목록 조회 실패: ${error.message}`);
+    }
+
+    return data || [];
+  });
+}

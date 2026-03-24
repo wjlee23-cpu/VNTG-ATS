@@ -16,8 +16,8 @@ import { confirmHire } from '@/api/actions/offers';
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
-import { scheduleInterviewAutomated, deleteSchedule, cancelSchedule, rescheduleInterview } from '@/api/actions/schedules';
-import { getUsers } from '@/api/queries/users';
+import { scheduleInterviewAutomated, deleteSchedule, cancelSchedule, rescheduleInterview, checkInterviewerResponses } from '@/api/actions/schedules';
+import { getExternalInterviewers, getUsers } from '@/api/queries/users';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { EmailModal } from '@/components/candidates/EmailModal';
@@ -46,6 +46,7 @@ export function CandidateDetailClient({
   onClose,
   isSidebar = false,
 }: CandidateDetailClientProps) {
+  type DetailTab = 'profile' | 'insight' | 'timeline';
   const router = useRouter();
   const [candidate, setCandidate] = useState<Candidate>(initialCandidate);
   const [viewMode, setViewMode] = useState<'detail' | 'scheduling'>('detail');
@@ -66,11 +67,15 @@ export function CandidateDetailClient({
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [users, setUsers] = useState<Array<{ id: string; email: string; role: string }>>([]);
+  const [externalInterviewerPool, setExternalInterviewerPool] = useState<
+    Array<{ id: string; email: string; display_name: string | null }>
+  >([]);
   const [scheduleFormData, setScheduleFormData] = useState({
     dateRange: { from: undefined, to: undefined } as { from: Date | undefined; to: Date | undefined },
     duration_minutes: '60',
     stage_id: 'stage-6',
     interviewer_ids: [] as string[],
+    external_interviewer_emails: [] as string[],
     num_options: '2',
     exclude_start_hour: '11',
     exclude_start_minute: '30',
@@ -100,6 +105,16 @@ export function CandidateDetailClient({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isMovingStage, setIsMovingStage] = useState(false);
   const [scheduleActionLoadingId, setScheduleActionLoadingId] = useState<string | null>(null);
+  const [detailInitialTab, setDetailInitialTab] = useState<DetailTab>(() => {
+    if (typeof window === 'undefined') return 'profile';
+    const saved = window.sessionStorage.getItem(
+      `candidate-detail-active-tab:${initialCandidate.id}`,
+    ) as DetailTab | null;
+    if (saved === 'profile' || saved === 'insight' || saved === 'timeline') return saved;
+    return 'profile';
+  });
+
+  const getDetailTabStorageKey = () => `candidate-detail-active-tab:${candidate.id}`;
 
   const refreshCandidateData = async () => {
     try {
@@ -126,6 +141,11 @@ export function CandidateDetailClient({
       loadResumeFiles();
     }
   }, [candidate.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !candidate.id) return;
+    window.sessionStorage.setItem(getDetailTabStorageKey(), detailInitialTab);
+  }, [candidate.id, detailInitialTab]);
 
   useEffect(() => {
     if (viewMode === 'scheduling') loadUsers();
@@ -221,9 +241,15 @@ export function CandidateDetailClient({
   const loadUsers = async () => {
     setIsLoadingUsers(true);
     try {
-      const result = await getUsers();
-      const list = (result.data || []) as Array<{ id: string; email: string; role: string }>;
+      const [usersResult, externalResult] = await Promise.all([getUsers(), getExternalInterviewers()]);
+      const list = (usersResult.data || []) as Array<{ id: string; email: string; role: string }>;
+      const externalList = (externalResult.data || []) as Array<{
+        id: string;
+        email: string;
+        display_name: string | null;
+      }>;
       setUsers(list.filter((u) => u.role === 'interviewer' || u.role === 'admin'));
+      setExternalInterviewerPool(externalList);
     } catch {
       toast.error('면접관 목록을 불러올 수 없습니다.');
     } finally {
@@ -325,7 +351,15 @@ export function CandidateDetailClient({
       formDataToSend.append('end_date', endDateStr);
       formDataToSend.append('duration_minutes', scheduleFormData.duration_minutes);
       formDataToSend.append('interviewer_ids', JSON.stringify(scheduleFormData.interviewer_ids));
+      formDataToSend.append(
+        'external_interviewer_emails',
+        JSON.stringify(scheduleFormData.external_interviewer_emails),
+      );
       formDataToSend.append('num_options', scheduleFormData.num_options);
+      formDataToSend.append('exclude_start_hour', scheduleFormData.exclude_start_hour);
+      formDataToSend.append('exclude_start_minute', scheduleFormData.exclude_start_minute);
+      formDataToSend.append('exclude_end_hour', scheduleFormData.exclude_end_hour);
+      formDataToSend.append('exclude_end_minute', scheduleFormData.exclude_end_minute);
       const result = await scheduleInterviewAutomated(formDataToSend);
       if (result.error) {
         if (
@@ -336,6 +370,10 @@ export function CandidateDetailClient({
         else toast.error(result.error);
       } else {
         toast.success((result as { message?: string }).message || '면접 일정 자동화가 시작되었습니다.');
+        setDetailInitialTab('timeline');
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(getDetailTabStorageKey(), 'timeline');
+        }
         setViewMode('detail');
         refreshCandidateData().catch(() => {});
         refreshTimelineEvents().catch(() => {});
@@ -359,8 +397,28 @@ export function CandidateDetailClient({
   const isScheduleFormValid =
     !!scheduleFormData.dateRange.from &&
     !!scheduleFormData.dateRange.to &&
-    scheduleFormData.interviewer_ids.length > 0 &&
+    (scheduleFormData.interviewer_ids.length > 0 ||
+      scheduleFormData.external_interviewer_emails.length > 0) &&
     !isLoadingUsers;
+
+  const addExternalInterviewerEmail = (email: string) => {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return;
+    setScheduleFormData((prev) => {
+      if (prev.external_interviewer_emails.includes(normalized)) return prev;
+      return {
+        ...prev,
+        external_interviewer_emails: [...prev.external_interviewer_emails, normalized],
+      };
+    });
+  };
+
+  const removeExternalInterviewerEmail = (email: string) => {
+    setScheduleFormData((prev) => ({
+      ...prev,
+      external_interviewer_emails: prev.external_interviewer_emails.filter((item) => item !== email),
+    }));
+  };
 
   const handleSaveEdit = async () => {
     if (!profileEditMode) return;
@@ -547,6 +605,33 @@ export function CandidateDetailClient({
     }
   };
 
+  // 타임라인에서 일정 확인 (면접관 수락 여부 확인)
+  const handleCheckScheduleFromTimeline = async (scheduleId: string) => {
+    setScheduleActionLoadingId(scheduleId);
+    try {
+      const result = await checkInterviewerResponses(scheduleId);
+      if ((result as { error?: string }).error) {
+        toast.error((result as { error: string }).error);
+      } else if ((result as { data?: any }).data) {
+        const data = (result as { data: { allAccepted?: boolean; message?: string } }).data;
+        if (data.allAccepted) {
+          toast.success(data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.');
+        } else {
+          toast.info(data.message || '아직 모든 면접관이 수락하지 않았습니다.');
+        }
+        refreshCandidateData().catch(() => {});
+        refreshTimelineEvents().catch(() => {});
+      } else {
+        toast.info('확인 결과가 없습니다.');
+      }
+    } catch (error) {
+      console.error('[CandidateDetailClient] 일정 확인 실패:', error);
+      toast.error('일정 확인 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleActionLoadingId(null);
+    }
+  };
+
   const getCurrentStageName = (): string => {
     if (!currentStageId) return 'New Application';
     if (STAGE_ID_TO_NAME_MAP[currentStageId]) return STAGE_ID_TO_NAME_MAP[currentStageId];
@@ -606,9 +691,12 @@ export function CandidateDetailClient({
           onCancelSchedule={handleCancelScheduleFromTimeline}
           onDeleteSchedule={handleDeleteScheduleFromTimeline}
           onRescheduleSchedule={handleRescheduleScheduleFromTimeline}
+          onCheckSchedule={handleCheckScheduleFromTimeline}
           resumeFiles={resumeFiles}
           canViewCompensation={canViewCompensation}
           onOpenProfileSectionEdit={openProfileSectionEdit}
+          activeTab={detailInitialTab}
+          onActiveTabChange={setDetailInitialTab}
           onFileUpload={() => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -636,13 +724,22 @@ export function CandidateDetailClient({
           formData={scheduleFormData}
           onFormDataChange={(data) => setScheduleFormData((prev) => ({ ...prev, ...data }))}
           users={users}
+          externalInterviewerPool={externalInterviewerPool}
           isLoadingUsers={isLoadingUsers}
           scheduleWarning={scheduleWarning}
           isLoadingSchedule={isLoadingSchedule}
           isValid={isScheduleFormValid}
           onSubmit={handleScheduleSubmit}
           onToggleInterviewer={toggleInterviewer}
-          onBack={() => setViewMode('detail')}
+          onAddExternalInterviewer={addExternalInterviewerEmail}
+          onRemoveExternalInterviewer={removeExternalInterviewerEmail}
+          onBack={() => {
+            setDetailInitialTab('profile');
+            if (typeof window !== 'undefined') {
+              window.sessionStorage.setItem(getDetailTabStorageKey(), 'profile');
+            }
+            setViewMode('detail');
+          }}
           availableStages={availableStages}
           isLoadingStages={isLoadingStages}
           isMovingStage={isMovingStage}

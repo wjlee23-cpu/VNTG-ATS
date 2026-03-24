@@ -61,6 +61,32 @@ export interface Database {
           updated_at?: string
         }
       }
+      external_interviewers: {
+        Row: {
+          id: string
+          user_id: string
+          email: string
+          display_name: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          email: string
+          display_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          email?: string
+          display_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       job_posts: {
         Row: {
           id: string
@@ -184,6 +210,7 @@ export interface Database {
           duration_minutes: number
           status: 'pending' | 'confirmed' | 'rejected' | 'completed'
           interviewer_ids: string[]
+          external_interviewer_emails: string[]
           candidate_response: 'accepted' | 'rejected' | 'pending' | null
           beverage_preference: string | null
           google_event_id: string | null
@@ -204,6 +231,7 @@ export interface Database {
           duration_minutes: number
           status?: 'pending' | 'confirmed' | 'rejected' | 'completed'
           interviewer_ids: string[]
+          external_interviewer_emails?: string[]
           candidate_response?: 'accepted' | 'rejected' | 'pending' | null
           beverage_preference?: string | null
           google_event_id?: string | null
@@ -224,6 +252,7 @@ export interface Database {
           duration_minutes?: number
           status?: 'pending' | 'confirmed' | 'rejected' | 'completed'
           interviewer_ids?: string[]
+          external_interviewer_emails?: string[]
           candidate_response?: 'accepted' | 'rejected' | 'pending' | null
           beverage_preference?: string | null
           google_event_id?: string | null

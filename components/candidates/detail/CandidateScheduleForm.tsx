@@ -2,6 +2,7 @@
 
 // VNTG Design System 2.0 - 면접 일정 자동화 폼
 // 샘플화면6.html 기반의 Settings 스타일 Split View 디자인 적용
+import { useState } from 'react';
 import {
   ArrowLeft,
   Sparkles,
@@ -34,6 +35,7 @@ interface ScheduleFormData {
   duration_minutes: string;
   stage_id: string;
   interviewer_ids: string[];
+  external_interviewer_emails: string[];
   num_options: string;
   exclude_start_hour: string;
   exclude_start_minute: string;
@@ -61,12 +63,15 @@ interface CandidateScheduleFormProps {
   formData: ScheduleFormData;
   onFormDataChange: (data: Partial<ScheduleFormData>) => void;
   users: UserOption[];
+  externalInterviewerPool: Array<{ id: string; email: string; display_name: string | null }>;
   isLoadingUsers: boolean;
   scheduleWarning: string | null;
   isLoadingSchedule: boolean;
   isValid: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onToggleInterviewer: (userId: string) => void;
+  onAddExternalInterviewer: (email: string) => void;
+  onRemoveExternalInterviewer: (email: string) => void;
   onBack: () => void;
   // 사이드바 관련 (옵션)
   availableStages?: StageOption[];
@@ -87,12 +92,15 @@ export function CandidateScheduleForm({
   formData,
   onFormDataChange,
   users,
+  externalInterviewerPool,
   isLoadingUsers,
   scheduleWarning,
   isLoadingSchedule,
   isValid,
   onSubmit,
   onToggleInterviewer,
+  onAddExternalInterviewer,
+  onRemoveExternalInterviewer,
   onBack,
   availableStages = [],
   isLoadingStages = false,
@@ -103,8 +111,10 @@ export function CandidateScheduleForm({
   onEmailClick,
   onArchiveClick,
 }: CandidateScheduleFormProps) {
+  const [externalEmailInput, setExternalEmailInput] = useState('');
   // 선택된 면접관 정보 가져오기
   const selectedUsers = users.filter((user) => formData.interviewer_ids.includes(user.id));
+  const selectedExternalEmails = formData.external_interviewer_emails;
 
   // 사용자 이름 추출 (이메일에서)
   const getUserName = (email: string) => {
@@ -114,6 +124,15 @@ export function CandidateScheduleForm({
   // 사용자 이니셜 추출
   const getUserInitial = (email: string) => {
     return email.charAt(0).toUpperCase();
+  };
+
+  const addExternalEmailFromInput = () => {
+    const normalized = externalEmailInput.trim().toLowerCase();
+    if (!normalized) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalized)) return;
+    onAddExternalInterviewer(normalized);
+    setExternalEmailInput('');
   };
 
   // 날짜 범위 포맷
@@ -240,6 +259,27 @@ export function CandidateScheduleForm({
                           </button>
                         </div>
                       ))}
+                      {selectedExternalEmails.map((email) => (
+                        <div
+                          key={email}
+                          className="flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 bg-white border border-neutral-200 rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.02)] group hover:border-neutral-300 transition-colors"
+                        >
+                          <div className="w-5 h-5 rounded-full bg-neutral-700 text-white flex items-center justify-center text-[10px] font-medium">
+                            {getUserInitial(email)}
+                          </div>
+                          <span className="text-xs font-medium text-neutral-900 ml-0.5">
+                            {getUserName(email)}
+                          </span>
+                          <span className="text-[10px] text-neutral-400 mr-1">external</span>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveExternalInterviewer(email)}
+                            className="text-neutral-300 hover:text-red-500 transition-colors rounded-full hover:bg-red-50 p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
 
                       {/* 추가 버튼 */}
                       <Popover>
@@ -252,7 +292,32 @@ export function CandidateScheduleForm({
                             <span className="text-xs font-medium">추가</span>
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2" align="start">
+                        <PopoverContent className="w-72 p-2" align="start">
+                          <div className="border-b border-neutral-100 pb-2 mb-2">
+                            <p className="text-[11px] text-neutral-500 mb-1">비가입 면접관 이메일 추가</p>
+                            <div className="flex gap-1.5">
+                              <input
+                                type="email"
+                                value={externalEmailInput}
+                                onChange={(e) => setExternalEmailInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addExternalEmailFromInput();
+                                  }
+                                }}
+                                placeholder="name@example.com"
+                                className="flex-1 h-8 px-2 text-xs border border-neutral-200 rounded-md focus:outline-none focus:border-neutral-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={addExternalEmailFromInput}
+                                className="h-8 px-2 text-xs rounded-md bg-neutral-900 text-white"
+                              >
+                                추가
+                              </button>
+                            </div>
+                          </div>
                           <div className="space-y-1 max-h-64 overflow-y-auto">
                             {users
                               .filter((user) => !formData.interviewer_ids.includes(user.id))
@@ -269,12 +334,27 @@ export function CandidateScheduleForm({
                                   )}
                                 </button>
                               ))}
+                            {externalInterviewerPool
+                              .filter((entry) => !selectedExternalEmails.includes(entry.email))
+                              .map((entry) => (
+                                <button
+                                  key={entry.id}
+                                  type="button"
+                                  onClick={() => onAddExternalInterviewer(entry.email)}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-md transition-colors"
+                                >
+                                  <div className="font-medium">{entry.email}</div>
+                                  <div className="text-xs text-neutral-500">저장된 외부 면접관</div>
+                                </button>
+                              ))}
                           </div>
                         </PopoverContent>
                       </Popover>
                     </div>
                   )}
-                  {formData.interviewer_ids.length === 0 && !isLoadingUsers && (
+                  {formData.interviewer_ids.length === 0 &&
+                    formData.external_interviewer_emails.length === 0 &&
+                    !isLoadingUsers && (
                     <p className="text-xs text-red-500">최소 1명의 면접관을 선택해주세요.</p>
                   )}
                 </div>

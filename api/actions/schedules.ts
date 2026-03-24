@@ -4,7 +4,14 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { getCandidateById } from '@/api/queries/candidates';
-import { validateRequired, validateUUID, validateFutureDate, validateNumberRange, validateNonEmptyArray } from '@/api/utils/validation';
+import {
+  validateRequired,
+  validateUUID,
+  validateFutureDate,
+  validateNumberRange,
+  validateNonEmptyArray,
+  validateEmail,
+} from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
 import {
@@ -27,6 +34,90 @@ import { randomUUID } from 'crypto';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
+
+type ExcludedTimeRange = {
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+};
+
+function readExternalInterviewerEmails(formData: FormData): string[] {
+  const raw = formData.get('external_interviewer_emails');
+  if (!raw) return [];
+
+  const parsed = JSON.parse(String(raw));
+  if (!Array.isArray(parsed)) return [];
+
+  const deduped = new Set<string>();
+  for (const value of parsed) {
+    if (typeof value !== 'string') continue;
+    const email = validateEmail(value.trim().toLowerCase());
+    deduped.add(email);
+  }
+
+  return Array.from(deduped);
+}
+
+function readExcludedTimeRangesFromFormData(formData: FormData): ExcludedTimeRange[] {
+  const startHourRaw = formData.get('exclude_start_hour');
+  const startMinuteRaw = formData.get('exclude_start_minute');
+  const endHourRaw = formData.get('exclude_end_hour');
+  const endMinuteRaw = formData.get('exclude_end_minute');
+
+  if (
+    startHourRaw === null ||
+    startMinuteRaw === null ||
+    endHourRaw === null ||
+    endMinuteRaw === null
+  ) {
+    return [];
+  }
+
+  const startHour = Number(startHourRaw);
+  const startMinute = Number(startMinuteRaw);
+  const endHour = Number(endHourRaw);
+  const endMinute = Number(endMinuteRaw);
+
+  if (
+    Number.isNaN(startHour) ||
+    Number.isNaN(startMinute) ||
+    Number.isNaN(endHour) ||
+    Number.isNaN(endMinute)
+  ) {
+    return [];
+  }
+
+  if (
+    startHour < 0 || startHour > 23 ||
+    endHour < 0 || endHour > 23 ||
+    startMinute < 0 || startMinute > 59 ||
+    endMinute < 0 || endMinute > 59
+  ) {
+    return [];
+  }
+
+  const startTotal = startHour * 60 + startMinute;
+  const endTotal = endHour * 60 + endMinute;
+  if (startTotal >= endTotal) {
+    return [];
+  }
+
+  return [{ startHour, startMinute, endHour, endMinute }];
+}
+
+function readExcludedTimeRangesFromSchedule(schedule: any): ExcludedTimeRange[] {
+  const meta = schedule?.interviewer_responses as any;
+  const ranges = meta?._metadata?.excludedTimeRanges;
+  if (!Array.isArray(ranges)) return [];
+
+  return ranges.filter((range: any) =>
+    typeof range?.startHour === 'number' &&
+    typeof range?.startMinute === 'number' &&
+    typeof range?.endHour === 'number' &&
+    typeof range?.endMinute === 'number'
+  );
+}
 
 /**
  * 면접 일정 생성
@@ -51,10 +142,23 @@ export async function createSchedule(formData: FormData) {
       480,
       '면접 시간'
     );
-    const interviewerIds = validateNonEmptyArray(
-      JSON.parse(validateRequired(formData.get('interviewer_ids'), '면접관 목록')),
-      '면접관 목록'
+    const interviewerIdsRaw = formData.get('interviewer_ids');
+    const interviewerIdsParsed = interviewerIdsRaw ? JSON.parse(String(interviewerIdsRaw)) : [];
+    if (!Array.isArray(interviewerIdsParsed)) {
+      throw new Error('면접관 목록 형식이 올바르지 않습니다.');
+    }
+    const interviewerIds = Array.from(
+      new Set(
+        interviewerIdsParsed.map((id) => {
+          if (typeof id !== 'string') throw new Error('면접관 ID 형식이 올바르지 않습니다.');
+          return validateUUID(id, '면접관 ID');
+        }),
+      ),
     );
+    const externalInterviewerEmails = readExternalInterviewerEmails(formData);
+    if (interviewerIds.length === 0 && externalInterviewerEmails.length === 0) {
+      throw new Error('면접관은 최소 1명 이상 필요합니다.');
+    }
 
     // 후보자 접근 권한 확인
     await verifyCandidateAccess(candidateId);
@@ -664,10 +768,23 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     // 입력값 검증
     const candidateId = validateUUID(validateRequired(formData.get('candidate_id'), '후보자 ID'), '후보자 ID');
     const stageId = validateRequired(formData.get('stage_id'), '단계 ID');
-    const interviewerIds = validateNonEmptyArray(
-      JSON.parse(validateRequired(formData.get('interviewer_ids'), '면접관 목록')),
-      '면접관 목록'
+    const interviewerIdsRaw = formData.get('interviewer_ids');
+    const interviewerIdsParsed = interviewerIdsRaw ? JSON.parse(String(interviewerIdsRaw)) : [];
+    if (!Array.isArray(interviewerIdsParsed)) {
+      throw new Error('면접관 목록 형식이 올바르지 않습니다.');
+    }
+    const interviewerIds = Array.from(
+      new Set(
+        interviewerIdsParsed.map((id) => {
+          if (typeof id !== 'string') throw new Error('면접관 ID 형식이 올바르지 않습니다.');
+          return validateUUID(id, '면접관 ID');
+        }),
+      ),
     );
+    const externalInterviewerEmails = readExternalInterviewerEmails(formData);
+    if (interviewerIds.length === 0 && externalInterviewerEmails.length === 0) {
+      throw new Error('면접관은 최소 1명 이상 필요합니다.');
+    }
     const startDate = validateFutureDate(
       new Date(validateRequired(formData.get('start_date'), '시작 날짜')),
       '시작 날짜'
@@ -688,6 +805,22 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       5,
       '일정 옵션 개수'
     );
+    const excludedTimeRanges = readExcludedTimeRangesFromFormData(formData);
+
+    // 비가입 면접관 이메일 개인 저장 (중복은 unique(user_id, email)로 방지)
+    if (externalInterviewerEmails.length > 0) {
+      const { error: upsertExternalError } = await supabase.from('external_interviewers').upsert(
+        externalInterviewerEmails.map((email) => ({
+          user_id: user.userId,
+          email,
+        })),
+        { onConflict: 'user_id,email', ignoreDuplicates: false },
+      );
+
+      if (upsertExternalError) {
+        console.error('비가입 면접관 저장 실패(계속 진행):', upsertExternalError);
+      }
+    }
 
     // 후보자 정보 조회 (권한 확인 포함, 관리자일 경우 Service Role Client 사용)
     // job_post 정보도 함께 조회하여 포지션명 가져오기
@@ -712,14 +845,26 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
     const positionName = jobPost?.title || '포지션 미지정';
 
-    // 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
-    const { data: interviewers, error: interviewersError } = await supabase
-      .from('users')
-      .select('id, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
-      .in('id', interviewerIds);
+    // 내부 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
+    let interviewers: Array<{
+      id: string;
+      email: string;
+      organization_id: string;
+      calendar_provider: string | null;
+      calendar_access_token: string | null;
+      calendar_refresh_token: string | null;
+    }> = [];
 
-    if (interviewersError || !interviewers || interviewers.length !== interviewerIds.length) {
-      throw new Error('일부 면접관을 찾을 수 없습니다.');
+    if (interviewerIds.length > 0) {
+      const { data: internalInterviewers, error: interviewersError } = await supabase
+        .from('users')
+        .select('id, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
+        .in('id', interviewerIds);
+
+      if (interviewersError || !internalInterviewers || internalInterviewers.length !== interviewerIds.length) {
+        throw new Error('일부 면접관을 찾을 수 없습니다.');
+      }
+      interviewers = internalInterviewers;
     }
 
     // 구글 캘린더 연동 확인
@@ -727,7 +872,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
     );
 
-    if (interviewersWithCalendar.length !== interviewerIds.length) {
+    if (interviewerIds.length > 0 && interviewersWithCalendar.length !== interviewerIds.length) {
       // 연동되지 않은 면접관 목록 생성
       const interviewersWithoutCalendar = interviewers.filter(
         inv => !(inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token)
@@ -738,6 +883,32 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         `모든 면접관이 구글 캘린더에 연동되어 있어야 합니다. 연동되지 않은 면접관: ${missingEmails}`
       );
     }
+
+    // 내부 면접관이 없는 경우를 대비해 현재 로그인 사용자를 주최자로 사용
+    const { data: currentUserForCalendar, error: currentUserError } = await supabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .eq('id', user.userId)
+      .single();
+
+    if (currentUserError || !currentUserForCalendar) {
+      throw new Error('현재 사용자 정보를 찾을 수 없습니다.');
+    }
+
+    const organizer = interviewersWithCalendar[0] || currentUserForCalendar;
+    if (
+      organizer.calendar_provider !== 'google' ||
+      !organizer.calendar_access_token ||
+      !organizer.calendar_refresh_token
+    ) {
+      throw new Error('일정 생성을 위해 먼저 구글 캘린더를 연동해주세요. (/dashboard/connect-calendar)');
+    }
+
+    // 가용시간 계산 기준: 내부 면접관이 있으면 내부 면접관, 없으면 주최자(로그인 사용자)
+    const availabilityParticipants =
+      interviewersWithCalendar.length > 0 ? interviewersWithCalendar : [organizer];
+    const availabilityInterviewerIds =
+      interviewerIds.length > 0 ? interviewerIds : [organizer.id];
 
     // 원본 날짜 범위 저장 (재시도 시 기준점)
     const originalStartDate = new Date(startDate);
@@ -761,7 +932,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       // 면접관들의 바쁜 시간 조회
       const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
       
-      for (const interviewer of interviewersWithCalendar) {
+      for (const interviewer of availabilityParticipants) {
         try {
           // userId를 전달하여 갱신된 토큰을 DB에 자동 저장
           const token = await refreshAccessTokenIfNeeded(
@@ -798,7 +969,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       const availableSlots = await findAvailableTimeSlots({
         candidateName: candidate.name,
         stageName: stageId,
-        interviewerIds: interviewerIds,
+        interviewerIds: availabilityInterviewerIds,
         busyTimes: allBusyTimes.map(bt => ({
           id: '',
           summary: '',
@@ -809,7 +980,10 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         endDate: currentEndDate,
         durationMinutes,
         allowPartialConflict: allowPartialConflict,
-        minAvailableInterviewers: allowPartialConflict ? Math.max(1, Math.floor(interviewerIds.length * 0.5)) : interviewerIds.length, // 부분적 충돌 시 최소 50% 이상
+        minAvailableInterviewers: allowPartialConflict
+          ? Math.max(1, Math.floor(availabilityInterviewerIds.length * 0.5))
+          : availabilityInterviewerIds.length, // 부분적 충돌 시 최소 50% 이상
+        excludedTimeRanges,
       });
 
       // 상위 N개 일정 선택 (numOptions만큼)
@@ -893,12 +1067,20 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       duration_minutes: durationMinutes,
       status: 'pending' as const,
       interviewer_ids: interviewerIds,
+      external_interviewer_emails: externalInterviewerEmails,
       candidate_response: 'pending' as const,
       workflow_status: 'pending_interviewers' as const,
       // 마이그레이션이 적용된 경우에만 이 필드들을 포함 (타입 단언 사용)
       original_start_date: originalStartDate.toISOString(),
       original_end_date: originalEndDate.toISOString(),
       retry_count: retryCount,
+      interviewer_responses: excludedTimeRanges.length > 0
+        ? {
+            _metadata: {
+              excludedTimeRanges,
+            },
+          }
+        : {},
     } as ScheduleInsert & {
       original_start_date?: string;
       original_end_date?: string;
@@ -937,8 +1119,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       const endTime = new Date(slot.scheduledAt);
       endTime.setMinutes(endTime.getMinutes() + durationMinutes);
 
-      // 첫 번째 면접관의 토큰을 사용하여 이벤트 생성 (주최자)
-      const organizer = interviewersWithCalendar[0];
+      // 주최자(내부 면접관 또는 로그인 사용자)의 토큰을 사용하여 이벤트 생성
       const organizerToken = await refreshAccessTokenIfNeeded(
         organizer.calendar_access_token!,
         organizer.calendar_refresh_token!,
@@ -972,9 +1153,12 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             dateTime: endTime.toISOString(),
             timeZone: 'Asia/Seoul',
           },
-          attendees: interviewersWithCalendar
+          attendees: [
+            ...interviewersWithCalendar
             .filter(inv => !slot.missingInterviewers?.includes(inv.id))
             .map(inv => ({ email: inv.email })),
+            ...externalInterviewerEmails.map((email) => ({ email })),
+          ],
           transparency: 'opaque', // block 일정이므로 불투명
         }
       );
@@ -1020,7 +1204,9 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       // - watch 등록 실패는 일정 생성 실패로 처리하지 않음 (수동 확인/cron으로 대체 가능)
       try {
         if (option.google_event_id) {
-          const channelId = `calwatch-${schedule.id}-${option.id}`;
+          // Google Calendar watch channel id는 길이 제한이 있어(최대 64자),
+          // schedule/option UUID를 모두 포함하면 등록이 실패할 수 있습니다.
+          const channelId = `calwatch-${randomUUID()}`;
           const watchToken = randomUUID();
 
           const watchInfo = await watchCalendarEvent(organizerToken, organizer.calendar_refresh_token!, option.google_event_id, {
@@ -1057,7 +1243,6 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     }
 
     // 면접관들에게 일정 확인 안내 메일 발송
-    const organizer = interviewersWithCalendar[0];
     if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
       // stage ID를 프로세스 이름으로 변환
       const stageName = getStageNameByStageId(stageId) || stageId;
@@ -1188,6 +1373,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           scheduled_at: opt.scheduled_at,
         })),
         interviewers: interviewerIds,
+        external_interviewers: externalInterviewerEmails,
         retry_count: retryCount,
         original_date_range: {
           start: originalStartDate.toISOString(),
@@ -1328,6 +1514,7 @@ async function regenerateScheduleOptions(scheduleId: string) {
   
   // 현재 재시도 횟수 확인
   const currentRetryCount = schedule.retry_count || 0;
+  const excludedTimeRanges = readExcludedTimeRangesFromSchedule(schedule);
   
   // 일정 검색 및 날짜 범위 확장 재시도 로직
   let retryCount = currentRetryCount;
@@ -1404,6 +1591,7 @@ async function regenerateScheduleOptions(scheduleId: string) {
       startDate: currentStartDate,
       endDate: currentEndDate,
       durationMinutes: schedule.duration_minutes,
+      excludedTimeRanges,
     });
 
     // 상위 N개 일정 선택 (기존에 생성된 일정 옵션 개수와 동일하게)
@@ -1439,7 +1627,23 @@ async function regenerateScheduleOptions(scheduleId: string) {
 
   // 각 일정 옵션에 대해 구글 캘린더 block 일정 생성
   const scheduleOptions = [];
+
+  // 웹훅으로 사용할 공개 주소(구글이 호출하는 URL)
+  const webhookAddressBase =
+    process.env.GOOGLE_CALENDAR_WEBHOOK_URL ||
+    (process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/google-calendar-events`
+      : '');
+
+  if (!webhookAddressBase) {
+    throw new Error(
+      '웹훅 주소를 찾을 수 없습니다. `GOOGLE_CALENDAR_WEBHOOK_URL` 또는 `NEXT_PUBLIC_APP_URL`을 .env에 설정해주세요.',
+    );
+  }
+
+  const webhookAddress = webhookAddressBase.replace(/\/$/, '');
   
+  const externalInterviewerEmails = schedule.external_interviewer_emails || [];
   for (const slot of selectedSlots) {
     const endTime = new Date(slot.scheduledAt);
     endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
@@ -1467,7 +1671,10 @@ async function regenerateScheduleOptions(scheduleId: string) {
           dateTime: endTime.toISOString(),
           timeZone: 'Asia/Seoul',
         },
-        attendees: interviewersWithCalendar.map(inv => ({ email: inv.email })),
+        attendees: [
+          ...interviewersWithCalendar.map(inv => ({ email: inv.email })),
+          ...externalInterviewerEmails.map((email: string) => ({ email })),
+        ],
         transparency: 'opaque',
       }
     );
@@ -1493,6 +1700,49 @@ async function regenerateScheduleOptions(scheduleId: string) {
         console.error('이벤트 삭제 실패:', deleteError);
       }
       throw new Error(`일정 옵션 저장 실패: ${optionError?.message || '알 수 없는 오류'}`);
+    }
+
+    // 구글 캘린더 이벤트 watch 등록 (웹훅으로 응답 변경 감지)
+    // - watch 등록 실패는 일정 생성 실패로 처리하지 않음 (수동 확인/cron으로 대체 가능)
+    try {
+      if (option.google_event_id) {
+        // Google Calendar watch channel id는 길이 제한이 있어(최대 64자),
+        // schedule/option UUID를 모두 포함하면 등록이 실패할 수 있습니다.
+        const channelId = `calwatch-${randomUUID()}`;
+        const watchToken = randomUUID();
+
+        const watchInfo = await watchCalendarEvent(
+          organizerToken,
+          organizer.calendar_refresh_token!,
+          option.google_event_id,
+          {
+            address: webhookAddress,
+            channelId,
+            token: watchToken,
+          },
+        );
+
+        const { error: watchUpdateError } = await supabase
+          .from('schedule_options')
+          .update({
+            watch_channel_id: watchInfo.channelId,
+            watch_resource_id: watchInfo.resourceId,
+            watch_token: watchToken,
+            watch_expiration: watchInfo.expiration ? new Date(watchInfo.expiration) : null,
+          })
+          .eq('id', option.id);
+
+        if (watchUpdateError) {
+          console.error('watch 정보 저장 실패:', watchUpdateError);
+        } else {
+          (option as any).watch_channel_id = watchInfo.channelId;
+          (option as any).watch_resource_id = watchInfo.resourceId;
+          (option as any).watch_token = watchToken;
+          (option as any).watch_expiration = watchInfo.expiration ? new Date(watchInfo.expiration) : null;
+        }
+      }
+    } catch (watchError) {
+      console.error('이벤트 watch 등록 실패 (계속 진행):', watchError);
     }
 
     scheduleOptions.push(option);
@@ -3102,6 +3352,10 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
     const candidate = schedule.candidates as any;
     const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
     const positionName = jobPost?.title || '포지션 미지정';
+    const excludedTimeRangesFromForm = readExcludedTimeRangesFromFormData(formData);
+    const excludedTimeRanges = excludedTimeRangesFromForm.length > 0
+      ? excludedTimeRangesFromForm
+      : readExcludedTimeRangesFromSchedule(schedule);
 
     // 면접관 정보 조회
     const { data: interviewers } = await supabase
@@ -3278,6 +3532,7 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
       startDate: newStartDate,
       endDate: newEndDate,
       durationMinutes: schedule.duration_minutes,
+      excludedTimeRanges,
     });
 
     if (availableSlots.length === 0) {
@@ -3290,6 +3545,7 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
     // 각 일정 옵션에 대해 구글 캘린더 block 일정 생성
     const scheduleOptions = [];
     
+    const externalInterviewerEmails = schedule.external_interviewer_emails || [];
     for (const slot of selectedSlots) {
       const endTime = new Date(slot.scheduledAt);
       endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
@@ -3321,7 +3577,10 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
             dateTime: endTime.toISOString(),
             timeZone: 'Asia/Seoul',
           },
-          attendees: interviewersWithCalendar.map(inv => ({ email: inv.email })),
+          attendees: [
+            ...interviewersWithCalendar.map(inv => ({ email: inv.email })),
+            ...externalInterviewerEmails.map((email: string) => ({ email })),
+          ],
           transparency: 'opaque',
         }
       );
@@ -3364,6 +3623,13 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
       rescheduling_reason: reschedulingReason,
       workflow_status: 'pending_interviewers',
       scheduled_at: selectedSlots[0].scheduledAt.toISOString(), // 첫 번째 옵션으로 업데이트
+      interviewer_responses: excludedTimeRanges.length > 0
+        ? {
+            _metadata: {
+              excludedTimeRanges,
+            },
+          }
+        : {},
     };
 
     const { error: updateScheduleError } = await supabase
@@ -3606,6 +3872,7 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
       organizer.id
     );
 
+    const externalInterviewerEmails = schedule.external_interviewer_emails || [];
     // 구글 캘린더에 block 일정 생성
     const eventId = await createCalendarEvent(
       organizerToken,
@@ -3621,7 +3888,10 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
           dateTime: endTime.toISOString(),
           timeZone: 'Asia/Seoul',
         },
-        attendees: interviewersWithCalendar.map(inv => ({ email: inv.email })),
+        attendees: [
+          ...interviewersWithCalendar.map(inv => ({ email: inv.email })),
+          ...externalInterviewerEmails.map((email: string) => ({ email })),
+        ],
         transparency: 'opaque',
       }
     );

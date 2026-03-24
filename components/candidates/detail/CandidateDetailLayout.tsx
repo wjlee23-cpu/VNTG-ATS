@@ -39,11 +39,15 @@ interface CandidateDetailLayoutProps {
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
+  onCheckSchedule?: (scheduleId: string) => void;
   resumeFiles: ResumeFile[];
   canViewCompensation: boolean;
   onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
   onFileUpload?: () => void;
   onFileSelect?: (file: ResumeFile) => void;
+  initialActiveTab?: TabType;
+  activeTab?: TabType;
+  onActiveTabChange?: (tab: TabType) => void;
 }
 
 type TabType = 'profile' | 'insight' | 'timeline';
@@ -72,24 +76,34 @@ export function CandidateDetailLayout({
   onCancelSchedule,
   onDeleteSchedule,
   onRescheduleSchedule,
+  onCheckSchedule,
   resumeFiles,
   canViewCompensation,
   onOpenProfileSectionEdit,
   onFileUpload,
   onFileSelect,
+  initialActiveTab = 'profile',
+  activeTab,
+  onActiveTabChange,
 }: CandidateDetailLayoutProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const [internalActiveTab, setInternalActiveTab] = useState<TabType>(initialActiveTab);
+  const resolvedActiveTab = activeTab ?? internalActiveTab;
+
+  const setTab = (tab: TabType) => {
+    if (activeTab === undefined) setInternalActiveTab(tab);
+    onActiveTabChange?.(tab);
+  };
 
   const handleSwitchToTimeline = () => {
-    setActiveTab('timeline');
+    setTab('timeline');
   };
 
   const tabBtn = (tab: TabType, label: string) => (
     <button
       type="button"
-      onClick={() => setActiveTab(tab)}
+      onClick={() => setTab(tab)}
       className={`h-full border-b-2 transition-colors ${
-        activeTab === tab
+        resolvedActiveTab === tab
           ? 'border-neutral-900 text-sm font-semibold text-neutral-900'
           : 'border-transparent text-sm font-medium text-neutral-400 hover:text-neutral-900'
       }`}
@@ -126,7 +140,7 @@ export function CandidateDetailLayout({
           </div>
         </header>
 
-        {activeTab === 'profile' && (
+        {resolvedActiveTab === 'profile' && (
           <CandidateProfileTab
             candidate={candidate}
             resumeFiles={resumeFiles}
@@ -137,8 +151,8 @@ export function CandidateDetailLayout({
             onFileSelect={onFileSelect}
           />
         )}
-        {activeTab === 'insight' && <CandidateInsightTab candidate={candidate} />}
-        {activeTab === 'timeline' && (
+        {resolvedActiveTab === 'insight' && <CandidateInsightTab candidate={candidate} />}
+        {resolvedActiveTab === 'timeline' && (
           <CandidateTimelineView
             candidateName={candidate.name}
             events={timelineEvents}
@@ -153,6 +167,7 @@ export function CandidateDetailLayout({
             onCancelSchedule={onCancelSchedule}
             onDeleteSchedule={onDeleteSchedule}
             onRescheduleSchedule={onRescheduleSchedule}
+            onCheckSchedule={onCheckSchedule}
           />
         )}
       </div>
