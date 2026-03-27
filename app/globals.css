@@ -256,6 +256,25 @@ html {
   font-size: var(--font-size);
 }
 
+/* 이메일 모달 입력 컴포넌트 공통 스타일 */
+.pro-input {
+  background-color: #fafafa;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.01);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pro-input:focus {
+  background-color: #ffffff;
+  outline: none;
+  border-color: #171717;
+  box-shadow: 0 0 0 1px #171717, 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+::selection {
+  background-color: #e0e7ff;
+  color: #312e81;
+}
+
 /* DS 2.0 Utility Classes */
 @layer utilities {
   /* Modern Card (DS 2.0: 선 최소화 + 여백 + 레이어드 섀도우) */
