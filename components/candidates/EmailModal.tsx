@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Mail, Send } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { sendEmailToCandidate } from '@/api/actions/emails';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { getEmailTemplates, type EmailTemplateItem } from '@/api/queries/email-templates';
 
 interface EmailModalProps {
   candidateId: string;
@@ -25,10 +26,55 @@ export function EmailModal({
 }: EmailModalProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [templates, setTemplates] = useState<EmailTemplateItem[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [formData, setFormData] = useState({
     subject: '',
     body: '',
   });
+
+  // 모달이 열릴 때 템플릿 목록을 조회합니다.
+  useEffect(() => {
+    const loadTemplates = async () => {
+      setIsLoadingTemplates(true);
+      try {
+        const result = await getEmailTemplates();
+        if (result.error) {
+          toast.error(result.error);
+          setTemplates([]);
+        } else {
+          setTemplates(result.data || []);
+        }
+      } catch {
+        toast.error('이메일 템플릿을 불러오지 못했습니다.');
+        setTemplates([]);
+      } finally {
+        setIsLoadingTemplates(false);
+      }
+    };
+
+    if (isOpen) {
+      loadTemplates().catch(() => {});
+    } else {
+      setSelectedTemplateId('');
+    }
+  }, [isOpen]);
+
+  // 선택한 템플릿의 제목/본문을 폼에 즉시 적용합니다.
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (!templateId) return;
+
+    const selectedTemplate = templates.find((template) => template.id === templateId);
+    if (!selectedTemplate) return;
+
+    setFormData({
+      subject: selectedTemplate.subject,
+      body: selectedTemplate.body,
+    });
+    toast.success(`"${selectedTemplate.name}" 템플릿이 적용되었습니다.`);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +94,7 @@ export function EmailModal({
       } else {
         toast.success('이메일이 발송되었습니다.');
         setFormData({ subject: '', body: '' });
+        setSelectedTemplateId('');
         onClose();
         router.refresh();
       }
@@ -66,6 +113,28 @@ export function EmailModal({
           <DialogTitle>Send Email</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="template_select" className="block text-sm font-medium text-gray-700 mb-1">
+              이메일 템플릿
+            </label>
+            <select
+              id="template_select"
+              value={selectedTemplateId}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoadingTemplates || isLoading}
+            >
+              <option value="">
+                {isLoadingTemplates ? '템플릿 불러오는 중...' : '직접 작성 (템플릿 미적용)'}
+              </option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               <Mail className="w-4 h-4 inline mr-1" />

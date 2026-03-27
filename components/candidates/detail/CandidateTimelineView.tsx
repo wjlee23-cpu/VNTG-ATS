@@ -7,6 +7,7 @@ import { Paperclip, Send } from 'lucide-react';
 import { getTimelineEventTitle } from './timeline-utils';
 import { TimelineEventContent } from './TimelineEventContent';
 import type { TimelineEvent } from '@/types/candidate-detail';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { createComment } from '@/api/actions/comments';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -25,6 +26,7 @@ interface CandidateTimelineViewProps {
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
+  onCheckSchedule?: (scheduleId: string) => void;
 }
 
 /** 후보자 액티비티 타임라인 뷰 - VNTG Design System 2.0 */
@@ -42,11 +44,26 @@ export function CandidateTimelineView({
   onCancelSchedule,
   onDeleteSchedule,
   onRescheduleSchedule,
+  onCheckSchedule,
 }: CandidateTimelineViewProps) {
   const router = useRouter();
   const [commentText, setCommentText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const currentUserInitial = '나'; // TODO: 실제 사용자 정보에서 가져오기
+
+  // 타임라인 이벤트의 작성자 표시용 이름/아바타 정보를 가공합니다.
+  const getAuthorDisplay = (event: TimelineEvent) => {
+    const authorName = event.created_by_user?.name?.trim();
+    const authorEmail = event.created_by_user?.email?.trim();
+    const displayName = authorName || authorEmail?.split('@')[0] || 'System';
+    const fallback = displayName.slice(0, 1).toUpperCase();
+    return {
+      displayName,
+      fallback,
+      avatarUrl: event.created_by_user?.avatar_url,
+      hasAuthor: !!event.created_by_user,
+    };
+  };
 
   // 이벤트 타입에 따른 배지 스타일 결정
   const getEventBadgeStyle = (event: TimelineEvent) => {
@@ -220,8 +237,29 @@ export function CandidateTimelineView({
                   <div className="absolute -left-[5px] top-1.5 w-[9px] h-[9px] rounded-full bg-neutral-200 ring-4 ring-white group-hover:bg-neutral-900 transition-colors"></div>
                   
                   {/* 이벤트 헤더 */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between mb-2 gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {(() => {
+                        const author = getAuthorDisplay(event);
+                        if (!author.hasAuthor) {
+                          return (
+                            <span className="px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-500">
+                              System
+                            </span>
+                          );
+                        }
+                        return (
+                          <div className="flex items-center gap-2">
+                            <Avatar className="w-6 h-6 border border-neutral-200 shadow-sm">
+                              <AvatarImage src={author.avatarUrl} alt={author.displayName} />
+                              <AvatarFallback className="text-[10px] font-semibold bg-neutral-100 text-neutral-700">
+                                {author.fallback}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs font-medium text-neutral-600">{author.displayName}</span>
+                          </div>
+                        );
+                      })()}
                       <span className="text-sm font-semibold text-neutral-900">
                         {getTimelineEventTitle(event)}
                       </span>
@@ -258,6 +296,7 @@ export function CandidateTimelineView({
                           onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
                           onRescheduleSchedule={onRescheduleSchedule}
+                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     ) : event.type === 'comment' || event.type === 'comment_created' || event.type === 'comment_updated' ? (
@@ -270,6 +309,7 @@ export function CandidateTimelineView({
                           onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
                           onRescheduleSchedule={onRescheduleSchedule}
+                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     ) : event.type === 'email' || event.type === 'email_received' ? (
@@ -282,6 +322,7 @@ export function CandidateTimelineView({
                           onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
                           onRescheduleSchedule={onRescheduleSchedule}
+                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     ) : (
@@ -293,6 +334,7 @@ export function CandidateTimelineView({
                         onCancelSchedule={onCancelSchedule}
                         onDeleteSchedule={onDeleteSchedule}
                         onRescheduleSchedule={onRescheduleSchedule}
+                        onCheckSchedule={onCheckSchedule}
                       />
                     )}
                   </div>

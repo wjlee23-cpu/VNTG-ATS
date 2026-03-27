@@ -26,6 +26,7 @@ interface ActivityTimelineProps {
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
+  onCheckSchedule?: (scheduleId: string) => void;
 }
 
 /** Activity Timeline 카드: 이벤트 목록 + 동기화/코멘트/평가 버튼 */
@@ -43,19 +44,11 @@ export function ActivityTimeline({
   onCancelSchedule,
   onDeleteSchedule,
   onRescheduleSchedule,
+  onCheckSchedule,
 }: ActivityTimelineProps) {
   const showUserAvatar = (event: TimelineEvent) => {
-    const types = [
-      'comment',
-      'comment_created',
-      'comment_updated',
-      'email',
-      'email_received',
-      'stage_evaluation',
-      'scorecard',
-      'scorecard_created',
-    ];
-    return types.includes(event.type) && event.created_by_user;
+    // 이벤트 타입과 무관하게 작성자 정보가 있으면 실행 주체를 아바타로 표시합니다.
+    return !!event.created_by_user;
   };
 
   return (
@@ -181,6 +174,7 @@ export function ActivityTimeline({
                           onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
                           onRescheduleSchedule={onRescheduleSchedule}
+                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     </div>
