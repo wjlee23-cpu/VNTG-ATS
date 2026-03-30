@@ -129,6 +129,8 @@ export async function analyzeCandidateMatch(
         summary: '이력서 파일이 없어 AI 분석을 수행할 수 없습니다.',
         strengths: [],
         weaknesses: [],
+        // 인터뷰 질문 목록은 타입상 필수이므로, 이력서가 없을 때는 빈 배열로 반환합니다.
+        interviewQuestions: [],
       };
     }
 
@@ -245,7 +247,8 @@ export async function analyzeCandidateMatch(
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-2.5-flash',
       generationConfig: {
-        response_mime_type: 'application/json',
+        // gemini-2.5 SDK 타입 정의 기준: camelCase 속성 사용
+        responseMimeType: 'application/json',
         temperature: 0.7,
         topP: 0.95,
         topK: 40,

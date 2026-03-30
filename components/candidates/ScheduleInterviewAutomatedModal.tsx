@@ -92,7 +92,8 @@ export function ScheduleInterviewAutomatedModal({
       if (result.error) {
         toast.error(result.error);
       } else {
-        toast.success(result.message || '면접 일정 자동화가 시작되었습니다.');
+        // `withErrorHandling()` 래퍼로 인해 실제 메시지는 `result.data`에 들어있을 수 있습니다.
+        toast.success(result.data?.message || '면접 일정 자동화가 시작되었습니다.');
         onClose();
         router.refresh();
       }

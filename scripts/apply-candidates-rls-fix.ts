@@ -105,7 +105,8 @@ async function executeSQL() {
 
   // 방법 2: Supabase Service Role Client 사용
   console.log('\n📝 방법 2: Supabase Service Role Client 사용...\n');
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  // 앞에서 환경변수 체크 후 `process.exit(1)`로 종료하므로, 여기서는 non-null로 단언합니다.
+  const supabase = createClient(supabaseUrl!, supabaseServiceKey!, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

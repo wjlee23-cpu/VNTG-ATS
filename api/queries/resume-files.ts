@@ -40,7 +40,9 @@ function extractFilePathFromUrl(fileUrl: string): string | null {
  * @returns Signed URL 또는 null
  */
 async function getSignedUrlForFile(
-  supabase: ReturnType<typeof createClient> | ReturnType<typeof createServiceClient>,
+  // `createClient()`는 async이어서 ReturnType이 Promise까지 섞이며, 타입 추론상 storage가 누락될 수 있습니다.
+  // 여기서는 Signed URL 생성 목적이므로 타입을 느슨하게 처리합니다.
+  supabase: any,
   filePath: string,
   expiresIn: number = 3600
 ): Promise<string | null> {

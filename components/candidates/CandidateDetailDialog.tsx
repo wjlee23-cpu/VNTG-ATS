@@ -8,6 +8,7 @@ import {
 import { CandidateDetailClient } from '@/app/(dashboard)/candidates/[id]/CandidateDetailClient';
 import { CandidateDetailSkeleton } from './CandidateDetailSkeleton';
 import type { Candidate } from '@/types/candidates';
+import type { TimelineEvent } from '@/types/candidate-detail';
 
 interface CandidateDetailDialogProps {
   open: boolean;
@@ -66,7 +67,8 @@ export function CandidateDetailDialog({
             <CandidateDetailClient
               candidate={candidate}
               schedules={schedules}
-              timelineEvents={timelineEvents}
+              // 상위 컴포넌트에서 `unknown[]`로 내려오는 경우가 있어, 화면 렌더링에 필요한 타입만 명시적으로 캐스팅합니다.
+              timelineEvents={timelineEvents as TimelineEvent[]}
               onClose={onClose}
               isSidebar={false}
             />

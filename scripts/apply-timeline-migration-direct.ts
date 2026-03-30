@@ -80,7 +80,8 @@ async function executeSQLViaPostgres() {
   }
 
   // Supabase URL에서 프로젝트 참조 추출
-  const urlMatch = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/);
+  // 파일 상단에서 supabaseUrl/supabaseServiceKey 존재를 확인하고 exit 처리하므로, 여기서는 non-null으로 단언합니다.
+  const urlMatch = supabaseUrl!.match(/https?:\/\/([^.]+)\.supabase\.co/);
   if (!urlMatch) {
     return null;
   }
@@ -199,54 +200,9 @@ async function executeSQL() {
   console.log('   1. https://app.supabase.com 접속');
   console.log('   2. 프로젝트 선택 > SQL Editor > New query');
   console.log('   3. 위 SQL을 복사하여 실행\n');
-  process.exit(1);
-
-  try {
-    // SQL을 세미콜론으로 분리하여 각 문장 실행
-    const statements = sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'))
-      .map(s => s + ';');
-
-    console.log(`📝 총 ${statements.length}개의 SQL 문장 실행 중...\n`);
-
-    for (let i = 0; i < statements.length; i++) {
-      const statement = statements[i];
-      if (statement.length < 10) continue; // 너무 짧은 문장은 스킵
-
-      const preview = statement.substring(0, 80).replace(/\s+/g, ' ');
-      console.log(`[${i + 1}/${statements.length}] 실행 중: ${preview}...`);
-
-      try {
-        await client.query(statement);
-        console.log(`  ✅ 성공\n`);
-      } catch (error: any) {
-        // 이미 존재하는 제약 조건은 무시
-        if (error.message.includes('already exists') || 
-            error.message.includes('does not exist') ||
-            error.message.includes('DROP CONSTRAINT IF EXISTS')) {
-          console.log(`  ⚠️  스킵 (이미 적용됨 또는 조건부 실행)\n`);
-        } else {
-          console.log(`  ❌ 실패: ${error.message}\n`);
-          throw error; // 중요한 에러는 중단
-        }
-      }
-    }
-
-    await client.end();
-    console.log('\n✨ 마이그레이션이 성공적으로 적용되었습니다!\n');
-    console.log('💡 Supabase 스키마 캐시를 새로고침하세요:');
-    console.log('   Settings > API > Refresh Schema Cache\n');
-  } catch (error: any) {
-    await client.end().catch(() => {});
-    console.error('\n❌ 마이그레이션 적용 중 오류 발생:', error.message);
-    console.error('\n📋 Supabase 대시보드에서 수동 실행하세요:\n');
-    console.error('='.repeat(60));
-    console.error(sql);
-    console.error('='.repeat(60));
-    process.exit(1);
-  }
+  // PostgreSQL 연결에 실패했으므로 여기서 종료합니다.
+  // (아래에 있던 “문장 단위 실행” 코드는 비도달 코드였고 타입 추론을 망가뜨려 빌드를 막았습니다.)
+  return;
 }
 
 executeSQL().catch(console.error);

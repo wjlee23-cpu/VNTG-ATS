@@ -74,7 +74,7 @@ async function executeSQLViaRPC() {
   
   try {
     // Supabase URL에서 프로젝트 참조 추출
-    const urlMatch = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/);
+    const urlMatch = supabaseUrl!.match(/https?:\/\/([^.]+)\.supabase\.co/);
     if (!urlMatch) {
       throw new Error('잘못된 Supabase URL 형식');
     }

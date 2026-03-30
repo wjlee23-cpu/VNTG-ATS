@@ -270,14 +270,17 @@ export async function listMessages(
       pageCount++;
       console.log(`[Gmail API] 페이지 ${pageCount} 조회 중... (이미 조회된 메시지: ${allMessageIds.length}개)`);
       
-      const response = await gmail.users.messages.list({
+      // googleapis 타입 추론이 꼬여서(또는 응답 스키마 제네릭 추론 실패) `response`가 implicit any로 잡힐 수 있어,
+      // 여기서는 실제 사용되는 형태만 유지하면서 타입 에러만 제거합니다.
+      const response: any = await gmail.users.messages.list({
         userId: 'me',
         q: query,
         maxResults: pageSize,
         pageToken: nextPageToken,
       })
       
-      const pageMessageIds = response.data.messages?.map(msg => msg.id || '').filter(id => id) || [];
+      const pageMessageIds =
+        response.data.messages?.map((msg: any) => msg.id || '').filter((id: any) => id) || [];
       allMessageIds.push(...pageMessageIds);
       
       nextPageToken = response.data.nextPageToken;

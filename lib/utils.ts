@@ -21,17 +21,3 @@ export function formatDate(date: Date | string): string {
   }).format(d)
 }
 
-export function generateToken(): string {
-  return crypto.randomUUID()
-}
-
-export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(d)
-}

@@ -125,7 +125,10 @@ export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
           (schedule as typeof schedule & { interviewers: Array<{ id: string; email: string }> }).interviewers = 
             schedule.interviewer_ids
               ?.map((id: string) => interviewerMap.get(id))
-              .filter((i): i is { id: string; email: string } => i !== undefined) || [];
+              .filter(
+                (i: { id: string; email: string } | undefined): i is { id: string; email: string } =>
+                  i !== undefined
+              ) || [];
         });
       }
     }
@@ -349,7 +352,10 @@ export async function getAllScheduleProgress() {
       ...schedule,
       interviewers: schedule.interviewer_ids
         ?.map((id: string) => interviewerMap.get(id))
-        .filter((i): i is { id: string; email: string } => i !== undefined) || [],
+        .filter(
+          (i: { id: string; email: string } | undefined): i is { id: string; email: string } =>
+            i !== undefined
+        ) || [],
     }));
 
     return schedulesWithInterviewers;

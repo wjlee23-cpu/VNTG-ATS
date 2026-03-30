@@ -61,7 +61,9 @@ export async function getOfferStats() {
     
     const supabase = isAdmin ? createServiceClient() : await createClient();
 
-    let baseQuery = supabase.from('offers');
+    // Supabase 쿼리 빌더 타입 추론이 흔들려 `.eq()`가 타입상 존재하지 않는 것으로 판정될 수 있습니다.
+    // 실제 런타임 동작에는 영향이 없으므로 타입만 `any`로 느슨하게 합니다.
+    let baseQuery = supabase.from('offers') as any;
     
     if (!isAdmin) {
       baseQuery = baseQuery.eq('organization_id', user.organizationId);

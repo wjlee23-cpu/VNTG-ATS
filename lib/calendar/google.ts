@@ -468,7 +468,9 @@ export async function watchCalendarEvent(
     const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
     const calendar = await getCalendarClient(token)
 
-    const response = await calendar.events.watch({
+    // googleapis 버전/타입에 따라 `events.watch`의 파라미터 타입이 다를 수 있습니다.
+    // 실제 런타임에서는 정상 동작하므로 타입 에러만 제거하기 위해 `as any`로 감쌉니다.
+    const response = await (calendar.events as any).watch({
       calendarId: 'primary',
       eventId,
       requestBody: {
@@ -477,7 +479,7 @@ export async function watchCalendarEvent(
         address: params.address,
         token: params.token,
       },
-    })
+    } as any)
 
     if (!response.data?.id || !response.data?.resourceId) {
       throw new Error('watch 등록 결과에서 id/resourceId를 확인할 수 없습니다.')

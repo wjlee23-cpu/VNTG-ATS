@@ -79,23 +79,26 @@ export async function createCandidate(formData: FormData) {
     // 실제로는 uploadResumeFile에서 분석이 시작됩니다.
     // 여기서는 후보자 생성 후 이력서 파일이 이미 존재하는 경우를 대비한 체크만 수행합니다.
     // Service Role Client를 사용하여 RLS를 우회합니다.
-    serviceClient
-      .from('resume_files')
-      .select('id')
-      .eq('candidate_id', data.id)
-      .limit(1)
-      .single()
-      .then(async (resumeResult) => {
-        if (resumeResult.data) {
+    // 이 블록은 “백그라운드” 목적이므로 await로 기다리지 않고, 내부에서만 try/catch로 안전하게 처리합니다.
+    void (async () => {
+      try {
+        const { data: resumeRow } = await serviceClient
+          .from('resume_files')
+          .select('id')
+          .eq('candidate_id', data.id)
+          .limit(1)
+          .single();
+
+        if (resumeRow) {
           // 이력서 파일이 있으면 AI 분석 시작 (비동기, 에러는 로그만 남김)
           analyzeCandidateMatch(data.id, jobPostId).catch((err) => {
             console.error('[createCandidate] AI 분석 시작 실패:', err);
           });
         }
-      })
-      .catch(() => {
-        // 이력서 파일이 없으면 분석 보류 (정상 동작)
-      });
+      } catch {
+        // 이력서 파일이 없거나 조회 중 문제가 있어도 후보자 생성은 성공 처리합니다.
+      }
+    })();
 
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');

@@ -23,7 +23,8 @@ async function checkTimelineEvents() {
 
   // DATABASE_URL 파싱
   const urlPattern = /postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/;
-  const match = databaseUrl.match(urlPattern);
+  // 상단에서 databaseUrl 존재 체크 후 exit 처리하므로 non-null로 단언합니다.
+  const match = databaseUrl!.match(urlPattern);
   
   if (!match) {
     console.error('❌ DATABASE_URL 형식이 올바르지 않습니다.');

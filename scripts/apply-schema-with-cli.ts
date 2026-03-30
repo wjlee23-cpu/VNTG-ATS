@@ -41,11 +41,17 @@ async function executeSQL(sql: string, description: string): Promise<void> {
     const command = `npx supabase db execute --file "${tempFile}" --project-ref ${projectRef}`;
     console.log(`실행 명령: ${command}\n`);
     
+    const shell =
+      process.platform === 'win32'
+        ? 'powershell.exe'
+        : (process.env.SHELL || '/bin/bash');
+
     const output = execSync(command, {
       encoding: 'utf-8',
       stdio: 'inherit',
       cwd: process.cwd(),
-      shell: true,
+      // 타입 에러 방지를 위해 `shell`은 문자열로 설정합니다.
+      shell,
     });
 
     console.log(`✅ ${description} 완료!\n`);

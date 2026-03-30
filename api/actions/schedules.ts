@@ -294,8 +294,9 @@ export async function updateSchedule(id: string, formData: FormData) {
     }
 
     if (formData.get('interviewer_ids')) {
-      const interviewerIds = validateNonEmptyArray(
-        JSON.parse(validateRequired(formData.get('interviewer_ids'), '면접관 목록')),
+      // JSON.parse 결과는 타입 추론이 `unknown[]`이 되기 쉬우므로, 면접관 ID는 반드시 `string[]`임을 명시합니다.
+      const interviewerIds = validateNonEmptyArray<string>(
+        JSON.parse(validateRequired(formData.get('interviewer_ids'), '면접관 목록')) as string[],
         '면접관 목록'
       );
 
@@ -649,7 +650,8 @@ export async function respondToSchedule(
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    const candidate = schedule.candidates as { id: string; token: string } | null | undefined;
+    // nested select(`candidates!inner`) 결과는 배열로 들어올 수 있으므로, 첫 번째 후보자를 사용합니다.
+    const candidate = (schedule.candidates as { id: string; token: string }[] | null | undefined)?.[0];
     if (!candidate || candidate.token !== token) {
       throw new Error('인증 토큰이 올바르지 않습니다.');
     }
@@ -2179,7 +2181,7 @@ export async function checkInterviewerResponses(
               }
             }
           } else {
-            console.log(`[타임라인] 변경된 응답 없음 (previous: ${JSON.stringify(previousResponses)}, current: ${JSON.stringify(interviewerResponses)})`);
+            console.log(`[타임라인] 변경된 응답 없음 (previous: ${JSON.stringify(previousResponsesAny)}, current: ${JSON.stringify(interviewerResponses)})`);
           }
         }
 
@@ -3642,7 +3644,8 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
     }
 
     // 면접관들에게 재조율 안내 메일 발송
-    if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
+    const organizerForMail = interviewersWithCalendar[0];
+    if (organizerForMail?.calendar_access_token && organizerForMail?.calendar_refresh_token && organizerForMail?.email) {
       const optionsListHtml = scheduleOptions.map((opt, index) => {
         const date = new Date(opt.scheduled_at);
         const endTime = new Date(date);
@@ -3733,14 +3736,14 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
         if (interviewer.email) {
           try {
             await sendEmailViaGmail(
-              organizer.calendar_access_token,
-              organizer.calendar_refresh_token,
+              organizerForMail.calendar_access_token,
+              organizerForMail.calendar_refresh_token,
               {
                 to: interviewer.email,
-                from: organizer.email,
+                from: organizerForMail.email,
                 subject: `[면접 일정 재조율] ${candidate.name}님의 면접 일정이 재조율되었습니다`,
                 html: notificationMessage,
-                replyTo: organizer.email,
+                replyTo: organizerForMail.email,
               }
             );
             console.log(`면접관 ${interviewer.email}에게 재조율 안내 메일 발송 완료`);
@@ -4317,10 +4320,11 @@ export async function updateScheduleWithManualOverride(scheduleId: string, formD
     }
 
     if (formData.get('interviewer_ids')) {
-      const interviewerIds = validateNonEmptyArray(
-        JSON.parse(validateRequired(formData.get('interviewer_ids'), '면접관 목록')),
-        '면접관 목록'
-      );
+    // JSON.parse 결과는 타입 추론이 `unknown[]`이 되기 쉬우므로, 면접관 ID는 반드시 `string[]`임을 명시합니다.
+    const interviewerIds = validateNonEmptyArray<string>(
+      JSON.parse(validateRequired(formData.get('interviewer_ids'), '면접관 목록')) as string[],
+      '면접관 목록'
+    );
 
       // 면접관 권한 확인
       const { data: interviewers } = await supabase

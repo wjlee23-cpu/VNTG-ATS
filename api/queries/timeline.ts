@@ -222,7 +222,8 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
     // 이메일 데이터를 타임라인 이벤트의 content에 병합 (timelineData 사용)
     const enrichedData = timelineData.map((event: any) => {
       if ((event.type === 'email' || event.type === 'email_received') && emailIdMap.has(event.id)) {
-        const emailId = emailIdMap.get(event.id);
+        // `.has()` 조건을 통과했으므로 값이 존재한다고 타입에 명시합니다.
+        const emailId = emailIdMap.get(event.id)!;
         const emailData = emailDataMap.get(emailId);
         
         if (emailData) {

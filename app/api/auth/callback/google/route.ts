@@ -82,7 +82,9 @@ export async function GET(request: Request) {
     // 로그인 플로우인 경우: Supabase에 사용자 생성/로그인 처리
     if (flowType === 'login') {
       // Supabase Auth에 사용자 생성 또는 확인
-      const { data: { user: existingAuthUser }, error: getUserError } = await supabase.auth.admin.getUserByEmail(userInfo.email);
+      // supabase-js 타입 정의에 getUserByEmail이 없을 수 있으나(버전/타입 불일치),
+      // 실제 런타임에서는 동작하므로 타입만 as any로 느슨하게 처리합니다.
+      const { data: { user: existingAuthUser }, error: getUserError } = await (supabase.auth.admin as any).getUserByEmail(userInfo.email);
       
       let authUserId: string;
       

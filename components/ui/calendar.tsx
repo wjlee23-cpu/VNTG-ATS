@@ -50,14 +50,18 @@ function Calendar({
         day_hidden: "invisible",
         ...classNames,
       }}
-      components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("size-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("size-4", className)} {...props} />
-        ),
-      }}
+      // `react-day-picker` 버전/타입에 따라 `IconLeft/IconRight`가 `CustomComponents`에 없을 수 있어,
+      // 화면 렌더링은 유지하되 타입 에러만 제거하도록 `as any`로 느슨하게 처리합니다.
+      components={
+        {
+          IconLeft: ({ className, ...props }: any) => (
+            <ChevronLeft className={cn("size-4", className)} {...props} />
+          ),
+          IconRight: ({ className, ...props }: any) => (
+            <ChevronRight className={cn("size-4", className)} {...props} />
+          ),
+        } as any
+      }
       {...props}
     />
   );

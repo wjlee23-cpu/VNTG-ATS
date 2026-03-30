@@ -314,7 +314,10 @@ export async function getPendingActions() {
           const pendingFeedback = completedSchedules
             .filter(s => !scorecardScheduleIds.has(s.id))
             .map(s => {
-              const candidate = s.candidates as { name: string; job_posts?: { title: string } };
+              // Supabase nested select 결과가 상황에 따라 배열로 들어올 수 있으므로 첫 원소를 사용합니다.
+              const candidate = (Array.isArray((s as any).candidates)
+                ? (s as any).candidates?.[0]
+                : (s as any).candidates) as { name: string; job_posts?: { title: string } } | undefined;
               const jobPost = candidate?.job_posts;
               const scheduledAt = new Date(s.scheduled_at);
               const now = new Date();
@@ -369,7 +372,8 @@ export async function getPendingActions() {
         const items = pendingCandidates.map(c => ({
           id: c.id,
           name: c.name,
-          position: (c.job_posts as { title: string } | null)?.title,
+          // nested select 결과(job_posts)는 배열로 들어올 수 있으므로 첫 원소를 사용합니다.
+          position: ((Array.isArray((c as any).job_posts) ? (c as any).job_posts?.[0] : (c as any).job_posts) as { title: string } | null | undefined)?.title,
           link: `/candidates/${c.id}`,
         }));
 
@@ -409,7 +413,12 @@ export async function getPendingActions() {
       const items = pendingJDRequests.map(jd => ({
         id: jd.id,
         name: jd.title,
-        position: (jd.requested_by_user as { email: string } | null)?.email || 'Unknown',
+        // nested select(`users!requested_by (...)`) 결과가 배열로 들어올 수 있으므로 첫 원소를 사용합니다.
+        position: ((
+          Array.isArray((jd as any).requested_by_user)
+            ? (jd as any).requested_by_user?.[0]
+            : (jd as any).requested_by_user
+        ) as { email: string } | null)?.email || 'Unknown',
         link: `/jd-requests/${jd.id}`,
       }));
 
@@ -451,11 +460,15 @@ export async function getPendingActions() {
 
     if (pendingOffers && pendingOffers.length > 0) {
       const items = pendingOffers.map(offer => {
-        const candidate = offer.candidates as { name: string; job_posts?: { title: string } };
+        // nested select(`candidates!inner`) 결과는 배열일 수 있으므로 첫 원소를 사용합니다.
+        const candidate = (Array.isArray((offer as any).candidates)
+          ? (offer as any).candidates?.[0]
+          : (offer as any).candidates) as { name: string; job_posts?: { title: string } } | undefined;
         return {
           id: offer.id,
           name: candidate?.name || 'Unknown',
-          position: candidate?.job_posts?.title,
+          position:
+            (candidate as any)?.job_posts?.[0]?.title ?? (candidate as any)?.job_posts?.title,
           link: `/offers/${offer.id}`,
         };
       });
@@ -576,7 +589,10 @@ export async function getTodaySchedules() {
 
     // 각 일정에 면접관 정보 추가
     return schedules.map(schedule => {
-      const candidate = schedule.candidates as { name: string; email: string; job_posts?: { title: string } };
+      // nested select 결과(schedule.candidates)가 배열로 들어올 수 있으므로 첫 원소를 사용합니다.
+      const candidate = (Array.isArray((schedule as any).candidates)
+        ? (schedule as any).candidates?.[0]
+        : (schedule as any).candidates) as { name: string; email: string; job_posts?: { title: string } } | undefined;
       return {
         id: schedule.id,
         candidateId: schedule.candidate_id,
@@ -591,7 +607,10 @@ export async function getTodaySchedules() {
         meetingLink: (schedule as any).meeting_link || null,
         interviewers: schedule.interviewer_ids
           ?.map((id: string) => interviewerMap.get(id))
-          .filter((i): i is { id: string; email: string } => i !== undefined) || [],
+          .filter(
+            (i: { id: string; email: string } | undefined): i is { id: string; email: string } =>
+              i !== undefined
+          ) || [],
       };
     });
   });

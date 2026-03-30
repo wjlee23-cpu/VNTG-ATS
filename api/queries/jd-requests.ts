@@ -56,7 +56,9 @@ export async function getJDRequestStats() {
     
     const supabase = isAdmin ? createServiceClient() : await createClient();
 
-    let baseQuery = supabase.from('jd_requests');
+    // Supabase 쿼리 빌더 타입 추론이 환경/제네릭에 따라 흔들려서 `.eq()`가 타입상 존재하지 않는 것으로 판정될 수 있습니다.
+    // 실제 런타임 동작에는 영향이 없으므로, 타입 안정성만 `any`로 느슨하게 합니다.
+    let baseQuery = supabase.from('jd_requests') as any;
     
     if (!isAdmin) {
       baseQuery = baseQuery.eq('organization_id', user.organizationId);

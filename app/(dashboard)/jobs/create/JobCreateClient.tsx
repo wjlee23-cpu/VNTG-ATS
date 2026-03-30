@@ -56,36 +56,6 @@ export function JobCreateClient({ jdRequests, users, error }: JobCreateClientPro
     }
   };
 
-  // 전형별 담당자 추가/제거
-  const toggleStageAssignee = (stageId: string, userId: string) => {
-    setStageAssignees(prev => {
-      const current = prev[stageId] || [];
-      const isSelected = current.includes(userId);
-      return {
-        ...prev,
-        [stageId]: isSelected
-          ? current.filter(id => id !== userId)
-          : [...current, userId],
-      };
-    });
-  };
-
-  // 단계 활성화/비활성화 토글
-  const toggleStageEnabled = (stageId: string) => {
-    setEnabledStages(prev => {
-      if (prev.includes(stageId)) {
-        // 비활성화 (최소 1개는 활성화되어야 함)
-        if (prev.length <= 1) {
-          return prev; // 마지막 단계는 비활성화할 수 없음
-        }
-        return prev.filter(id => id !== stageId);
-      } else {
-        // 활성화
-        return [...prev, stageId];
-      }
-    });
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -122,10 +92,6 @@ export function JobCreateClient({ jdRequests, users, error }: JobCreateClientPro
       setIsLoading(false);
     }
   };
-
-  // 선택된 프로세스의 전형 목록 가져오기
-  const selectedProcess = processes.find(p => p.id === formData.process_id);
-  const stages = selectedProcess?.stages as Array<{ id: string; name: string; order: number }> || [];
 
   return (
     <div className="h-full overflow-auto bg-background">

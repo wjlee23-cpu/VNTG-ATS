@@ -42,9 +42,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: result.message || '리마인드 메일 발송 완료',
-      sentCount: result.sentCount || 0,
-      errors: result.errors,
+      // `withErrorHandling()` 래퍼로 인해 실제 값은 `result.data`에 들어있습니다.
+      message: result.data?.message || '리마인드 메일 발송 완료',
+      sentCount: result.data?.sentCount || 0,
+      errors: result.data?.errors,
     });
   } catch (error: any) {
     console.error('리마인드 메일 발송 API 오류:', error);

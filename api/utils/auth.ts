@@ -311,6 +311,9 @@ export async function verifyCandidateAccess(candidateId: string) {
     .select(`
       id,
       job_post_id,
+      status,
+      ai_analysis_status,
+      current_stage_id,
       job_posts!inner(organization_id)
     `)
     .eq('id', candidateId)
@@ -342,7 +345,9 @@ export async function verifyCandidateAccess(candidateId: string) {
 
   // job_posts는 Supabase의 관계 쿼리 결과이므로 타입 단언 필요
   // 하지만 organization_id만 확인하면 되므로 안전하게 처리
-  const jobPost = candidate.job_posts as { organization_id: string } | null | undefined;
+  const jobPost = (Array.isArray((candidate as any).job_posts)
+    ? (candidate as any).job_posts?.[0]
+    : (candidate as any).job_posts) as { organization_id: string } | null | undefined;
   // 관리자는 모든 candidate에 접근 가능
   if (!isAdmin && jobPost?.organization_id !== user.organizationId) {
     throw new Error('이 후보자에 접근할 권한이 없습니다.');

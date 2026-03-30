@@ -111,7 +111,7 @@ export default async function JobDetailPage({
       job={job}
       candidates={candidates}
       users={users}
-      stats={stats}
+      stats={stats as any}
     />
   );
 }

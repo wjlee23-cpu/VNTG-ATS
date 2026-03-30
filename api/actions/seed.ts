@@ -216,10 +216,10 @@ export async function updateAllCandidateEmails(email: string = 'blee6291@gmail.c
     }
 
     // 모든 지원자의 이메일 업데이트
-    const { data, error, count } = await serviceClient
+    const { data, error } = await serviceClient
       .from('candidates')
       .update({ email })
-      .select('id', { count: 'exact' });
+      .select('id');
 
     if (error) {
       throw new Error(`이메일 업데이트 실패: ${error.message}`);
@@ -230,7 +230,8 @@ export async function updateAllCandidateEmails(email: string = 'blee6291@gmail.c
     revalidatePath('/dashboard/candidates');
 
     return {
-      updatedCount: count || data?.length || 0,
+      // `count` 옵션은 supabase-js 타입에서 업데이트 빌더 체인과 호환되지 않아 `data` 길이로 계산합니다.
+      updatedCount: data?.length || 0,
       email,
     };
   });

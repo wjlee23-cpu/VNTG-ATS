@@ -965,12 +965,14 @@ export async function syncAllCandidateEmails(daysBack: number = 30) {
     for (const candidate of candidates) {
       try {
         const result = await syncCandidateEmails(candidate.id, daysBack);
+        // `withErrorHandling()` 래퍼로 감싸져 있으므로 실제 값은 `result.data`에 들어있습니다.
+        const syncedCount = result.data?.synced ?? 0;
         results.push({
           candidateId: candidate.id,
           candidateName: candidate.name,
-          synced: result.synced || 0,
+          synced: syncedCount,
         });
-        totalSynced += result.synced || 0;
+        totalSynced += syncedCount;
       } catch (error) {
         results.push({
           candidateId: candidate.id,

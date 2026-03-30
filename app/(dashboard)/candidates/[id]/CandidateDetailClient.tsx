@@ -704,7 +704,8 @@ export function CandidateDetailClient({
             input.onchange = (e) => {
               const file = (e.target as HTMLInputElement).files?.[0];
               if (file) {
-                const event = { target: { files: [file] } } as React.ChangeEvent<HTMLInputElement>;
+                // ChangeEvent는 구조가 복잡하므로 중간에 unknown으로 한번 거쳐 타입 충돌만 우회합니다.
+                const event = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
                 handleFileUpload(event);
               }
             };
