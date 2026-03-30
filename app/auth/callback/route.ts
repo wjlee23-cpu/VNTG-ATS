@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
 
 /**
  * OAuth 콜백 처리 라우트
@@ -9,11 +10,15 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   const next = requestUrl.searchParams.get('next') || '/dashboard';
+  const appBaseUrl = getAppBaseUrl(request);
 
   // 코드가 없으면 에러
   if (!code) {
     return NextResponse.redirect(
-      new URL(`/login?error=oauth_error&message=인증 코드를 받지 못했습니다`, requestUrl.origin)
+      new URL(
+        `/login?error=oauth_error&message=인증 코드를 받지 못했습니다`,
+        appBaseUrl || requestUrl.origin
+      )
     );
   }
 
@@ -26,7 +31,10 @@ export async function GET(request: Request) {
     if (error || !data.session) {
       console.error('OAuth 세션 교환 실패:', error);
       return NextResponse.redirect(
-        new URL(`/login?error=session_error&message=${encodeURIComponent(error?.message || '세션 생성에 실패했습니다')}`, requestUrl.origin)
+        new URL(
+          `/login?error=session_error&message=${encodeURIComponent(error?.message || '세션 생성에 실패했습니다')}`,
+          appBaseUrl || requestUrl.origin
+        )
       );
     }
 
@@ -66,7 +74,10 @@ export async function GET(request: Request) {
           console.error('조직 생성 실패:', orgError);
           await supabase.auth.signOut();
           return NextResponse.redirect(
-            new URL(`/login?error=org_error&message=${encodeURIComponent('조직 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
+            new URL(
+              `/login?error=org_error&message=${encodeURIComponent('조직 생성에 실패했습니다. 관리자에게 문의하세요.')}`,
+              appBaseUrl || requestUrl.origin
+            )
           );
         }
         organization = newOrg;
@@ -130,7 +141,10 @@ export async function GET(request: Request) {
             }
             await supabase.auth.signOut();
             return NextResponse.redirect(
-              new URL(`/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
+              new URL(
+                `/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`,
+                appBaseUrl || requestUrl.origin
+              )
             );
           }
         } else {
@@ -150,7 +164,10 @@ export async function GET(request: Request) {
           }
           await supabase.auth.signOut();
           return NextResponse.redirect(
-            new URL(`/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
+            new URL(
+              `/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`,
+              appBaseUrl || requestUrl.origin
+            )
           );
         }
       } else if (!newUser) {
@@ -165,7 +182,10 @@ export async function GET(request: Request) {
         }
         await supabase.auth.signOut();
         return NextResponse.redirect(
-          new URL(`/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`, requestUrl.origin)
+          new URL(
+            `/login?error=user_create_error&message=${encodeURIComponent('사용자 생성에 실패했습니다. 관리자에게 문의하세요.')}`,
+            appBaseUrl || requestUrl.origin
+          )
         );
       } else {
         // 성공 시 사용자 데이터 설정
@@ -178,11 +198,14 @@ export async function GET(request: Request) {
     // 여기서는 확인하지 않습니다.
 
     // 성공 시 대시보드로 리다이렉트
-    return NextResponse.redirect(new URL(next, requestUrl.origin));
+      return NextResponse.redirect(new URL(next, appBaseUrl || requestUrl.origin));
   } catch (err) {
     console.error('OAuth 콜백 처리 중 오류:', err);
     return NextResponse.redirect(
-      new URL(`/login?error=unknown_error&message=${encodeURIComponent('로그인 처리 중 오류가 발생했습니다')}`, requestUrl.origin)
+      new URL(
+        `/login?error=unknown_error&message=${encodeURIComponent('로그인 처리 중 오류가 발생했습니다')}`,
+        appBaseUrl || requestUrl.origin
+      )
     );
   }
 }

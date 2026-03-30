@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
 
 /**
  * 구글 OAuth 콜백 처리
@@ -13,6 +14,7 @@ import { google } from 'googleapis';
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const appBaseUrl = getAppBaseUrl(request);
   const code = requestUrl.searchParams.get('code');
   const error = requestUrl.searchParams.get('error');
   const state = requestUrl.searchParams.get('state');
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
       ? '구글 로그인에 실패했습니다.'
       : '구글 캘린더 연동에 실패했습니다.';
     return NextResponse.redirect(
-      new URL(`/login?error=google_oauth_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
+      new URL(`/login?error=google_oauth_error&message=${encodeURIComponent(errorMessage)}`, appBaseUrl || requestUrl.origin)
     );
   }
 
@@ -45,7 +47,7 @@ export async function GET(request: Request) {
   if (!code) {
     const errorMessage = '인증 코드를 받지 못했습니다';
     return NextResponse.redirect(
-      new URL(`/login?error=oauth_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
+      new URL(`/login?error=oauth_error&message=${encodeURIComponent(errorMessage)}`, appBaseUrl || requestUrl.origin)
     );
   }
 
@@ -59,7 +61,7 @@ export async function GET(request: Request) {
       process.env.GOOGLE_CLIENT_SECRET,
       // 콜백 요청이 들어온 실제 도메인을 기준으로 redirectUri를 맞춥니다.
       // (NEXT_PUBLIC_APP_URL이 빌드 시점에 localhost로 박히는 문제를 방지)
-      `${requestUrl.origin}/api/auth/callback/google`
+      `${appBaseUrl || requestUrl.origin}/api/auth/callback/google`
     );
 
     // 인증 코드를 액세스 토큰으로 교환
@@ -143,7 +145,7 @@ export async function GET(request: Request) {
 
         // prompt: 'consent'를 포함하여 다시 Google OAuth로 리다이렉트
         return NextResponse.redirect(
-          new URL(`/api/auth/google?next=${encodeURIComponent(next)}&force_consent=true`, requestUrl.origin)
+          new URL(`/api/auth/google?next=${encodeURIComponent(next)}&force_consent=true`, appBaseUrl || requestUrl.origin)
         );
       }
 
@@ -233,7 +235,10 @@ export async function GET(request: Request) {
       if (linkError || !linkData) {
         console.error('매직 링크 생성 실패:', linkError);
         return NextResponse.redirect(
-          new URL(`/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`, requestUrl.origin)
+          new URL(
+            `/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`,
+            appBaseUrl || requestUrl.origin
+          )
         );
       }
 
@@ -243,7 +248,10 @@ export async function GET(request: Request) {
       }
 
       return NextResponse.redirect(
-        new URL(`/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`, requestUrl.origin)
+        new URL(
+          `/login?success=google_auth&message=${encodeURIComponent('구글 로그인이 완료되었습니다. 이메일로 로그인해주세요.')}`,
+          appBaseUrl || requestUrl.origin
+        )
       );
     } else {
       // ─── 캘린더 연동 플로우: 기존 사용자의 캘린더 토큰만 업데이트 ───
@@ -251,7 +259,7 @@ export async function GET(request: Request) {
       
       if (!authUser) {
         return NextResponse.redirect(
-          new URL(`/login?error=auth_required&message=${encodeURIComponent('로그인이 필요합니다.')}`, requestUrl.origin)
+          new URL(`/login?error=auth_required&message=${encodeURIComponent('로그인이 필요합니다.')}`, appBaseUrl || requestUrl.origin)
         );
       }
 
@@ -275,7 +283,7 @@ export async function GET(request: Request) {
         return NextResponse.redirect(
           new URL(
             `/api/auth/google?next=${encodeURIComponent(next)}&type=connect&force_consent=true`,
-            requestUrl.origin
+            appBaseUrl || requestUrl.origin
           )
         );
       }
@@ -304,13 +312,19 @@ export async function GET(request: Request) {
       if (updateError) {
         console.error('구글 캘린더 토큰 저장 실패:', updateError);
         return NextResponse.redirect(
-          new URL(`/dashboard?error=token_save_error&message=${encodeURIComponent('구글 캘린더 연동 정보 저장에 실패했습니다.')}`, requestUrl.origin)
+          new URL(
+            `/dashboard?error=token_save_error&message=${encodeURIComponent('구글 캘린더 연동 정보 저장에 실패했습니다.')}`,
+            appBaseUrl || requestUrl.origin
+          )
         );
       }
 
       // 성공 시 대시보드로 리다이렉트
       return NextResponse.redirect(
-        new URL(`${next}?success=calendar_connected&message=${encodeURIComponent('구글 캘린더가 성공적으로 연동되었습니다.')}`, requestUrl.origin)
+        new URL(
+          `${next}?success=calendar_connected&message=${encodeURIComponent('구글 캘린더가 성공적으로 연동되었습니다.')}`,
+          appBaseUrl || requestUrl.origin
+        )
       );
     }
   } catch (err: any) {
@@ -319,7 +333,10 @@ export async function GET(request: Request) {
       ? '구글 로그인 처리 중 오류가 발생했습니다'
       : '구글 캘린더 연동 처리 중 오류가 발생했습니다';
     return NextResponse.redirect(
-      new URL(`/login?error=unknown_error&message=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
+      new URL(
+        `/login?error=unknown_error&message=${encodeURIComponent(errorMessage)}`,
+        appBaseUrl || requestUrl.origin
+      )
     );
   }
 }

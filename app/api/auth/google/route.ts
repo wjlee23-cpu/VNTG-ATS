@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
 
 /**
  * 구글 로그인 / 캘린더 연동 시작점 (모든 권한 포함)
@@ -18,9 +19,10 @@ import { google } from 'googleapis';
 export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
-    // OAuth redirectUri는 반드시 "현재 요청의 origin"을 기준으로 잡습니다.
-    // (빌드 시점에 박힌 NEXT_PUBLIC_APP_URL 때문에 localhost로 생성되는 문제를 원천 차단)
-    const resolvedAppOrigin = requestUrl.origin;
+    // OAuth redirectUri는 "사용자에게 보여지는 public URL" 기준으로 만들어야 합니다.
+    // Cloud Run에서는 request.origin이 0.0.0.0:8080처럼 내부 주소로 잡힐 수 있으므로,
+    // NEXT_PUBLIC_APP_URL을 우선 사용하고 없을 때만 헤더 기반으로 보정합니다.
+    const resolvedAppOrigin = getAppBaseUrl(request);
     const next = requestUrl.searchParams.get('next') || '/dashboard';
     // login / connect 플로우 구분
     const type = requestUrl.searchParams.get('type') || 'login';
