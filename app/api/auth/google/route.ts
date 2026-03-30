@@ -18,6 +18,11 @@ import { google } from 'googleapis';
 export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
+    // Cloud Run/도메인 환경은 배포 후에 바뀔 수 있으므로,
+    // redirectUri는 "현재 요청의 origin"을 우선으로 잡고 NEXT_PUBLIC_APP_URL이 있으면 덮어씁니다.
+    // (이렇게 하면 NEXT_PUBLIC_APP_URL이 잘못 들어갔을 때도 localhost로 콜백되는 문제가 줄어듭니다.)
+    const resolvedAppOrigin =
+      process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin;
     const next = requestUrl.searchParams.get('next') || '/dashboard';
     // login / connect 플로우 구분
     const type = requestUrl.searchParams.get('type') || 'login';
@@ -28,7 +33,7 @@ export async function GET(request: Request) {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+      `${resolvedAppOrigin}/api/auth/callback/google`
     );
 
     // 필요한 모든 스코프 포함
