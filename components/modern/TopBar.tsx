@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Bell, ChevronDown, Command, LogOut, User, Shield, Calendar } from 'lucide-react';
+import { Search, Bell, ChevronDown, Command, LogOut, User, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
@@ -33,7 +33,6 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isCalendarConnected, setIsCalendarConnected] = useState(false);
 
   // 사용자 프로필 정보 가져오기
   useEffect(() => {
@@ -42,24 +41,6 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
         const result = await getUserProfile();
         if (result.data) {
           setUserProfile(result.data);
-          
-          // 구글 캘린더 연동 상태 확인
-          const { createClient } = await import('@/lib/supabase/client');
-          const supabase = createClient();
-          const { data: { user } } = await supabase.auth.getUser();
-          
-          if (user) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('calendar_provider, calendar_refresh_token')
-              .eq('id', user.id)
-              .single();
-            
-            // refresh_token 기준으로 연동 상태 판단 (access_token은 1시간이면 만료되지만 refresh_token은 장기 유효)
-            setIsCalendarConnected(
-              userData?.calendar_provider === 'google' && !!userData?.calendar_refresh_token
-            );
-          }
         }
       } catch (error) {
         console.error('사용자 프로필 로드 실패:', error);
@@ -160,16 +141,6 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
                 <User className="mr-2 h-4 w-4" />
                 <span>프로필</span>
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="cursor-pointer"
-                onClick={() => router.push('/dashboard/connect-calendar')}
-                onSelect={(e) => e.preventDefault()}
-              >
-                <Calendar className={`mr-2 h-4 w-4 ${isCalendarConnected ? 'text-primary' : 'text-accent'}`} />
-                <span>
-                  {isCalendarConnected ? '구글 캘린더 연동됨' : '구글 캘린더 연동'}
-                </span>
-              </DropdownMenuItem>
               {userProfile.role === 'admin' && (
                 <DropdownMenuItem className="cursor-pointer">
                   <Shield className="mr-2 h-4 w-4" />
@@ -189,10 +160,12 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
         ) : (
           // 로딩 중이거나 사용자 정보가 없을 때 기본 표시 (에러 발생 시에도 표시)
           <button className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-muted transition-all">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center text-white text-sm font-semibold">
-              HR
-            </div>
-            <span className="text-sm font-medium text-foreground">HR Team</span>
+            <Avatar className="w-8 h-8">
+              <AvatarFallback className="bg-muted text-muted-foreground">
+                <User size={14} />
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium text-foreground">게스트</span>
             <ChevronDown size={14} className="text-muted-foreground" />
           </button>
         )}

@@ -1,0 +1,26 @@
+# 빌드 컨텍스트 최소화 및 이미지 경량화를 위한 무시 목록
+.git
+.gitignore
+node_modules
+.next/cache
+.next/trace
+.next/types
+.vscode
+.idea
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.local
+
+# 환경변수/시크릿 파일은 이미지에 포함하지 않음
+.env
+.env.*
+!.env.example
+
+# 테스트/문서/에디터 관련
+coverage
+docs
+.DS_Store
+Thumbs.db
+

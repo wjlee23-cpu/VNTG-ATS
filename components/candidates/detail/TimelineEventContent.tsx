@@ -11,6 +11,7 @@ import {
   CalendarOff,
   Trash2,
   Calendar,
+  RefreshCw,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
@@ -40,6 +41,7 @@ interface TimelineEventContentProps {
   onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onRescheduleSchedule?: (scheduleId: string) => void;
+  onCheckSchedule?: (scheduleId: string) => void;
 }
 
 /** 타임라인 이벤트 타입별 본문 렌더링 */
@@ -51,6 +53,7 @@ export function TimelineEventContent({
   onCancelSchedule,
   onDeleteSchedule,
   onRescheduleSchedule,
+  onCheckSchedule,
 }: TimelineEventContentProps) {
   const router = useRouter();
 
@@ -301,8 +304,17 @@ export function TimelineEventContent({
               )}
             </div>
           )}
-          {scheduleId && (onRescheduleSchedule || onCancelSchedule || onDeleteSchedule) && (
+          {scheduleId && (onRescheduleSchedule || onCancelSchedule || onDeleteSchedule || onCheckSchedule) && (
             <div className="flex items-center gap-4 mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              {onCheckSchedule && (
+                <button
+                  onClick={() => onCheckSchedule(scheduleId)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-900 transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  일정 확인
+                </button>
+              )}
               {onRescheduleSchedule && (
                 <button
                   onClick={() => onRescheduleSchedule(scheduleId)}

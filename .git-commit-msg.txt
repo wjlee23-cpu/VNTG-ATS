@@ -1,0 +1,6 @@
+[Feat] 타임라인 코멘트 작성 시 리프레시 없이 업데이트
+
+- createComment Server Action에 skipRevalidate 옵션 추가
+- 코멘트 작성 시 전체 페이지 리프레시 방지
+- 클라이언트 사이드에서 타임라인만 업데이트하여 탭 상태 유지
+- Activity Timeline 탭에서 코멘트 작성 후 탭 유지 및 새 코멘트 즉시 표시

@@ -64,6 +64,34 @@ CRON_SECRET_KEY=your_cron_secret_key
 - 이메일 발송 기능은 Google Workspace의 Gmail API를 사용합니다. Google Cloud Console에서 Gmail API를 활성화하고, 구글 캘린더 연동 시 Gmail 발송 권한도 함께 승인해야 합니다. 자세한 내용은 [Gmail API 설정 가이드](docs/gmail-api-setup.md)를 참조하세요.
 - 리마인드 메일 발송 기능을 사용하려면 외부 cron 서비스(예: [cron-job.org](https://cron-job.org))에서 매일 `https://your-domain.com/api/cron/send-reminder-emails`를 호출하도록 설정하세요. Authorization 헤더에 `Bearer {CRON_SECRET_KEY}`를 포함해야 합니다.
 
+### 배포 (GCP Cloud Run)
+
+다음 문서를 순서대로 따라 하시면 GitHub Actions로 Cloud Run에 자동 배포됩니다.
+
+1. 인프라 1회 설정
+   - `docs/deploy/gcp-bootstrap.md`의 스크립트를 실행하여 Artifact Registry, Service Account, Workload Identity Federation(OIDC), Secret Manager를 준비합니다.
+   - GitHub 리포지토리 시크릿 설정:
+     - `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_SERVICE_NAME`
+     - `GAR_LOCATION` (예: `asia-northeast3`)
+     - `GCP_WORKLOAD_IDP` (WIF Provider 리소스 경로)
+     - `GCP_SERVICE_ACCOUNT` (예: `vntg-ats-deployer@{project}.iam.gserviceaccount.com`)
+
+2. 애플리케이션 컨테이너 빌드/배포
+   - `main` 브랜치에 커밋/푸시하면 `.github/workflows/deploy.yml`이 자동으로:
+     - Docker 이미지를 빌드하여 Artifact Registry에 푸시
+     - Cloud Run에 새 리비전 배포
+
+3. Cloud Run 서비스 구성
+   - `docs/deploy/cloud-run-config.md`를 참고해:
+     - Secret Manager 값을 환경변수로 연결
+     - 동시성/리소스/오토스케일 파라미터 조정
+     - 무중단 배포를 위한 트래픽 전환(선택)
+
+4. 커스텀 도메인/HTTPS (선택)
+   - `docs/deploy/domain-and-cdn.md`를 참고해 도메인 매핑 및 (필요 시) Cloud CDN을 구성합니다.
+
+배포가 완료되면 Cloud Run 서비스 URL이 워크플로우 로그에 출력됩니다.
+
 ### 2. 데이터베이스 마이그레이션
 
 Supabase 대시보드에서 다음 마이그레이션 파일들을 순서대로 실행하세요:
