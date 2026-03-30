@@ -57,7 +57,9 @@ export async function GET(request: Request) {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+      // 콜백 요청이 들어온 실제 도메인을 기준으로 redirectUri를 맞춥니다.
+      // (NEXT_PUBLIC_APP_URL이 빌드 시점에 localhost로 박히는 문제를 방지)
+      `${requestUrl.origin}/api/auth/callback/google`
     );
 
     // 인증 코드를 액세스 토큰으로 교환
