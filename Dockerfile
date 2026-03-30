@@ -18,8 +18,8 @@ RUN npm ci --legacy-peer-deps
 # 애플리케이션 소스 복사
 COPY . .
 
-# Next.js 빌드 (standalone 산출물 생성: next.config.mjs 의 output: 'standalone' 필요)
-RUN npm run build
+# typescript 번역기를 먼저 설치한 뒤에 빌드 진행
+RUN npm install typescript && npm run build
 
 # 2) Runtime Stage: 경량 런타임 이미지 (distroless)
 FROM gcr.io/distroless/nodejs20-debian12
