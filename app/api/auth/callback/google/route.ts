@@ -263,6 +263,28 @@ export async function GET(request: Request) {
         );
       }
 
+      // ✅ 안전장치: "어떤 구글 계정으로 연동했는지"가 현재 로그인된 유저와 일치하는지 확인합니다.
+      // - connect 플로우는 기존 로그인 세션을 유지한 채로 Google OAuth를 다시 타기 때문에,
+      //   사용자가 실수로 다른 구글 계정을 선택하면 그 토큰이 users 테이블에 저장되어
+      //   캘린더 이벤트가 '다른 계정 캘린더'에 생성되는 문제가 생길 수 있습니다.
+      // - 따라서 Google userinfo.email 과 Supabase authUser.email 이 다르면 저장을 차단합니다.
+      if (authUser.email && userInfo.email && authUser.email.toLowerCase() !== userInfo.email.toLowerCase()) {
+        console.error('[Google OAuth][connect] 계정 불일치로 연동 차단', {
+          authEmail: authUser.email,
+          googleEmail: userInfo.email,
+          userId: authUser.id,
+        });
+
+        return NextResponse.redirect(
+          new URL(
+            `/dashboard/connect-calendar?error=calendar_account_mismatch&message=${encodeURIComponent(
+              `구글 캘린더 연동 계정이 현재 로그인 계정과 다릅니다. (로그인: ${authUser.email}, 선택한 구글: ${userInfo.email}) 올바른 계정으로 다시 연동해주세요.`
+            )}`,
+            appBaseUrl || requestUrl.origin
+          )
+        );
+      }
+
       // 기존 refresh_token 조회
       const { data: existingUserData } = await serviceClient
         .from('users')
