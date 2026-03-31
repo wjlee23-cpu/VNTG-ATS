@@ -31,6 +31,7 @@ import { ko } from 'date-fns/locale/ko';
 import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
 import { getStageNameByStageId } from '@/constants/stages';
 import { randomUUID } from 'crypto';
+import { google } from 'googleapis';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -1132,6 +1133,48 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         organizer.id
       );
 
+      // ✅ 안전장치: 토큰이 실제로 어떤 구글 계정에 연결되어 있는지 확인합니다.
+      // - 사용자가 다른 구글 계정을 선택해 연동했으면, 이벤트가 '다른 계정 캘린더'에 생성되어
+      //   현재 보고 있는 캘린더에 보이지 않는 문제가 발생할 수 있습니다.
+      // - 따라서 organizer.email(앱 계정)과 google userinfo.email(토큰 소유자)이 다르면 즉시 중단합니다.
+      try {
+        const oauth2Client = new google.auth.OAuth2(
+          process.env.GOOGLE_CLIENT_ID,
+          process.env.GOOGLE_CLIENT_SECRET,
+          `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+        );
+        oauth2Client.setCredentials({ access_token: organizerToken });
+        const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+        const { data: googleUserInfo } = await oauth2.userinfo.get();
+        const googleEmail = googleUserInfo.email?.toLowerCase();
+        const organizerEmail = organizer.email?.toLowerCase();
+
+        // 운영 추적용(민감정보 제외): 어떤 이메일로 생성 시도했는지 기록
+        console.log('[Google Calendar][면접 일정 자동화] 토큰 계정 진단', {
+          organizerUserId: organizer.id,
+          organizerEmail: organizer.email,
+          googleEmail: googleUserInfo.email,
+          scheduleId: schedule.id,
+          candidateId,
+        });
+
+        if (organizerEmail && googleEmail && organizerEmail !== googleEmail) {
+          throw new Error(
+            `현재 로그인 계정(${organizer.email})과 다른 구글 계정(${googleUserInfo.email})이 연동되어 있습니다. ` +
+              `이 상태에서는 일정이 "다른 구글 캘린더"에 생성되어 보이지 않을 수 있습니다. ` +
+              `올바른 계정으로 다시 연동해주세요. (/dashboard/connect-calendar)`
+          );
+        }
+      } catch (e) {
+        // userinfo 조회 실패는 대부분 권한/토큰 문제이므로 사용자에게 재연동을 안내합니다.
+        // 단, 위에서 던진 “계정 불일치” 에러는 그대로 전파합니다.
+        if (e instanceof Error && e.message.includes('다른 구글 계정')) throw e;
+        console.error('[Google Calendar][면접 일정 자동화] 토큰 계정 진단 실패:', e);
+        throw new Error(
+          '구글 계정 연동 상태를 확인하지 못했습니다. 구글 캘린더를 재연동 후 다시 시도해주세요. (/dashboard/connect-calendar)'
+        );
+      }
+
       // 운영 환경에서 원인 추적을 위해 최소한의 진단 로그를 남깁니다.
       // ⚠️ 토큰(access/refresh)은 절대 로그로 남기지 않습니다.
       console.log('[Google Calendar][면접 일정 자동화] 이벤트 생성 시도', {
@@ -1190,6 +1233,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         );
       }
       const eventId = createdEvent.id;
+      const eventHtmlLink = createdEvent.htmlLink;
 
       // schedule_options에 저장
       // 부분적 충돌 정보는 interviewer_responses에 메타데이터로 저장
@@ -1201,10 +1245,21 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         interviewer_responses: {}, // 초기값: 빈 객체
       };
       
+      // ✅ 운영 디버깅용: 생성된 이벤트 링크를 메타데이터로 저장해두면,
+      // “어느 캘린더에 생겼는지”를 사용자가 즉시 확인할 수 있습니다.
+      if (eventHtmlLink) {
+        optionData.interviewer_responses = {
+          _metadata: {
+            googleEventHtmlLink: eventHtmlLink,
+          },
+        };
+      }
+
       // 부분적 충돌 정보를 메타데이터로 저장 (나중에 스키마 확장 가능)
       if (isPartialConflict && slot.missingInterviewers && slot.missingInterviewers.length > 0) {
         optionData.interviewer_responses = {
           _metadata: {
+            ...(optionData.interviewer_responses?._metadata || {}),
             isPartialConflict: true,
             missingInterviewers: slot.missingInterviewers,
             availableInterviewers: slot.availableInterviewers,
