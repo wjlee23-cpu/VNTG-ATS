@@ -886,7 +886,10 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       );
     }
 
-    // 내부 면접관이 없는 경우를 대비해 현재 로그인 사용자를 주최자로 사용
+    // 주최자(이벤트를 생성할 구글 캘린더 소유자) 정보 조회
+    // - 기존 로직은 "선택된 면접관 중 첫 번째(연동된 사람)"를 주최자로 잡을 수 있어
+    //   자동화를 시작한 사람이 자신의 캘린더에서 일정을 못 찾는 혼란이 생길 수 있습니다.
+    // - 따라서 기본 정책을 "자동화를 시작한 현재 사용자 캘린더에 block 일정을 생성"으로 고정합니다.
     const { data: currentUserForCalendar, error: currentUserError } = await supabase
       .from('users')
       .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
@@ -897,7 +900,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       throw new Error('현재 사용자 정보를 찾을 수 없습니다.');
     }
 
-    const organizer = interviewersWithCalendar[0] || currentUserForCalendar;
+    // ✅ 주최자 캘린더는 "자동화를 시작한 현재 사용자"로 고정
+    const organizer = currentUserForCalendar;
     if (
       organizer.calendar_provider !== 'google' ||
       !organizer.calendar_access_token ||
@@ -1128,6 +1132,20 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         organizer.id
       );
 
+      // 운영 환경에서 원인 추적을 위해 최소한의 진단 로그를 남깁니다.
+      // ⚠️ 토큰(access/refresh)은 절대 로그로 남기지 않습니다.
+      console.log('[Google Calendar][면접 일정 자동화] 이벤트 생성 시도', {
+        candidateId,
+        scheduleId: schedule.id,
+        organizerUserId: organizer.id,
+        organizerEmail: organizer.email,
+        start: slot.scheduledAt.toISOString(),
+        end: endTime.toISOString(),
+        attendeesCount:
+          interviewersWithCalendar.filter(inv => !slot.missingInterviewers?.includes(inv.id)).length +
+          externalInterviewerEmails.length,
+      });
+
       // 부분적 충돌 정보 처리
       const missingInterviewerEmails = slot.missingInterviewers 
         ? interviewersWithCalendar
@@ -1141,7 +1159,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         : '';
 
       // 구글 캘린더에 block 일정 생성
-      const eventId = await createCalendarEvent(
+      const createdEvent = await createCalendarEvent(
         organizerToken,
         organizer.calendar_refresh_token!,
         {
@@ -1164,6 +1182,14 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           transparency: 'opaque', // block 일정이므로 불투명
         }
       );
+
+      // 방어 로직: eventId가 비어있으면 성공으로 처리하지 않습니다.
+      if (!createdEvent?.id) {
+        throw new Error(
+          '구글 캘린더 일정 생성에 실패했습니다. (이벤트 ID를 받지 못함) 구글 캘린더를 재연동 후 다시 시도해주세요. (/dashboard/connect-calendar)'
+        );
+      }
+      const eventId = createdEvent.id;
 
       // schedule_options에 저장
       // 부분적 충돌 정보는 interviewer_responses에 메타데이터로 저장
@@ -1242,6 +1268,21 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       }
 
       scheduleOptions.push(option);
+    }
+
+    // 방어 로직: 일정 옵션이 0개거나, google_event_id가 누락되면 성공으로 처리하지 않습니다.
+    // (사용자 입장에서 “시작되었습니다”가 떠도 캘린더에 아무것도 없는 혼란을 방지)
+    if (scheduleOptions.length === 0) {
+      throw new Error(
+        '면접 일정 옵션을 생성하지 못했습니다. 구글 캘린더 권한/연동 상태를 확인 후 다시 시도해주세요. (/dashboard/connect-calendar)'
+      );
+    }
+
+    const optionsMissingEventId = scheduleOptions.filter((opt: any) => !opt?.google_event_id);
+    if (optionsMissingEventId.length > 0) {
+      throw new Error(
+        '구글 캘린더 일정 생성이 완료되지 않았습니다. 구글 캘린더를 재연동 후 다시 시도해주세요. (/dashboard/connect-calendar)'
+      );
     }
 
     // 면접관들에게 일정 확인 안내 메일 발송
@@ -1659,7 +1700,7 @@ async function regenerateScheduleOptions(scheduleId: string) {
     );
 
     // 구글 캘린더에 block 일정 생성
-    const eventId = await createCalendarEvent(
+    const createdEvent = await createCalendarEvent(
       organizerToken,
       organizer.calendar_refresh_token!,
       {
@@ -1680,6 +1721,7 @@ async function regenerateScheduleOptions(scheduleId: string) {
         transparency: 'opaque',
       }
     );
+    const eventId = createdEvent.id;
 
     // schedule_options에 저장
     const { data: option, error: optionError } = await supabase
@@ -3565,7 +3607,7 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
       );
 
       // 구글 캘린더에 block 일정 생성
-      const eventId = await createCalendarEvent(
+      const createdEvent = await createCalendarEvent(
         organizerToken,
         organizer.calendar_refresh_token,
         {
@@ -3586,6 +3628,7 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
           transparency: 'opaque',
         }
       );
+      const eventId = createdEvent.id;
 
       // schedule_options에 저장
       const { data: option, error: optionError } = await supabase
@@ -3877,7 +3920,7 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
 
     const externalInterviewerEmails = schedule.external_interviewer_emails || [];
     // 구글 캘린더에 block 일정 생성
-    const eventId = await createCalendarEvent(
+    const createdEvent = await createCalendarEvent(
       organizerToken,
       organizer.calendar_refresh_token!,
       {
@@ -3898,6 +3941,7 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
         transparency: 'opaque',
       }
     );
+    const eventId = createdEvent.id;
 
     // schedule_options에 저장 (수동 추가 표시)
     const { data: option, error: optionError } = await supabase

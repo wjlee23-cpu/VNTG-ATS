@@ -13,8 +13,10 @@ export async function GET(request: Request) {
     // 구글 OAuth URL 생성
     const authUrl = getGoogleAuthUrl();
     
-    // next 파라미터를 state에 포함하여 콜백에서 사용
-    const urlWithState = `${authUrl}&state=${encodeURIComponent(JSON.stringify({ next }))}`;
+    // next/type 파라미터를 state에 포함하여 콜백에서 사용
+    // - callback 라우트는 state.type이 없으면 기본값을 connect로 두고 있지만,
+    //   향후 혼동 방지 및 디버깅을 위해 명시적으로 type을 포함합니다.
+    const urlWithState = `${authUrl}&state=${encodeURIComponent(JSON.stringify({ next, type: 'connect' }))}`;
 
     return NextResponse.redirect(urlWithState);
   } catch (error: any) {

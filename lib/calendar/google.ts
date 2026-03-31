@@ -8,6 +8,64 @@ export interface CalendarEvent {
   end: { dateTime: string; timeZone: string }
 }
 
+/**
+ * Google API 에러를 사용자에게 이해하기 쉬운 메시지로 변환합니다.
+ * - 운영 환경(Vercel)에서도 원인 파악이 가능하도록 status/reason을 포함합니다.
+ * - ⚠️ 토큰(access/refresh) 등 민감 정보는 절대 메시지에 포함하지 않습니다.
+ */
+function formatGoogleCalendarApiError(
+  error: any,
+  actionKorean: string
+): string {
+  const status: number | undefined = error?.response?.status ?? error?.code
+  const apiMessage: string | undefined =
+    error?.response?.data?.error?.message ?? error?.message
+  const apiReason: string | undefined =
+    error?.response?.data?.error?.errors?.[0]?.reason
+
+  // 인증 만료/철회(401)
+  if (
+    status === 401 ||
+    apiMessage?.includes('invalid authentication credentials') ||
+    apiMessage?.includes('invalid_grant')
+  ) {
+    return (
+      '구글 캘린더 인증이 만료되었거나 권한이 취소되었습니다. ' +
+      '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
+    )
+  }
+
+  // 권한/정책 문제(403)
+  if (status === 403) {
+    const base =
+      '구글 캘린더 권한이 부족하거나(쓰기 권한 미승인), Google Workspace 정책으로 차단되었습니다.'
+    const hint = '구글 캘린더를 재연동 후 모든 권한을 허용하고 다시 시도해주세요. (/dashboard/connect-calendar)'
+    const detail = apiReason || apiMessage ? ` (상세: ${[apiReason, apiMessage].filter(Boolean).join(' / ')})` : ''
+    return `${base}${detail} ${hint}`
+  }
+
+  // 리소스/캘린더/이벤트 없음(404)
+  if (status === 404) {
+    return (
+      `구글 캘린더에서 필요한 항목을 찾을 수 없습니다. (${actionKorean}) ` +
+      '구글 캘린더를 재연동 후 다시 시도해주세요. (/dashboard/connect-calendar)'
+    )
+  }
+
+  // 할당량/레이트리밋(429)
+  if (status === 429) {
+    return (
+      '구글 캘린더 API 호출이 너무 많아 잠시 차단되었습니다. ' +
+      '잠시 후 다시 시도해주세요.'
+    )
+  }
+
+  // 기타: 가능한 정보만 포함
+  const detail = apiMessage ? ` (상세: ${apiMessage})` : ''
+  const statusText = status ? ` (HTTP ${status})` : ''
+  return `${actionKorean} 실패했습니다.${statusText}${detail}`
+}
+
 export async function getCalendarClient(accessToken: string) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -234,7 +292,7 @@ export async function createCalendarEvent(
     attendees: Array<{ email: string }>
     transparency?: 'opaque' | 'transparent'
   }
-): Promise<string> {
+): Promise<{ id: string; htmlLink?: string }> {
   try {
     const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
     const calendar = await getCalendarClient(token)
@@ -261,26 +319,42 @@ export async function createCalendarEvent(
       throw new Error('이벤트 생성에 실패했습니다.')
     }
 
-    return response.data.id
-  } catch (error: any) {
-    // 인증 관련 에러인지 확인
-    if (error?.code === 401 || 
-        error?.message?.includes('invalid authentication credentials') ||
-        error?.response?.status === 401) {
+    // 생성 직후 실제로 조회 가능한지 검증합니다.
+    // (운영에서 "메일은 갔는데 캘린더에는 없음" 같은 혼란을 방지)
+    try {
+      const verify = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: response.data.id,
+      })
+
+      if (!verify?.data?.id) {
+        throw new Error('생성된 이벤트를 조회할 수 없습니다.')
+      }
+
+      return { id: verify.data.id, htmlLink: verify.data.htmlLink || undefined }
+    } catch (verifyError: any) {
+      console.error('[Google Calendar] 이벤트 생성 후 검증 실패:', {
+        status: verifyError?.response?.status ?? verifyError?.code,
+        message: verifyError?.message,
+        data: verifyError?.response?.data,
+      })
+
       throw new Error(
-        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
-        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
+        '구글 캘린더 일정은 생성 요청이 되었지만, 생성 결과를 확인하지 못했습니다. ' +
+          '구글 캘린더를 재연동 후 다시 시도해주세요. (/dashboard/connect-calendar)'
       )
     }
+  } catch (error: any) {
+    console.error('[Google Calendar] 이벤트 생성 실패:', {
+      status: error?.response?.status ?? error?.code,
+      message: error?.message,
+      data: error?.response?.data,
+    })
+
     // 이미 명확한 에러 메시지가 있으면 그대로 전달
-    if (error?.message?.includes('재연동')) {
-      throw error
-    }
-    // 다른 에러는 원래 메시지와 함께 전달
-    throw new Error(
-      `이벤트 생성 실패: ${error?.message || '알 수 없는 오류'}. ` +
-      '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-    )
+    if (error?.message?.includes('재연동')) throw error
+
+    throw new Error(formatGoogleCalendarApiError(error, '구글 캘린더 이벤트 생성'))
   }
 }
 
@@ -330,24 +404,15 @@ export async function updateCalendarEvent(
       sendUpdates: 'all', // 참석자들에게 업데이트 알림 전송
     })
   } catch (error: any) {
-    // 인증 관련 에러인지 확인
-    if (error?.code === 401 || 
-        error?.message?.includes('invalid authentication credentials') ||
-        error?.response?.status === 401) {
-      throw new Error(
-        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
-        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-      )
-    }
-    // 이미 명확한 에러 메시지가 있으면 그대로 전달
-    if (error?.message?.includes('재연동')) {
-      throw error
-    }
-    // 다른 에러는 원래 메시지와 함께 전달
-    throw new Error(
-      `이벤트 수정 실패: ${error?.message || '알 수 없는 오류'}. ` +
-      '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-    )
+    console.error('[Google Calendar] 이벤트 수정 실패:', {
+      status: error?.response?.status ?? error?.code,
+      message: error?.message,
+      data: error?.response?.data,
+    })
+
+    if (error?.message?.includes('재연동')) throw error
+
+    throw new Error(formatGoogleCalendarApiError(error, '구글 캘린더 이벤트 수정'))
   }
 }
 
@@ -369,24 +434,15 @@ export async function deleteCalendarEvent(
       sendUpdates: 'all', // 참석자들에게 삭제 알림 전송
     })
   } catch (error: any) {
-    // 인증 관련 에러인지 확인
-    if (error?.code === 401 || 
-        error?.message?.includes('invalid authentication credentials') ||
-        error?.response?.status === 401) {
-      throw new Error(
-        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
-        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-      )
-    }
-    // 이미 명확한 에러 메시지가 있으면 그대로 전달
-    if (error?.message?.includes('재연동')) {
-      throw error
-    }
-    // 다른 에러는 원래 메시지와 함께 전달
-    throw new Error(
-      `이벤트 삭제 실패: ${error?.message || '알 수 없는 오류'}. ` +
-      '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-    )
+    console.error('[Google Calendar] 이벤트 삭제 실패:', {
+      status: error?.response?.status ?? error?.code,
+      message: error?.message,
+      data: error?.response?.data,
+    })
+
+    if (error?.message?.includes('재연동')) throw error
+
+    throw new Error(formatGoogleCalendarApiError(error, '구글 캘린더 이벤트 삭제'))
   }
 }
 
@@ -422,24 +478,15 @@ export async function getEventAttendeesStatus(
 
     return responses
   } catch (error: any) {
-    // 인증 관련 에러인지 확인
-    if (error?.code === 401 || 
-        error?.message?.includes('invalid authentication credentials') ||
-        error?.response?.status === 401) {
-      throw new Error(
-        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
-        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-      )
-    }
-    // 이미 명확한 에러 메시지가 있으면 그대로 전달
-    if (error?.message?.includes('재연동')) {
-      throw error
-    }
-    // 다른 에러는 원래 메시지와 함께 전달
-    throw new Error(
-      `참석자 응답 상태 확인 실패: ${error?.message || '알 수 없는 오류'}. ` +
-      '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-    )
+    console.error('[Google Calendar] 참석자 응답 상태 확인 실패:', {
+      status: error?.response?.status ?? error?.code,
+      message: error?.message,
+      data: error?.response?.data,
+    })
+
+    if (error?.message?.includes('재연동')) throw error
+
+    throw new Error(formatGoogleCalendarApiError(error, '구글 캘린더 참석자 응답 확인'))
   }
 }
 

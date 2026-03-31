@@ -92,8 +92,19 @@ export function ScheduleInterviewAutomatedModal({
       if (result.error) {
         toast.error(result.error);
       } else {
+        // 성공 조건을 더 엄격하게 검사합니다.
+        // - 서버 액션이 성공을 반환했더라도, 실제로 구글 이벤트가 만들어지지 않으면 사용자에게 성공으로 보여주면 안 됩니다.
+        const options = (result.data as any)?.options as Array<{ google_event_id?: string }> | undefined;
+        const hasOptions = Array.isArray(options) && options.length > 0;
+        const hasGoogleEventIds = hasOptions && options.every((opt) => !!opt.google_event_id);
+
+        if (!hasOptions || !hasGoogleEventIds) {
+          toast.error('캘린더 일정 생성에 실패했습니다. 구글 캘린더를 재연동 후 다시 시도해주세요. (/dashboard/connect-calendar)');
+          return;
+        }
+
         // `withErrorHandling()` 래퍼로 인해 실제 메시지는 `result.data`에 들어있을 수 있습니다.
-        toast.success(result.data?.message || '면접 일정 자동화가 시작되었습니다.');
+        toast.success((result.data as any)?.message || '면접 일정 자동화가 시작되었습니다.');
         onClose();
         router.refresh();
       }
@@ -433,7 +444,7 @@ export function ScheduleInterviewAutomatedModal({
                     <span className="text-xs font-semibold text-neutral-900">2</span>
                   </div>
                   <p className="text-sm text-neutral-600 flex-1">
-                    구글 캘린더에 block 일정을 생성하고 면접관들에게 초대를 전송합니다
+                    자동화를 시작한 사람의 구글 캘린더에 block 일정을 생성하고, 면접관들에게 초대를 전송합니다
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
