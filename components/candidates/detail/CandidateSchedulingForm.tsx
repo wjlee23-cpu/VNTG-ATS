@@ -38,6 +38,10 @@ interface ScheduleFormData {
   stage_id: string;
   interviewer_ids: string[];
   num_options: string;
+  work_start_hour: string;
+  work_start_minute: string;
+  work_end_hour: string;
+  work_end_minute: string;
   exclude_start_hour: string;
   exclude_start_minute: string;
   exclude_end_hour: string;
@@ -200,6 +204,92 @@ export function CandidateSchedulingForm({
                 {num}개
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="bg-white border border-neutral-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-4 flex items-center gap-2.5">
+            <Clock className="size-5 text-neutral-400" />
+            가능 시간
+            <span className="text-xs font-normal text-neutral-400 ml-2">(기본 10:00 ~ 17:00)</span>
+          </h3>
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600 mb-3">
+              면접을 제안할 수 있는 시간대를 설정하세요. (한국 시간 KST 기준)
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="work_start" className="block text-xs font-medium text-neutral-700 mb-2">
+                  시작 시간
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    id="work_start_hour"
+                    value={formData.work_start_hour || '10'}
+                    onChange={(e) => onFormDataChange({ work_start_hour: e.target.value })}
+                    className="flex-1 bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 rounded-lg px-3 py-2.5 transition-all text-sm text-neutral-900 focus:outline-none"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i.toString().padStart(2, '0')}>
+                        {i.toString().padStart(2, '0')}시
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    id="work_start_minute"
+                    value={formData.work_start_minute || '00'}
+                    onChange={(e) => onFormDataChange({ work_start_minute: e.target.value })}
+                    className="flex-1 bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 rounded-lg px-3 py-2.5 transition-all text-sm text-neutral-900 focus:outline-none"
+                  >
+                    {[0, 15, 30, 45].map((m) => (
+                      <option key={m} value={m.toString().padStart(2, '0')}>
+                        {m.toString().padStart(2, '0')}분
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="work_end" className="block text-xs font-medium text-neutral-700 mb-2">
+                  종료 시간
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    id="work_end_hour"
+                    value={formData.work_end_hour || '17'}
+                    onChange={(e) => onFormDataChange({ work_end_hour: e.target.value })}
+                    className="flex-1 bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 rounded-lg px-3 py-2.5 transition-all text-sm text-neutral-900 focus:outline-none"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i.toString().padStart(2, '0')}>
+                        {i.toString().padStart(2, '0')}시
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    id="work_end_minute"
+                    value={formData.work_end_minute || '00'}
+                    onChange={(e) => onFormDataChange({ work_end_minute: e.target.value })}
+                    className="flex-1 bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 rounded-lg px-3 py-2.5 transition-all text-sm text-neutral-900 focus:outline-none"
+                  >
+                    {[0, 15, 30, 45].map((m) => (
+                      <option key={m} value={m.toString().padStart(2, '0')}>
+                        {m.toString().padStart(2, '0')}분
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 text-xs text-neutral-600">
+              <p>
+                <strong>현재 설정:</strong> {formData.work_start_hour || '10'}시 {formData.work_start_minute || '00'}분 ~{' '}
+                {formData.work_end_hour || '17'}시 {formData.work_end_minute || '00'}분
+              </p>
+              <p className="mt-1 text-neutral-400">
+                이 구간 안에서만 면접 일정이 제안됩니다.
+              </p>
+            </div>
           </div>
         </div>
 

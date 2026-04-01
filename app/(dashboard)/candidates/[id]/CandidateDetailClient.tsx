@@ -77,6 +77,10 @@ export function CandidateDetailClient({
     interviewer_ids: [] as string[],
     external_interviewer_emails: [] as string[],
     num_options: '2',
+    work_start_hour: '10',
+    work_start_minute: '00',
+    work_end_hour: '17',
+    work_end_minute: '00',
     exclude_start_hour: '11',
     exclude_start_minute: '30',
     exclude_end_hour: '12',
@@ -356,6 +360,11 @@ export function CandidateDetailClient({
         JSON.stringify(scheduleFormData.external_interviewer_emails),
       );
       formDataToSend.append('num_options', scheduleFormData.num_options);
+      // 가능 시간(업무시간) 전달: 서버에서 allowed_time_ranges로 변환해 사용
+      formDataToSend.append('work_start_hour', scheduleFormData.work_start_hour);
+      formDataToSend.append('work_start_minute', scheduleFormData.work_start_minute);
+      formDataToSend.append('work_end_hour', scheduleFormData.work_end_hour);
+      formDataToSend.append('work_end_minute', scheduleFormData.work_end_minute);
       formDataToSend.append('exclude_start_hour', scheduleFormData.exclude_start_hour);
       formDataToSend.append('exclude_start_minute', scheduleFormData.exclude_start_minute);
       formDataToSend.append('exclude_end_hour', scheduleFormData.exclude_end_hour);

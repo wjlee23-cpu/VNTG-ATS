@@ -37,6 +37,10 @@ interface ScheduleFormData {
   interviewer_ids: string[];
   external_interviewer_emails: string[];
   num_options: string;
+  work_start_hour: string;
+  work_start_minute: string;
+  work_end_hour: string;
+  work_end_minute: string;
   exclude_start_hour: string;
   exclude_start_minute: string;
   exclude_end_hour: string;
@@ -441,6 +445,69 @@ export function CandidateScheduleForm({
                       {num}개
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* 가능 시간 */}
+              <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+                <div>
+                  <label className="text-sm font-medium text-neutral-900">가능 시간</label>
+                  <p className="text-xs text-neutral-500 mt-1.5">이 시간 안에서만 제안</p>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-neutral-600">
+                  <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-md px-2 py-1">
+                    <select
+                      value={formData.work_start_hour}
+                      onChange={(e) => onFormDataChange({ work_start_hour: e.target.value })}
+                      className="bg-transparent font-medium focus:outline-none cursor-pointer text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i.toString().padStart(2, '0')}>
+                          {i}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-neutral-400">:</span>
+                    <select
+                      value={formData.work_start_minute}
+                      onChange={(e) => onFormDataChange({ work_start_minute: e.target.value })}
+                      className="bg-transparent font-medium focus:outline-none cursor-pointer text-sm"
+                    >
+                      {[0, 15, 30, 45].map((m) => (
+                        <option key={m} value={m.toString().padStart(2, '0')}>
+                          {m.toString().padStart(2, '0')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span>부터</span>
+                  <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-md px-2 py-1">
+                    <select
+                      value={formData.work_end_hour}
+                      onChange={(e) => onFormDataChange({ work_end_hour: e.target.value })}
+                      className="bg-transparent font-medium focus:outline-none cursor-pointer text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i.toString().padStart(2, '0')}>
+                          {i}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-neutral-400">:</span>
+                    <select
+                      value={formData.work_end_minute}
+                      onChange={(e) => onFormDataChange({ work_end_minute: e.target.value })}
+                      className="bg-transparent font-medium focus:outline-none cursor-pointer text-sm"
+                    >
+                      {[0, 15, 30, 45].map((m) => (
+                        <option key={m} value={m.toString().padStart(2, '0')}>
+                          {m.toString().padStart(2, '0')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span>까지</span>
+                  <span className="ml-2 text-xs text-neutral-400">KST 기준</span>
                 </div>
               </div>
 
