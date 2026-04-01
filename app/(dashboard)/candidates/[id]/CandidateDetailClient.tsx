@@ -135,8 +135,9 @@ export function CandidateDetailClient({
   const refreshTimelineEvents = async () => {
     try {
       setIsLoadingTimeline(true);
-      // ✅ 라이트 모드(기본): 초기/탭 진입 시에는 이메일 병합을 하지 않아 빠르게 표시합니다.
-      const result = await getTimelineEvents(candidate.id, 50, { includeEmails: false });
+      // ✅ 타임라인 탭에서는 발신/수신 메일의 "본문"이 보여야 하므로 이메일 병합을 포함해 조회합니다.
+      // - includeEmails=false면 제목만 보이고 본문(body)이 비어 보일 수 있습니다.
+      const result = await getTimelineEvents(candidate.id, 50, { includeEmails: true });
       if (result.data) setTimelineEventsState(result.data);
       setHasLoadedTimeline(true);
     } catch (error) {

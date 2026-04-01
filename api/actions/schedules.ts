@@ -2540,6 +2540,44 @@ export async function checkInterviewerResponses(
       timelineHistory.push({ at: nowIso, message: allAcceptedMsg, key: allAcceptedKey });
       
       try {
+        // ✅ [중요] 후보자에게 메일을 "1번만" 발송하기 위한 락(멱등 처리)
+        // - '일정 확인' 버튼을 여러 번 누르거나, 구글 캘린더 웹훅이 동시에 들어오면
+        //   checkInterviewerResponses가 중복 실행될 수 있습니다.
+        // - 이때 workflow_status가 아직 pending_interviewers인 상태라면 동일 메일이 여러 번 발송될 수 있으므로,
+        //   여기서 원자적으로 pending_candidate로 전이(선점)한 1개의 요청만 메일 발송을 진행합니다.
+        const { data: lockedRows, error: lockError } = await supabase
+          .from('schedules')
+          .update({ workflow_status: 'pending_candidate' })
+          .eq('id', scheduleId)
+          .eq('workflow_status', 'pending_interviewers')
+          .select('id');
+
+        if (lockError) {
+          console.error('[메일 멱등] 후보자 발송 락 획득 실패:', lockError);
+          // 락 획득에 실패하면 안전을 위해 발송을 중단합니다. (중복 발송 방지 우선)
+          return {
+            message: '후보자에게 일정 옵션을 전송하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+            allAccepted: true,
+            acceptedOptionId: allAcceptedOption.id,
+            emailSent: false,
+            error: lockError.message,
+          };
+        }
+
+        if (!lockedRows || lockedRows.length === 0) {
+          // 이미 다른 호출이 선점해서 발송을 진행/완료한 상태
+          console.log(`[메일 멱등] 이미 후보자 전송이 진행 중이거나 완료되었습니다. scheduleId=${scheduleId}`);
+          revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+          revalidatePath('/dashboard/schedules');
+          return {
+            message: '이미 후보자에게 일정 옵션 전송이 처리되었습니다. 타임라인을 확인해주세요.',
+            allAccepted: true,
+            acceptedOptionId: allAcceptedOption.id,
+            emailSent: true,
+            skippedDueToDedupe: true,
+          };
+        }
+
         // 후보자에게 일정 옵션 전송
         const sendResult = await sendScheduleOptionsToCandidate(scheduleId);
         console.log('후보자에게 일정 옵션 전송 완료:', sendResult);
@@ -2571,7 +2609,12 @@ export async function checkInterviewerResponses(
             interviewerSummary,
             appendHistory: [
               ...timelineHistory,
-              { at: nowIso, message: '후보자에게 일정 선택 링크를 발송했습니다.' },
+              {
+                at: nowIso,
+                message: '후보자에게 일정 선택 링크를 발송했습니다.',
+                // ✅ 중복 호출에도 같은 로그는 1번만 남기기 위한 멱등 키
+                key: `candidate_link_sent::${scheduleId}`,
+              },
             ],
             extraContent: { all_accepted: true, accepted_option_id: allAcceptedOption.id },
           });
