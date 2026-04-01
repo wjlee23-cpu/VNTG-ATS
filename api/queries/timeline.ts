@@ -273,8 +273,31 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
       console.warn(`[타임라인 조회] ⚠️ 이메일의 candidate_id가 올바른지 확인하세요.`);
     }
     
+    // ✅ 일정 자동화 타임라인 중복 정리(레거시 이벤트 대비)
+    // - 과거에는 interviewer_response / schedule_regenerated가 매번 insert되어 타임라인이 과하게 쌓였습니다.
+    // - 이제는 schedule_id 기준으로 대표 카드(=schedule_created)를 업서트로 갱신하므로,
+    //   대표 카드가 존재하는 schedule_id에 대해서는 레거시 이벤트를 숨겨 UI 노이즈를 줄입니다.
+    const scheduleCreatedIds = new Set<string>();
+    for (const ev of allEvents as any[]) {
+      const sid = ev?.schedule_id || ev?.content?.schedule_id;
+      if (ev?.type === 'schedule_created' && sid) {
+        scheduleCreatedIds.add(String(sid));
+      }
+    }
+
+    const normalized = (allEvents as any[]).filter((ev) => {
+      const sid = ev?.schedule_id || ev?.content?.schedule_id;
+      if (!sid) return true;
+      // schedule_created가 있으면 같은 schedule_id의 레거시 이벤트는 숨김
+      if (scheduleCreatedIds.has(String(sid))) {
+        if (ev.type === 'interviewer_response') return false;
+        if (ev.type === 'schedule_regenerated') return false;
+      }
+      return true;
+    });
+
     // limit만큼만 반환
-    return allEvents.slice(0, limit);
+    return normalized.slice(0, limit);
   });
 }
 

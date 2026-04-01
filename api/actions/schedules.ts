@@ -32,6 +32,7 @@ import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } fr
 import { getStageNameByStageId } from '@/constants/stages';
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
+import { upsertScheduleAutomationTimeline } from '@/api/actions/timeline';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -557,22 +558,18 @@ export async function deleteSchedule(id: string) {
       }
     }
 
-    // 타임라인 이벤트 생성
-    const { error: timelineError } = await supabase.from('timeline_events').insert({
-      candidate_id: schedule.candidate_id,
-      type: 'schedule_created',
-      content: {
-        message: '면접 일정이 삭제되었습니다.',
-        schedule_id: id,
-      },
-      created_by: user.userId,
-    });
-
-    if (timelineError) {
-      console.error('[타임라인] 이벤트 생성 실패 (일정 삭제):', timelineError);
-      if (timelineError.code === '23514') {
-        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음.');
-      }
+    // ✅ 타임라인은 새 이벤트를 쌓지 않고, 해당 schedule_id의 자동화 카드 상태를 'deleted'로 갱신합니다.
+    try {
+      await upsertScheduleAutomationTimeline({
+        candidateId: schedule.candidate_id,
+        scheduleId: id,
+        createdBy: user.userId,
+        latestMessage: '면접 일정이 삭제되었습니다.',
+        automationStatus: 'deleted',
+        appendHistory: [{ at: new Date().toISOString(), message: '채용담당자가 면접 일정을 삭제했습니다.' }],
+      });
+    } catch (e) {
+      console.error('[타임라인] 일정 삭제 카드 업데이트 실패(계속 진행):', e);
     }
 
     // 면접 일정 삭제 (CASCADE로 schedule_options도 자동 삭제됨)
@@ -676,22 +673,18 @@ export async function cancelSchedule(id: string) {
       throw new Error(`면접 일정 취소 실패: ${updateError.message}`);
     }
 
-    // 타임라인 이벤트 생성
-    const { error: timelineError } = await supabase.from('timeline_events').insert({
-      candidate_id: schedule.candidate_id,
-      type: 'schedule_created',
-      content: {
-        message: '면접 일정이 취소되었습니다.',
-        schedule_id: id,
-      },
-      created_by: user.userId,
-    });
-
-    if (timelineError) {
-      console.error('[타임라인] 이벤트 생성 실패 (일정 취소):', timelineError);
-      if (timelineError.code === '23514') {
-        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음.');
-      }
+    // ✅ 타임라인은 새 이벤트를 쌓지 않고, 해당 schedule_id의 자동화 카드 상태를 'cancelled'로 갱신합니다.
+    try {
+      await upsertScheduleAutomationTimeline({
+        candidateId: schedule.candidate_id,
+        scheduleId: id,
+        createdBy: user.userId,
+        latestMessage: '면접 일정이 취소되었습니다.',
+        automationStatus: 'cancelled',
+        appendHistory: [{ at: new Date().toISOString(), message: '채용담당자가 면접 일정을 취소했습니다.' }],
+      });
+    } catch (e) {
+      console.error('[타임라인] 일정 취소 카드 업데이트 실패(계속 진행):', e);
     }
 
     // 캐시 무효화
@@ -1607,53 +1600,41 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       });
     } catch {}
     
-    console.log(`[타임라인] 일정 자동화 시작 이벤트 생성: candidateId=${candidateId}, scheduleId=${schedule.id}`);
-    
-    const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
-      candidate_id: candidateId,
-      type: 'schedule_created',
-      content: {
-        message: timelineMessage,
-        schedule_id: schedule.id,
-        schedule_options: scheduleOptions.map(opt => ({
+    console.log(`[타임라인] 일정 자동화 카드 업서트: candidateId=${candidateId}, scheduleId=${schedule.id}`);
+
+    // ✅ 중요한 UX 정책
+    // - 타임라인에 새 줄을 계속 쌓지 않고, "면접 일정 자동화 카드 1개"를 업데이트합니다.
+    // - 면접관 거절/재생성/삭제 등도 같은 카드에서 상태가 바뀌는 형태로 보이게 됩니다.
+    try {
+      await upsertScheduleAutomationTimeline({
+        candidateId,
+        scheduleId: schedule.id,
+        createdBy: user.userId,
+        latestMessage: timelineMessage,
+        automationStatus: 'pending_interviewers',
+        scheduleOptions: scheduleOptions.map((opt) => ({
           id: opt.id,
           scheduled_at: opt.scheduled_at,
         })),
-        interviewers: interviewerIds,
-        external_interviewers: externalInterviewerEmails,
-        retry_count: retryCount,
-        original_date_range: {
-          start: originalStartDate.toISOString(),
-          end: originalEndDate.toISOString(),
+        appendHistory: [
+          {
+            at: new Date().toISOString(),
+            message: '면접 일정 자동화가 시작되었습니다. 면접관들의 수락/거절 응답을 기다리는 중입니다.',
+          },
+        ],
+        extraContent: {
+          interviewers: interviewerIds,
+          external_interviewers: externalInterviewerEmails,
+          retry_count: retryCount,
+          original_date_range: {
+            start: originalStartDate.toISOString(),
+            end: originalEndDate.toISOString(),
+          },
         },
-      },
-      created_by: user.userId,
-    }).select();
-
-    if (timelineError) {
-      console.error('[타임라인] 이벤트 생성 실패 (일정 자동화 시작):', {
-        error: timelineError,
-        code: timelineError.code,
-        message: timelineError.message,
-        details: timelineError.details,
-        hint: timelineError.hint,
-        candidateId,
-        type: 'schedule_created',
-        scheduleId: schedule.id,
       });
-      console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
-      // DB 제약 조건 위반인지 확인
-      if (timelineError.code === '23514') {
-        console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_created 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
-        console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
-      }
-      // RLS 정책 위반인지 확인
-      if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
-        console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
-      }
-      // 타임라인 이벤트 생성 실패해도 일정 생성은 성공한 것으로 처리
-    } else {
-      console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+    } catch (e) {
+      // 타임라인 업데이트 실패해도 "일정 자동화" 자체는 성공할 수 있으므로, 여기서는 로그만 남기고 계속 진행합니다.
+      console.error('[타임라인] 일정 자동화 카드 업서트 실패(계속 진행):', e);
     }
 
     // 캐시 무효화
@@ -2140,49 +2121,34 @@ async function regenerateScheduleOptions(scheduleId: string) {
     ? `이전 일정 옵션이 모두 거절되어 새로운 면접 일정 옵션이 자동으로 생성되었습니다. 날짜 범위를 ${retryCount - currentRetryCount}회 확장하여 검색했습니다.`
     : '이전 일정 옵션이 모두 거절되어 새로운 면접 일정 옵션이 자동으로 생성되었습니다.';
   
-  console.log(`[타임라인] 일정 재생성 이벤트 생성: candidateId=${schedule.candidate_id}, scheduleId=${scheduleId}`);
-  
-  const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
-    candidate_id: schedule.candidate_id,
-    type: 'schedule_regenerated',
-    content: {
-      message: timelineMessage,
-      schedule_id: scheduleId,
-      schedule_options: scheduleOptions.map(opt => ({
+  console.log(`[타임라인] 일정 재생성 → 자동화 카드 업데이트: candidateId=${schedule.candidate_id}, scheduleId=${scheduleId}`);
+
+  // ✅ 타임라인은 새 줄을 쌓지 않고, 기존 "면접 일정 생성" 카드의 상태를 갱신합니다.
+  try {
+    await upsertScheduleAutomationTimeline({
+      candidateId: schedule.candidate_id,
+      scheduleId,
+      createdBy: user.userId,
+      latestMessage: timelineMessage,
+      automationStatus: 'regenerated',
+      scheduleOptions: scheduleOptions.map((opt) => ({
         id: opt.id,
         scheduled_at: opt.scheduled_at,
       })),
-      interviewers: schedule.interviewer_ids,
-      retry_count: retryCount,
-      previous_retry_count: currentRetryCount,
-    },
-    created_by: user.userId,
-  }).select();
-
-  if (timelineError) {
-    console.error('[타임라인] 이벤트 생성 실패 (일정 재생성):', {
-      error: timelineError,
-      code: timelineError.code,
-      message: timelineError.message,
-      details: timelineError.details,
-      hint: timelineError.hint,
-      candidateId: schedule.candidate_id,
-      type: 'schedule_regenerated',
-      scheduleId,
+      appendHistory: [
+        {
+          at: new Date().toISOString(),
+          message: '이전 일정 옵션이 모두 거절되어 새 일정 옵션을 자동으로 재생성했습니다.',
+        },
+      ],
+      extraContent: {
+        interviewers: schedule.interviewer_ids,
+        retry_count: retryCount,
+        previous_retry_count: currentRetryCount,
+      },
     });
-    console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
-    // DB 제약 조건 위반인지 확인
-    if (timelineError.code === '23514') {
-      console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_regenerated 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
-      console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
-    }
-    // RLS 정책 위반인지 확인
-    if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
-      console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
-    }
-    // 타임라인 이벤트 생성 실패해도 일정 재생성은 성공한 것으로 처리
-  } else {
-    console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
+  } catch (e) {
+    console.error('[타임라인] 일정 재생성 카드 업데이트 실패(계속 진행):', e);
   }
 
   // 캐시 무효화
@@ -2240,6 +2206,11 @@ export async function checkInterviewerResponses(
     if (schedule.workflow_status !== 'pending_interviewers') {
       return { message: '이미 처리된 일정입니다.', alreadyProcessed: true };
     }
+
+    // ✅ 타임라인은 "새 이벤트 추가"가 아니라 "자동화 카드 1개 업데이트"가 목표입니다.
+    // - 면접관 응답 변경/전원 거절/재생성/혼합 응답 등 중요한 변화는 history로 누적합니다.
+    const timelineHistory: Array<{ at: string; message: string }> = [];
+    const nowIso = new Date().toISOString();
 
     // 일정 옵션 조회
     const { data: options, error: optionsError } = await supabase
@@ -2375,60 +2346,24 @@ export async function checkInterviewerResponses(
             }
           }
           
-          // 변경된 응답이 있으면 타임라인 이벤트 생성
+          // ✅ 변경된 응답은 새 타임라인 이벤트를 insert하지 않고, 자동화 카드(history)에 누적합니다.
           if (changedResponses.length > 0) {
-            console.log(`[타임라인] 변경된 응답 ${changedResponses.length}개 발견, 타임라인 이벤트 생성 시작`);
+            console.log(`[타임라인] 변경된 응답 ${changedResponses.length}개 발견 (카드 history로 누적)`);
             for (const changed of changedResponses) {
-              const responseText = changed.newResponse === 'accepted' ? '수락' : changed.newResponse === 'declined' ? '거절' : '보류';
+              const responseText =
+                changed.newResponse === 'accepted'
+                  ? '수락'
+                  : changed.newResponse === 'declined'
+                    ? '거절'
+                    : '보류';
               const optionDate = new Date(option.scheduled_at);
-              
-              console.log(`[타임라인] 면접관 응답 이벤트 생성: ${changed.interviewerEmail} - ${responseText}`);
-              
-              const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
-                candidate_id: schedule.candidate_id,
-                type: 'interviewer_response',
-                content: {
-                  message: `${changed.interviewerEmail}님이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 ${responseText}했습니다.`,
-                  schedule_id: scheduleId,
-                  option_id: option.id,
-                  option_scheduled_at: option.scheduled_at,
-                  interviewer_id: changed.interviewerId,
-                  interviewer_email: changed.interviewerEmail,
-                  response: changed.newResponse,
-                  previous_response: changed.previousResponse,
-                },
-                created_by: changed.interviewerId, // 면접관 ID 사용
-              }).select();
-
-              if (timelineError) {
-                console.error('[타임라인] 이벤트 생성 실패 (면접관 응답):', {
-                  error: timelineError,
-                  code: timelineError.code,
-                  message: timelineError.message,
-                  details: timelineError.details,
-                  hint: timelineError.hint,
-                  candidateId: schedule.candidate_id,
-                  type: 'interviewer_response',
-                  scheduleId,
-                  optionId: option.id,
-                  interviewerEmail: changed.interviewerEmail,
-                });
-                console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
-                // DB 제약 조건 위반인지 확인
-                if (timelineError.code === '23514') {
-                  console.error('[타임라인] DB 스키마 제약 조건 위반 - interviewer_response 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
-                  console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
-                }
-                // RLS 정책 위반인지 확인
-                if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
-                  console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
-                }
-              } else {
-                console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
-              }
+              const msg = `${changed.interviewerEmail}님이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 ${responseText}했습니다.`;
+              timelineHistory.push({ at: new Date().toISOString(), message: msg });
             }
           } else {
-            console.log(`[타임라인] 변경된 응답 없음 (previous: ${JSON.stringify(previousResponsesAny)}, current: ${JSON.stringify(interviewerResponses)})`);
+            console.log(
+              `[타임라인] 변경된 응답 없음 (previous: ${JSON.stringify(previousResponsesAny)}, current: ${JSON.stringify(interviewerResponses)})`,
+            );
           }
         }
 
@@ -2457,57 +2392,71 @@ export async function checkInterviewerResponses(
       }
     }
 
+    // ✅ 면접관 응답 요약(카드 표시용)
+    // - 여러 옵션이 존재하므로, 면접관 기준으로 "어떤 옵션이든 수락했는지 / 모든 옵션을 거절했는지"로 요약합니다.
+    // - pending: 아직 선택을 안 했거나(tentative/needsAction), 옵션별로 혼합 응답인 상태
+    const activeInterviewerIds = (() => {
+      // 부분 충돌(초대 제외 면접관)은 옵션마다 다를 수 있어, 여기서는 "전체 면접관" 기준으로 요약합니다.
+      // 실제 UI에서는 옵션별 상세가 필요하면 content 확장으로 처리할 수 있습니다.
+      return (schedule.interviewer_ids as string[]) || [];
+    })();
+
+    const interviewerSummary = (() => {
+      const summaryByInterviewer = new Map<
+        string,
+        { acceptedAny: boolean; declinedAll: boolean; hasPending: boolean }
+      >();
+      for (const id of activeInterviewerIds) {
+        summaryByInterviewer.set(id, { acceptedAny: false, declinedAll: true, hasPending: false });
+      }
+
+      for (const opt of options) {
+        const responsesAny = (opt.interviewer_responses as any) || {};
+        const metadata = responsesAny?._metadata;
+        const missingInterviewers = Array.isArray(metadata?.missingInterviewers)
+          ? (metadata.missingInterviewers as string[])
+          : [];
+
+        for (const interviewerId of activeInterviewerIds) {
+          // 옵션에서 초대 제외된 면접관은 이 옵션의 응답 판단에서 제외합니다.
+          if (missingInterviewers.includes(interviewerId)) continue;
+
+          const r = (responsesAny[interviewerId] as string | undefined) || 'needsAction';
+          const row = summaryByInterviewer.get(interviewerId);
+          if (!row) continue;
+
+          if (r === 'accepted') row.acceptedAny = true;
+          if (r !== 'declined') row.declinedAll = false;
+          if (r === 'needsAction' || r === 'tentative') row.hasPending = true;
+        }
+      }
+
+      let accepted = 0;
+      let declined = 0;
+      let pending = 0;
+
+      for (const row of summaryByInterviewer.values()) {
+        if (row.acceptedAny) accepted++;
+        else if (row.declinedAll) declined++;
+        else pending++;
+      }
+
+      return {
+        accepted,
+        declined,
+        pending,
+        total: activeInterviewerIds.length,
+      };
+    })();
+
     // 모든 면접관이 수락한 일정이 있으면 후보자에게 전송
     if (allAcceptedOption) {
       console.log(`모든 면접관이 수락한 일정이 있어 후보자에게 전송 시작: scheduleId=${scheduleId}, optionId=${allAcceptedOption.id}`);
       
-      // 모든 면접관이 수락한 경우 타임라인 이벤트 생성
+      // ✅ 전원 수락 이벤트도 새 줄로 쌓지 않고, 자동화 카드(history)에 누적합니다.
       const optionDate = new Date(allAcceptedOption.scheduled_at);
-      console.log(`[타임라인] 모든 면접관 수락 이벤트 생성: candidateId=${schedule.candidate_id}, optionId=${allAcceptedOption.id}`);
-      
-      // organizer는 이미 위에서 조회됨
-      const organizer = interviewers.find(inv => inv.calendar_access_token);
-      const organizerId = organizer?.id || (interviewers.length > 0 ? interviewers[0].id : null);
-      
-      const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
-        candidate_id: schedule.candidate_id,
-        type: 'interviewer_response',
-        content: {
-          message: `모든 면접관이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 수락했습니다. 후보자에게 전송됩니다.`,
-          schedule_id: scheduleId,
-          option_id: allAcceptedOption.id,
-          option_scheduled_at: allAcceptedOption.scheduled_at,
-          all_accepted: true,
-          interviewers: schedule.interviewer_ids,
-        },
-        created_by: organizerId, // organizer ID 사용 (없으면 첫 번째 면접관 ID)
-      }).select();
-
-      if (timelineError) {
-        console.error('[타임라인] 이벤트 생성 실패 (모든 면접관 수락):', {
-          error: timelineError,
-          code: timelineError.code,
-          message: timelineError.message,
-          details: timelineError.details,
-          hint: timelineError.hint,
-          candidateId: schedule.candidate_id,
-          type: 'interviewer_response',
-          scheduleId,
-          optionId: allAcceptedOption.id,
-        });
-        console.error('[타임라인] 에러 상세:', JSON.stringify(timelineError, null, 2));
-        // DB 제약 조건 위반인지 확인
-        if (timelineError.code === '23514') {
-          console.error('[타임라인] DB 스키마 제약 조건 위반 - interviewer_response 타입이 허용되지 않음. 마이그레이션을 확인하세요.');
-          console.error('[타임라인] 마이그레이션 파일: 20260225000000_extend_timeline_event_types.sql');
-        }
-        // RLS 정책 위반인지 확인
-        if (timelineError.code === '42501' || timelineError.message?.includes('row-level security')) {
-          console.error('[타임라인] RLS 정책 위반 - 권한 문제. Service Role Client 사용 필요할 수 있음.');
-        }
-      } else {
-        console.log(`[타임라인] 이벤트 생성 성공:`, timelineData?.[0]?.id);
-      }
+      const allAcceptedMsg = `모든 면접관이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 수락했습니다. 후보자에게 전송됩니다.`;
+      timelineHistory.push({ at: nowIso, message: allAcceptedMsg });
       
       try {
         // 후보자에게 일정 옵션 전송
@@ -2529,6 +2478,26 @@ export async function checkInterviewerResponses(
           };
         }
         
+        // 타임라인 카드 업데이트 (상태: pending_candidate)
+        try {
+          await upsertScheduleAutomationTimeline({
+            candidateId: schedule.candidate_id,
+            scheduleId,
+            createdBy: (interviewers.find((inv) => inv.calendar_access_token)?.id || interviewers[0]?.id || null) as any,
+            latestMessage: '모든 면접관이 수락한 일정이 있어 후보자에게 전송되었습니다.',
+            automationStatus: 'pending_candidate',
+            scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
+            interviewerSummary,
+            appendHistory: [
+              ...timelineHistory,
+              { at: nowIso, message: '후보자에게 일정 선택 링크를 발송했습니다.' },
+            ],
+            extraContent: { all_accepted: true, accepted_option_id: allAcceptedOption.id },
+          });
+        } catch (e) {
+          console.error('[타임라인] 전원 수락 후 카드 업데이트 실패(계속 진행):', e);
+        }
+
         return {
           message: '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.',
           allAccepted: true,
@@ -2558,6 +2527,21 @@ export async function checkInterviewerResponses(
 
     if (!allOptionsResponded) {
       console.log(`아직 일부 옵션의 응답이 남아있습니다. scheduleId=${scheduleId}`);
+      // 타임라인 카드 업데이트: 아직 대기 중
+      try {
+        await upsertScheduleAutomationTimeline({
+          candidateId: schedule.candidate_id,
+          scheduleId,
+          createdBy: (interviewers.find((inv) => inv.calendar_access_token)?.id || interviewers[0]?.id || null) as any,
+          latestMessage: '아직 모든 면접관의 응답이 완료되지 않았습니다. 계속 대기 중입니다.',
+          automationStatus: 'pending_interviewers',
+          scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
+          interviewerSummary,
+          appendHistory: timelineHistory.length > 0 ? timelineHistory : undefined,
+        });
+      } catch (e) {
+        console.error('[타임라인] 대기 상태 카드 업데이트 실패(계속 진행):', e);
+      }
       revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
       revalidatePath('/dashboard/schedules');
       return {
@@ -2590,6 +2574,25 @@ export async function checkInterviewerResponses(
       }
 
       try {
+        // ✅ 전원 거절 감지 → 재생성 시작을 같은 자동화 카드(history)에 기록합니다.
+        try {
+          await upsertScheduleAutomationTimeline({
+            candidateId: schedule.candidate_id,
+            scheduleId,
+            createdBy: (interviewers.find((inv) => inv.calendar_access_token)?.id || interviewers[0]?.id || null) as any,
+            latestMessage: '모든 일정 옵션이 거절되어 새로운 일정 옵션을 자동으로 생성합니다.',
+            automationStatus: 'pending_interviewers',
+            scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
+            interviewerSummary,
+            appendHistory: [
+              ...timelineHistory,
+              { at: nowIso, message: '모든 일정 옵션이 전원 거절되어 재생성을 시작합니다.' },
+            ],
+          });
+        } catch (e) {
+          console.error('[타임라인] 전원 거절 감지 카드 업데이트 실패(계속 진행):', e);
+        }
+
         console.log(`새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
         const regenerateResult = await regenerateScheduleOptions(scheduleId);
 
@@ -2651,20 +2654,28 @@ export async function checkInterviewerResponses(
       console.error('혼합 케이스 스케줄 상태 전환 실패:', updateScheduleError);
     }
 
-    // 타임라인 system_log 추가 (채용담당자 알림용)
-    const { error: timelineError } = await supabase.from('timeline_events').insert({
-      candidate_id: schedule.candidate_id,
-      type: 'system_log',
-      content: {
-        message:
-          '면접관들의 응답이 모두 확인되었지만, 후보자에게 전송 가능한 "전원 수락" 일정 옵션이 없습니다. 채용담당자가 일정 자동화를 다시 실행하거나 재조율이 필요합니다.',
-        schedule_id: scheduleId,
-      },
-      created_by: organizerId,
-    });
-
-    if (timelineError) {
-      console.error('혼합 케이스 타임라인 system_log 생성 실패:', timelineError);
+    // ✅ 혼합 응답도 새 줄을 추가하지 않고, 자동화 카드 상태를 needs_rescheduling으로 갱신합니다.
+    try {
+      await upsertScheduleAutomationTimeline({
+        candidateId: schedule.candidate_id,
+        scheduleId,
+        createdBy: organizerId,
+        latestMessage:
+          '면접관들의 응답이 모두 확인되었지만, 후보자에게 전송 가능한 "전원 수락" 일정 옵션이 없습니다. 재조율이 필요합니다.',
+        automationStatus: 'needs_rescheduling',
+        scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
+        interviewerSummary,
+        appendHistory: [
+          ...timelineHistory,
+          {
+            at: nowIso,
+            message:
+              '면접관 응답이 혼합되어 전원 수락 옵션이 없어서 재조율이 필요합니다. (needs_rescheduling)',
+          },
+        ],
+      });
+    } catch (e) {
+      console.error('[타임라인] 혼합 응답 카드 업데이트 실패(계속 진행):', e);
     }
 
     revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
