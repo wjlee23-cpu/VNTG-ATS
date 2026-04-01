@@ -806,7 +806,12 @@ export async function respondToSchedule(
     if (response === 'rejected' && schedule.workflow_status === 'pending_candidate') {
       console.log(`후보자가 거절함. 새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
       try {
-        const regenerateResult = await regenerateScheduleOptions(scheduleId);
+        // ✅ 후보자 응답 경로(세션 있음)에서도 동일 함수를 재사용합니다.
+        // createdBy는 타임라인 표시용(누가 실행했는지)입니다.
+        // 후보자 응답은 "로그인 세션"이 없을 수 있으므로, 여기서는 첫 번째 면접관 ID(있으면)를 사용합니다.
+        const regenerateResult = await regenerateScheduleOptions(scheduleId, {
+          createdBy: interviewerId ?? null,
+        });
         console.log('새로운 일정 옵션 생성 완료:', regenerateResult);
         
         // 캐시 무효화
@@ -1653,10 +1658,25 @@ export async function scheduleInterviewAutomated(formData: FormData) {
  * 기존 스케줄에 대해 새로운 일정 옵션을 자동 생성
  * 모든 일정 옵션이 거절되었을 때 호출되어 새로운 일정을 찾아서 생성
  */
-async function regenerateScheduleOptions(scheduleId: string) {
-  const user = await getCurrentUser();
-  const isAdmin = user.role === 'admin';
-  const supabase = isAdmin ? createServiceClient() : await createClient();
+async function regenerateScheduleOptions(
+  scheduleId: string,
+  opts?: {
+    /**
+     * 웹훅/백그라운드 경로에서는 세션이 없을 수 있으므로 권한 검사를 생략할지 여부
+     * - true: Service Role 기반으로 진행 (세션/쿠키 불필요)
+     * - false/undefined: 기존 권한 검증 수행
+     */
+    bypassAuth?: boolean;
+    /**
+     * 타임라인 카드 업데이트 시 "누가 실행했는지" 표시용
+     * - 웹훅 경로에서는 세션이 없어도, 주최자/시스템 사용자 ID를 넣어줄 수 있습니다.
+     */
+    createdBy?: string | null;
+  },
+) {
+  // ✅ 재생성은 웹훅(세션 없음)에서도 반드시 동작해야 합니다.
+  // 따라서 기본은 Service Role Client를 사용합니다.
+  const supabase = createServiceClient();
 
   // 기존 스케줄 정보 조회
   const { data: schedule, error: scheduleError } = await supabase
@@ -1680,7 +1700,10 @@ async function regenerateScheduleOptions(scheduleId: string) {
     throw new Error('면접 일정을 찾을 수 없습니다.');
   }
 
-  await verifyCandidateAccess(schedule.candidate_id);
+  // ✅ 세션이 없는 웹훅 경로에서는 접근권한 검증을 생략합니다.
+  if (!opts?.bypassAuth) {
+    await verifyCandidateAccess(schedule.candidate_id);
+  }
 
   const candidate = schedule.candidates as any;
   const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
@@ -2128,7 +2151,8 @@ async function regenerateScheduleOptions(scheduleId: string) {
     await upsertScheduleAutomationTimeline({
       candidateId: schedule.candidate_id,
       scheduleId,
-      createdBy: user.userId,
+      // 웹훅/백그라운드에서는 createdBy를 전달받고, 없으면 null로 둡니다.
+      createdBy: (opts?.createdBy ?? null) as any,
       latestMessage: timelineMessage,
       automationStatus: 'regenerated',
       scheduleOptions: scheduleOptions.map((opt) => ({
@@ -2239,6 +2263,7 @@ export async function checkInterviewerResponses(
       id: string;
       googleEventExists: boolean;
       allDeclined: boolean;
+      hasAnyDeclined: boolean;
       hasAllResponded: boolean;
     };
     const updatedOptions: UpdatedOption[] = [];
@@ -2249,6 +2274,7 @@ export async function checkInterviewerResponses(
           id: option.id,
           googleEventExists: false,
           allDeclined: false,
+          hasAnyDeclined: false,
           hasAllResponded: false,
         });
         continue;
@@ -2261,6 +2287,7 @@ export async function checkInterviewerResponses(
           id: option.id,
           googleEventExists: true,
           allDeclined: false,
+          hasAnyDeclined: false,
           hasAllResponded: false,
         });
         continue;
@@ -2288,6 +2315,7 @@ export async function checkInterviewerResponses(
         let allAccepted = activeInterviewers.length > 0;
         let allDeclined = activeInterviewers.length > 0;
         let hasAllResponded = activeInterviewers.length > 0;
+        let hasAnyDeclined = false;
 
         for (const interviewer of interviewers) {
           const response = responses[interviewer.email] || 'needsAction';
@@ -2304,8 +2332,16 @@ export async function checkInterviewerResponses(
             allDeclined = false;
           }
 
-          if (response === 'needsAction') {
+          // ✅ 응답 완료 판정은 더 엄격하게:
+          // - needsAction: 미응답
+          // - tentative: 보류(확정 응답 아님) → 대기로 처리
+          if (response === 'needsAction' || response === 'tentative') {
             hasAllResponded = false;
+          }
+
+          // ✅ “한 명이라도 거절이면 해당 옵션은 불가”
+          if (response === 'declined') {
+            hasAnyDeclined = true;
           }
         }
         
@@ -2378,6 +2414,7 @@ export async function checkInterviewerResponses(
           id: option.id,
           googleEventExists: true,
           allDeclined,
+          hasAnyDeclined,
           hasAllResponded,
         });
       } catch (error) {
@@ -2387,6 +2424,7 @@ export async function checkInterviewerResponses(
           id: option.id,
           googleEventExists: true,
           allDeclined: false,
+          hasAnyDeclined: false,
           hasAllResponded: false,
         });
       }
@@ -2552,13 +2590,15 @@ export async function checkInterviewerResponses(
     }
 
     // allOptionsResponded=true 인 경우:
-    // 1) 모든 옵션이 전원 거절이면: 옵션 rejected 처리 후 재조율(regenerate)
+    // 1) 모든 옵션이 전원 거절이거나, “한 명이라도 거절이면 옵션 불가” 규칙 때문에 모든 옵션이 불가해진 경우:
+    //    - 후보자에게 전송 가능한 옵션이 없으므로 자동 재생성(regenerate)
     // 2) 그 외(혼합 케이스)이면: needs_rescheduling으로 전환하고 채용담당자 액션을 기다립니다.
     const allOptionsDeclined = optionsWithGoogle.every((opt) => opt.allDeclined);
+    const allOptionsInvalidByAnyDecline = optionsWithGoogle.every((opt) => opt.hasAnyDeclined);
 
-    if (allOptionsDeclined) {
+    if (allOptionsDeclined || allOptionsInvalidByAnyDecline) {
       console.log(
-        `모든 일정 옵션이 전원 거절됨: scheduleId=${scheduleId}, 거절된 옵션 수=${optionsWithGoogle.length}`,
+        `재조율 필요(전원 거절 또는 1명 이상 거절로 옵션 불가): scheduleId=${scheduleId}, 옵션 수=${optionsWithGoogle.length}`,
       );
 
       const declinedOptionIds = optionsWithGoogle.map((opt) => opt.id);
@@ -2580,13 +2620,21 @@ export async function checkInterviewerResponses(
             candidateId: schedule.candidate_id,
             scheduleId,
             createdBy: (interviewers.find((inv) => inv.calendar_access_token)?.id || interviewers[0]?.id || null) as any,
-            latestMessage: '모든 일정 옵션이 거절되어 새로운 일정 옵션을 자동으로 생성합니다.',
+            latestMessage:
+              allOptionsDeclined
+                ? '모든 일정 옵션이 전원 거절되어 새로운 일정 옵션을 자동으로 생성합니다.'
+                : '일정 옵션에 “거절”이 포함되어(한 명이라도 거절) 후보자에게 전송할 수 없어, 새로운 일정 옵션을 자동으로 생성합니다.',
             automationStatus: 'pending_interviewers',
             scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
             interviewerSummary,
             appendHistory: [
               ...timelineHistory,
-              { at: nowIso, message: '모든 일정 옵션이 전원 거절되어 재생성을 시작합니다.' },
+              {
+                at: nowIso,
+                message: allOptionsDeclined
+                  ? '모든 일정 옵션이 전원 거절되어 재생성을 시작합니다.'
+                  : '일정 옵션에 거절이 포함되어(한 명이라도 거절) 재생성을 시작합니다.',
+              },
             ],
           });
         } catch (e) {
@@ -2594,7 +2642,11 @@ export async function checkInterviewerResponses(
         }
 
         console.log(`새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
-        const regenerateResult = await regenerateScheduleOptions(scheduleId);
+        // ✅ 웹훅/백그라운드 경로에서는 세션이 없으므로 bypassAuth로 실행합니다.
+        const regenerateResult = await regenerateScheduleOptions(scheduleId, {
+          bypassAuth: true,
+          createdBy: (interviewers.find((inv) => inv.calendar_access_token)?.id || interviewers[0]?.id || null) as any,
+        });
 
         revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
         revalidatePath('/dashboard/schedules');
