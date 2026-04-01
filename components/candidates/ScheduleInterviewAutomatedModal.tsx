@@ -48,6 +48,26 @@ export function ScheduleInterviewAutomatedModal({
     stage_id: 'stage-6', // 기본값: 1st Interview
     interviewer_ids: [] as string[],
     num_options: '2', // 기본값: 2개
+    // 업무시간/점심/주말 옵션 (기본값: 10:00~17:00, 점심 11:30~12:30, 주말 제외)
+    work_start_hour: '10',
+    work_start_minute: '0',
+    work_end_hour: '17',
+    work_end_minute: '0',
+    lunch_start_hour: '11',
+    lunch_start_minute: '30',
+    lunch_end_hour: '12',
+    lunch_end_minute: '30',
+    exclude_weekends: true,
+  });
+  // 면접관 선호 시간대 상태
+  const [interviewerPreferences, setInterviewerPreferences] = useState<Record<string, 'none' | 'morning' | 'afternoon'>>({});
+  // 가능 시간대(allowed) 직접 지정 여부 및 값
+  const [allowCustomAllowedRange, setAllowCustomAllowedRange] = useState(false);
+  const [allowedRange, setAllowedRange] = useState({
+    start_hour: '10',
+    start_minute: '0',
+    end_hour: '17',
+    end_minute: '0',
   });
 
   // 사용자 목록 로드
@@ -86,6 +106,32 @@ export function ScheduleInterviewAutomatedModal({
       formDataToSend.append('duration_minutes', formData.duration_minutes);
       formDataToSend.append('interviewer_ids', JSON.stringify(formData.interviewer_ids));
       formDataToSend.append('num_options', formData.num_options);
+      // 업무시간/점심/주말 옵션 전달
+      formDataToSend.append('work_start_hour', formData.work_start_hour);
+      formDataToSend.append('work_start_minute', formData.work_start_minute);
+      formDataToSend.append('work_end_hour', formData.work_end_hour);
+      formDataToSend.append('work_end_minute', formData.work_end_minute);
+      formDataToSend.append('lunch_start_hour', formData.lunch_start_hour);
+      formDataToSend.append('lunch_start_minute', formData.lunch_start_minute);
+      formDataToSend.append('lunch_end_hour', formData.lunch_end_hour);
+      formDataToSend.append('lunch_end_minute', formData.lunch_end_minute);
+      formDataToSend.append('exclude_weekends', String(formData.exclude_weekends));
+      // 가능 시간대(선택)
+      if (allowCustomAllowedRange) {
+        formDataToSend.append(
+          'allowed_time_ranges',
+          JSON.stringify([{
+            startHour: Number(allowedRange.start_hour),
+            startMinute: Number(allowedRange.start_minute),
+            endHour: Number(allowedRange.end_hour),
+            endMinute: Number(allowedRange.end_minute),
+          }])
+        );
+      }
+      // 면접관 선호
+      if (Object.keys(interviewerPreferences).length > 0) {
+        formDataToSend.append('interviewer_preferences', JSON.stringify(interviewerPreferences));
+      }
 
       const result = await scheduleInterviewAutomated(formDataToSend);
 
@@ -123,6 +169,16 @@ export function ScheduleInterviewAutomatedModal({
         ? prev.interviewer_ids.filter(id => id !== userId)
         : [...prev.interviewer_ids, userId],
     }));
+    setInterviewerPreferences(prev => {
+      const exists = Object.prototype.hasOwnProperty.call(prev, userId);
+      // 선택 해제 시 선호 값 제거, 선택 시 기본 none 세팅
+      if (formData.interviewer_ids.includes(userId)) {
+        const { [userId]: _, ...rest } = prev;
+        return rest;
+      } else {
+        return exists ? prev : { ...prev, [userId]: 'none' };
+      }
+    });
   };
 
   // 폼 유효성 검사
@@ -348,6 +404,183 @@ export function ScheduleInterviewAutomatedModal({
               </p>
             </div>
 
+            {/* 면접 가능 시간대 설정 */}
+            <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200 space-y-3">
+              <h3 className="text-sm font-semibold text-neutral-900">면접 가능 시간대</h3>
+              {/* 가능시간 직접 지정 토글 */}
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  id="allow_custom_allowed"
+                  type="checkbox"
+                  checked={allowCustomAllowedRange}
+                  onChange={(e) => setAllowCustomAllowedRange(e.target.checked)}
+                />
+                <label htmlFor="allow_custom_allowed" className="text-sm text-neutral-700">
+                  가능 시간대를 직접 지정 (기본 10:00~17:00)
+                </label>
+              </div>
+              {allowCustomAllowedRange && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-neutral-600 mb-1.5">가능 시작</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={allowedRange.start_hour}
+                        onChange={(e) => setAllowedRange({ ...allowedRange, start_hour: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                      >
+                        {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                          <option key={h} value={String(h)}>{h.toString().padStart(2, '0')}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={allowedRange.start_minute}
+                        onChange={(e) => setAllowedRange({ ...allowedRange, start_minute: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                      >
+                        {['0','15','30','45'].map(m => (
+                          <option key={m} value={m}>{m.padStart(2,'0')}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-neutral-600 mb-1.5">가능 종료</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={allowedRange.end_hour}
+                        onChange={(e) => setAllowedRange({ ...allowedRange, end_hour: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                      >
+                        {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                          <option key={h} value={String(h)}>{h.toString().padStart(2, '0')}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={allowedRange.end_minute}
+                        onChange={(e) => setAllowedRange({ ...allowedRange, end_minute: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                      >
+                        {['0','15','30','45'].map(m => (
+                          <option key={m} value={m}>{m.padStart(2,'0')}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-neutral-600 mb-1.5">업무 시작</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.work_start_hour}
+                      onChange={(e) => setFormData({ ...formData, work_start_hour: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                        <option key={h} value={String(h)}>{h.toString().padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={formData.work_start_minute}
+                      onChange={(e) => setFormData({ ...formData, work_start_minute: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {['0','15','30','45'].map(m => (
+                        <option key={m} value={m}>{m.padStart(2,'0')}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-600 mb-1.5">업무 종료</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.work_end_hour}
+                      onChange={(e) => setFormData({ ...formData, work_end_hour: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                        <option key={h} value={String(h)}>{h.toString().padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={formData.work_end_minute}
+                      onChange={(e) => setFormData({ ...formData, work_end_minute: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {['0','15','30','45'].map(m => (
+                        <option key={m} value={m}>{m.padStart(2,'0')}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-neutral-600 mb-1.5">점심 시작</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.lunch_start_hour}
+                      onChange={(e) => setFormData({ ...formData, lunch_start_hour: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                        <option key={h} value={String(h)}>{h.toString().padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={formData.lunch_start_minute}
+                      onChange={(e) => setFormData({ ...formData, lunch_start_minute: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {['0','15','30','45'].map(m => (
+                        <option key={m} value={m}>{m.padStart(2,'0')}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-600 mb-1.5">점심 종료</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.lunch_end_hour}
+                      onChange={(e) => setFormData({ ...formData, lunch_end_hour: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                        <option key={h} value={String(h)}>{h.toString().padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={formData.lunch_end_minute}
+                      onChange={(e) => setFormData({ ...formData, lunch_end_minute: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                    >
+                      {['0','15','30','45'].map(m => (
+                        <option key={m} value={m}>{m.padStart(2,'0')}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="exclude_weekends"
+                  type="checkbox"
+                  checked={formData.exclude_weekends}
+                  onChange={(e) => setFormData({ ...formData, exclude_weekends: e.target.checked })}
+                />
+                <label htmlFor="exclude_weekends" className="text-sm text-neutral-700">
+                  주말(토/일) 제외
+                </label>
+              </div>
+              <p className="text-xs text-neutral-400">
+                한국 시간(KST) 기준으로 적용됩니다.
+              </p>
+            </div>
+
             {/* 면접관 선택 - Avatar 토글 UI */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-neutral-900 mb-3">
@@ -419,6 +652,29 @@ export function ScheduleInterviewAutomatedModal({
                     <p className="text-xs text-red-600 mt-2">
                       최소 1명의 면접관을 선택해주세요.
                     </p>
+                  )}
+                  {/* 면접관 선호 시간대 설정 */}
+                  {formData.interviewer_ids.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      <h4 className="text-sm font-semibold text-neutral-900">면접관 선호 시간대</h4>
+                      {formData.interviewer_ids.map((id) => {
+                        const user = users.find(u => u.id === id);
+                        return (
+                          <div key={id} className="flex items-center gap-3">
+                            <span className="text-sm text-neutral-700 w-40 truncate">{user?.email || id}</span>
+                            <select
+                              value={interviewerPreferences[id] || 'none'}
+                              onChange={(e) => setInterviewerPreferences(prev => ({ ...prev, [id]: e.target.value as any }))}
+                              className="px-3 py-2 bg-[#FCFCFC] border border-neutral-200 rounded-lg text-sm"
+                            >
+                              <option value="none">선호 없음</option>
+                              <option value="morning">오전만</option>
+                              <option value="afternoon">오후만</option>
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </>
               )}

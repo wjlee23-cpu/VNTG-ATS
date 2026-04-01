@@ -43,6 +43,8 @@ type ExcludedTimeRange = {
   endMinute: number;
 };
 
+type AllowedTimeRange = ExcludedTimeRange;
+
 function readExternalInterviewerEmails(formData: FormData): string[] {
   const raw = formData.get('external_interviewer_emails');
   if (!raw) return [];
@@ -61,6 +63,62 @@ function readExternalInterviewerEmails(formData: FormData): string[] {
 }
 
 function readExcludedTimeRangesFromFormData(formData: FormData): ExcludedTimeRange[] {
+  // 새 업무시간/점심 입력이 오면 이를 우선 사용하여 "허용 구간 밖"을 제외 구간으로 변환
+  const workStartHour = formData.get('work_start_hour');
+  const workStartMinute = formData.get('work_start_minute');
+  const workEndHour = formData.get('work_end_hour');
+  const workEndMinute = formData.get('work_end_minute');
+  const lunchStartHour = formData.get('lunch_start_hour');
+  const lunchStartMinute = formData.get('lunch_start_minute');
+  const lunchEndHour = formData.get('lunch_end_hour');
+  const lunchEndMinute = formData.get('lunch_end_minute');
+
+  const hasWorkInputs =
+    workStartHour !== null &&
+    workStartMinute !== null &&
+    workEndHour !== null &&
+    workEndMinute !== null &&
+    lunchStartHour !== null &&
+    lunchStartMinute !== null &&
+    lunchEndHour !== null &&
+    lunchEndMinute !== null;
+
+  if (hasWorkInputs) {
+    const wsH = Number(workStartHour);
+    const wsM = Number(workStartMinute);
+    const weH = Number(workEndHour);
+    const weM = Number(workEndMinute);
+    const lsH = Number(lunchStartHour);
+    const lsM = Number(lunchStartMinute);
+    const leH = Number(lunchEndHour);
+    const leM = Number(lunchEndMinute);
+
+    const valid = (...nums: number[]) => nums.every(n => Number.isFinite(n));
+    const inRange = (h: number, m: number) =>
+      h >= 0 && h <= 23 && m >= 0 && m <= 59;
+    const toMin = (h: number, m: number) => h * 60 + m;
+
+    if (
+      valid(wsH, wsM, weH, weM, lsH, lsM, leH, leM) &&
+      inRange(wsH, wsM) &&
+      inRange(weH, weM) &&
+      inRange(lsH, lsM) &&
+      inRange(leH, leM) &&
+      toMin(wsH, wsM) < toMin(weH, weM) &&
+      toMin(lsH, lsM) < toMin(leH, leM)
+    ) {
+      const ranges: ExcludedTimeRange[] = [];
+      // 00:00 ~ 업무 시작
+      ranges.push({ startHour: 0, startMinute: 0, endHour: wsH, endMinute: wsM });
+      // 점심 시간
+      ranges.push({ startHour: lsH, startMinute: lsM, endHour: leH, endMinute: leM });
+      // 업무 종료 ~ 24:00
+      ranges.push({ startHour: weH, startMinute: weM, endHour: 23, endMinute: 59 });
+      return ranges;
+    }
+    // 유효성 실패 시 아래의 구(기존) 단일 제외 파라미터 해석으로 폴백
+  }
+
   const startHourRaw = formData.get('exclude_start_hour');
   const startMinuteRaw = formData.get('exclude_start_minute');
   const endHourRaw = formData.get('exclude_end_hour');
@@ -105,6 +163,35 @@ function readExcludedTimeRangesFromFormData(formData: FormData): ExcludedTimeRan
   }
 
   return [{ startHour, startMinute, endHour, endMinute }];
+}
+
+function readAllowedTimeRangesFromFormData(formData: FormData): AllowedTimeRange[] | undefined {
+  // allowed_time_ranges 가 JSON 문자열로 전달되는 것을 가정
+  const raw = formData.get('allowed_time_ranges');
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return undefined;
+    const ranges: AllowedTimeRange[] = [];
+    for (const r of parsed) {
+      if (
+        typeof r?.startHour === 'number' &&
+        typeof r?.startMinute === 'number' &&
+        typeof r?.endHour === 'number' &&
+        typeof r?.endMinute === 'number'
+      ) {
+        ranges.push({
+          startHour: r.startHour,
+          startMinute: r.startMinute,
+          endHour: r.endHour,
+          endMinute: r.endMinute,
+        });
+      }
+    }
+    return ranges.length > 0 ? ranges : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readExcludedTimeRangesFromSchedule(schedule: any): ExcludedTimeRange[] {
@@ -808,7 +895,31 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       5,
       '일정 옵션 개수'
     );
-    const excludedTimeRanges = readExcludedTimeRangesFromFormData(formData);
+    let excludedTimeRanges = readExcludedTimeRangesFromFormData(formData);
+    // 제외시간 미설정 시 기본 점심시간(11:30~12:30) 적용
+    if (!excludedTimeRanges || excludedTimeRanges.length === 0) {
+      excludedTimeRanges = [{ startHour: 11, startMinute: 30, endHour: 12, endMinute: 30 }];
+    }
+    // 허용시간(가능시간) 읽기 - 없으면 서버에서 BUSINESS_HOURS 사용
+    const allowedTimeRanges = readAllowedTimeRangesFromFormData(formData);
+    // 면접관 선호 읽기 (id -> morning|afternoon|none)
+    let interviewerPreferences: Record<string, 'morning' | 'afternoon' | 'none'> | undefined = undefined;
+    const prefRaw = formData.get('interviewer_preferences');
+    if (prefRaw) {
+      try {
+        const obj = JSON.parse(String(prefRaw));
+        if (obj && typeof obj === 'object') {
+          interviewerPreferences = {};
+          for (const [k, v] of Object.entries(obj)) {
+            if (v === 'morning' || v === 'afternoon' || v === 'none') {
+              interviewerPreferences[k] = v;
+            }
+          }
+        }
+      } catch {
+        // 무시하고 진행
+      }
+    }
 
     // 비가입 면접관 이메일 개인 저장 (중복은 unique(user_id, email)로 방지)
     if (externalInterviewerEmails.length > 0) {
@@ -973,7 +1084,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       // 공통 가능 일정 찾기
       // 1차 시도: 모든 면접관이 가능한 일정만 찾기
       // 2차 시도 이후: 부분적 충돌 허용 모드로 전환
-      const availableSlots = await findAvailableTimeSlots({
+      let availableSlots = await findAvailableTimeSlots({
         candidateName: candidate.name,
         stageName: stageId,
         interviewerIds: availabilityInterviewerIds,
@@ -990,8 +1101,24 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         minAvailableInterviewers: allowPartialConflict
           ? Math.max(1, Math.floor(availabilityInterviewerIds.length * 0.5))
           : availabilityInterviewerIds.length, // 부분적 충돌 시 최소 50% 이상
+        allowedTimeRanges,
         excludedTimeRanges,
+        interviewerPreferences,
       });
+
+      // 주말 제외 옵션 처리: formData로부터 읽어서 토/일은 제거
+      const excludeWeekendsRaw = formData.get('exclude_weekends');
+      const excludeWeekends =
+        typeof excludeWeekendsRaw === 'string'
+          ? excludeWeekendsRaw === 'true'
+          : false;
+      if (excludeWeekends) {
+        availableSlots = availableSlots.filter(slot => {
+          const d = slot.scheduledAt;
+          const day = d.getDay(); // 0=일,6=토
+          return day !== 0 && day !== 6;
+        });
+      }
 
       // 상위 N개 일정 선택 (numOptions만큼)
       // 부분적 충돌이 없는 옵션을 우선 선택
@@ -1458,6 +1585,28 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       ? `면접 일정 자동화가 시작되었습니다. 원본 날짜 범위에 일정이 없어 ${retryCount}회 날짜 범위를 확장하여 검색했습니다. 면접관들의 수락을 기다리는 중입니다.`
       : '면접 일정 자동화가 시작되었습니다. 면접관들의 수락을 기다리는 중입니다.';
     
+    // 요약 로그: 제외 설정을 간단히 표기
+    try {
+      const ws = formData.get('work_start_hour');
+      const wm = formData.get('work_start_minute');
+      const we = formData.get('work_end_hour');
+      const wem = formData.get('work_end_minute');
+      const ls = formData.get('lunch_start_hour');
+      const lsm = formData.get('lunch_start_minute');
+      const le = formData.get('lunch_end_hour');
+      const lem = formData.get('lunch_end_minute');
+      const ew = formData.get('exclude_weekends');
+      console.log('[스케줄 자동화] 제외 설정 요약', {
+        work: ws !== null && wm !== null && we !== null && wem !== null
+          ? `${String(ws).padStart(2,'0')}:${String(wm).padStart(2,'0')}~${String(we).padStart(2,'0')}:${String(wem).padStart(2,'0')}`
+          : '미설정',
+        lunch: ls !== null && lsm !== null && le !== null && lem !== null
+          ? `${String(ls).padStart(2,'0')}:${String(lsm).padStart(2,'0')}~${String(le).padStart(2,'0')}:${String(lem).padStart(2,'0')}`
+          : '미설정',
+        excludeWeekends: String(ew),
+      });
+    } catch {}
+    
     console.log(`[타임라인] 일정 자동화 시작 이벤트 생성: candidateId=${candidateId}, scheduleId=${schedule.id}`);
     
     const { data: timelineData, error: timelineError } = await supabase.from('timeline_events').insert({
@@ -1689,7 +1838,8 @@ async function regenerateScheduleOptions(scheduleId: string) {
       startDate: currentStartDate,
       endDate: currentEndDate,
       durationMinutes: schedule.duration_minutes,
-      excludedTimeRanges,
+    allowedTimeRanges: undefined,
+    excludedTimeRanges,
     });
 
     // 상위 N개 일정 선택 (기존에 생성된 일정 옵션 개수와 동일하게)
@@ -3631,7 +3781,8 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
       startDate: newStartDate,
       endDate: newEndDate,
       durationMinutes: schedule.duration_minutes,
-      excludedTimeRanges,
+    allowedTimeRanges: undefined,
+    excludedTimeRanges,
     });
 
     if (availableSlots.length === 0) {

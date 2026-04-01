@@ -1,5 +1,6 @@
 import { CalendarEvent } from '../calendar/google'
 import { addDays, startOfDay, addMinutes, isAfter, isBefore, isEqual } from 'date-fns'
+import { toZonedTime, fromZonedTime } from 'date-fns-tz'
 import { isKoreanHoliday } from '../utils/korean-holidays'
 import { 
   SCORING_WEIGHTS, 
@@ -8,6 +9,9 @@ import {
   MIN_SLOT_INTERVAL_MINUTES, 
   MAX_SCHEDULE_OPTIONS,
 } from './schedule-constants'
+
+// KST 타임존 상수
+const KST_TIMEZONE = 'Asia/Seoul'
 
 export interface ScheduleOption {
   scheduledAt: Date
@@ -28,6 +32,17 @@ export interface ScheduleRequest {
   allowPartialConflict?: boolean // 부분적 충돌 허용 옵션 (면접관 중 일부만 가능해도 제안)
   minAvailableInterviewers?: number // 최소 필요한 면접관 수 (기본값: 모든 면접관)
   /**
+   * 허용할 시간대 목록 (가능시간)
+   * - 지정된 경우, 이 구간 내의 슬롯만 생성
+   * - 미지정 시 BUSINESS_HOURS(10:00~17:00)를 기본 허용으로 사용
+   */
+  allowedTimeRanges?: Array<{
+    startHour: number
+    startMinute: number
+    endHour: number
+    endMinute: number
+  }>
+  /**
    * 제외할 시간대 목록
    * - 예: 점심시간(11:30~12:30) 등
    * - startHour/startMinute ~ endHour/endMinute 구간과 겹치는 슬롯은 생성하지 않음
@@ -39,6 +54,13 @@ export interface ScheduleRequest {
     endHour: number
     endMinute: number
   }>
+  /**
+   * 면접관 선호 시간대
+   * - morning: 10:00~12:00(점심 11:30~12:30 제외)
+   * - afternoon: 13:00~17:00
+   * - none: 선호 없음
+   */
+  interviewerPreferences?: Record<string, 'morning' | 'afternoon' | 'none'>
 }
 
 /**
@@ -82,6 +104,36 @@ function mergeBusyTimes(busyTimes: CalendarEvent[]): Array<{ start: Date; end: D
 }
 
 /**
+ * KST(Asia/Seoul) 기준으로 자정(00:00) 시각의 UTC Date를 반환
+ */
+function getKstStartOfDayUtc(date: Date): Date {
+  const kst = toZonedTime(date, KST_TIMEZONE)
+  const kstStart = startOfDay(kst)
+  return fromZonedTime(kstStart, KST_TIMEZONE)
+}
+
+/**
+ * 슬롯이 특정 허용(allowed) 구간 안에 있는지 확인 (KST 기준)
+ */
+function isInAllowedRangesKst(
+  hour: number,
+  minute: number,
+  allowed: Array<{ startHour: number; startMinute: number; endHour: number; endMinute: number }> | undefined
+): boolean {
+  // allowed가 없거나 빈 배열이면 BUSINESS_HOURS를 기본 허용 구간으로 사용
+  const ranges = (allowed && allowed.length > 0)
+    ? allowed
+    : [{ startHour: BUSINESS_HOURS.start, startMinute: 0, endHour: BUSINESS_HOURS.end, endMinute: 0 }]
+
+  const total = hour * 60 + minute
+  return ranges.some(r => {
+    const s = r.startHour * 60 + r.startMinute
+    const e = r.endHour * 60 + r.endMinute
+    return total >= s && total < e
+  })
+}
+
+/**
  * 모든 면접관의 busy time을 하나의 타임라인으로 병합하고,
  * 각 시간대에 대해 가능한 면접관을 추적
  * 
@@ -96,6 +148,12 @@ function findAvailableSlotsOptimized(
   durationMinutes: number,
   allowPartialConflict: boolean,
   minAvailableInterviewers: number,
+  allowedTimeRanges: Array<{
+    startHour: number
+    startMinute: number
+    endHour: number
+    endMinute: number
+  }> | undefined,
   excludedTimeRanges: Array<{
     startHour: number
     startMinute: number
@@ -121,30 +179,38 @@ function findAvailableSlotsOptimized(
     isPartialConflict: boolean
   }> = []
   
-  let current = startOfDay(startDate)
+  let current = getKstStartOfDayUtc(startDate)
   
   while (current <= endDate) {
-    const dayOfWeek = current.getDay()
+    const currentKst = toZonedTime(current, KST_TIMEZONE)
+    const dayOfWeek = currentKst.getDay()
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
     
-    if (isWeekend || isKoreanHoliday(current)) {
+    if (isWeekend || isKoreanHoliday(currentKst)) {
       current = addDays(current, 1)
       continue
     }
     
-    const dayStart = startOfDay(current)
+    const dayStartUtc = getKstStartOfDayUtc(current)
     
     // 비즈니스 시간 내에서 30분 간격으로 슬롯 생성
     for (let hour = BUSINESS_HOURS.start; hour < BUSINESS_HOURS.end; hour++) {
       for (let minute = 0; minute < 60; minute += SLOT_INTERVAL_MINUTES) {
-        const slot = new Date(dayStart)
-        slot.setHours(hour, minute, 0, 0)
+        // KST 기준 슬롯 생성 후 UTC로 변환
+        const slotKst = toZonedTime(dayStartUtc, KST_TIMEZONE)
+        slotKst.setHours(hour, minute, 0, 0)
+        const slot = fromZonedTime(slotKst, KST_TIMEZONE)
 
         if (slot < startDate || slot > endDate) continue
 
-        // 제외 시간대(점심시간 등)에 포함되는 슬롯은 스킵
-        const slotLocalHour = slot.getHours()
-        const slotLocalMinute = slot.getMinutes()
+        // 허용/제외 시간대는 KST 기준
+        const slotLocalHour = slotKst.getHours()
+        const slotLocalMinute = slotKst.getMinutes()
+
+        // 허용 시간대 밖이면 스킵
+        if (!isInAllowedRangesKst(slotLocalHour, slotLocalMinute, allowedTimeRanges)) {
+          continue
+        }
 
         const isExcluded = excludedTimeRanges.some(range => {
           const slotTotalMinutes = slotLocalHour * 60 + slotLocalMinute
@@ -363,7 +429,9 @@ export async function findAvailableTimeSlots(
     durationMinutes = 60,
     allowPartialConflict = false,
     minAvailableInterviewers = interviewerIds.length,
+    allowedTimeRanges,
     excludedTimeRanges = [],
+    interviewerPreferences,
   } = request
 
   // 최적화된 알고리즘으로 슬롯 생성
@@ -375,12 +443,38 @@ export async function findAvailableTimeSlots(
     durationMinutes,
     allowPartialConflict,
     minAvailableInterviewers,
+    allowedTimeRanges,
     excludedTimeRanges
   )
 
+  // 면접관 선호(오전/오후) 반영
+  const slotsWithPreferences = slots.map(s => {
+    if (!interviewerPreferences) return s
+    const kst = toZonedTime(s.slot, KST_TIMEZONE)
+    const h = kst.getHours()
+    const m = kst.getMinutes()
+    const inMorning = (h < 12) && !(h === 11 && m >= 30) // 10:00~11:30
+    const inAfternoon = h >= 13 // 13:00~17:00
+
+    const filteredAvailable = s.availableInterviewers.filter(id => {
+      const pref = interviewerPreferences[id] || 'none'
+      if (pref === 'none') return true
+      if (pref === 'morning') return inMorning
+      if (pref === 'afternoon') return inAfternoon
+      return true
+    })
+    const missing = interviewerIds.filter(id => !filteredAvailable.includes(id))
+    return {
+      ...s,
+      availableInterviewers: filteredAvailable,
+      missingInterviewers: missing,
+      isPartialConflict: missing.length > 0,
+    }
+  })
+
   // 슬롯 필터링 및 정렬
   const filteredAndSorted = filterAndSortSlots(
-    slots,
+    slotsWithPreferences,
     interviewerIds.length,
     minAvailableInterviewers,
     allowPartialConflict,
@@ -390,9 +484,10 @@ export async function findAvailableTimeSlots(
   // 최종 필터링: 공휴일 제거 및 결과 변환
   const finalSlots = filteredAndSorted
     .filter(slotData => {
-      const dayOfWeek = slotData.slot.getDay()
+      const dayOfWeek = toZonedTime(slotData.slot, KST_TIMEZONE).getDay()
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-      return !isWeekend && !isKoreanHoliday(slotData.slot)
+      const kst = toZonedTime(slotData.slot, KST_TIMEZONE)
+      return !isWeekend && !isKoreanHoliday(kst)
     })
     .map(slotData => ({
       scheduledAt: slotData.slot,
