@@ -60,6 +60,9 @@ export function CandidateDetailClient({
   const [evaluations, setEvaluations] = useState<unknown[]>([]);
   const [resumeFiles, setResumeFiles] = useState<ResumeFile[]>([]);
   const [timelineEventsState, setTimelineEventsState] = useState<TimelineEvent[]>(timelineEvents);
+  // 타임라인 탭 지연 로딩을 위한 상태
+  const [hasLoadedTimeline, setHasLoadedTimeline] = useState<boolean>(timelineEvents.length > 0);
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer' | 'hiring_manager'>('recruiter');
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
@@ -131,10 +134,15 @@ export function CandidateDetailClient({
 
   const refreshTimelineEvents = async () => {
     try {
-      const result = await getTimelineEvents(candidate.id);
+      setIsLoadingTimeline(true);
+      // ✅ 라이트 모드(기본): 초기/탭 진입 시에는 이메일 병합을 하지 않아 빠르게 표시합니다.
+      const result = await getTimelineEvents(candidate.id, 50, { includeEmails: false });
       if (result.data) setTimelineEventsState(result.data);
+      setHasLoadedTimeline(true);
     } catch (error) {
       console.error('[CandidateDetailClient] 타임라인 이벤트 업데이트 실패:', error);
+    } finally {
+      setIsLoadingTimeline(false);
     }
   };
 
@@ -150,6 +158,16 @@ export function CandidateDetailClient({
     if (typeof window === 'undefined' || !candidate.id) return;
     window.sessionStorage.setItem(getDetailTabStorageKey(), detailInitialTab);
   }, [candidate.id, detailInitialTab]);
+
+  // ✅ Activity Timeline 탭에 진입했을 때만 타임라인을 로드합니다.
+  useEffect(() => {
+    if (!candidate.id) return;
+    if (detailInitialTab !== 'timeline') return;
+    if (hasLoadedTimeline) return;
+    // 첫 진입에만 자동 로드
+    refreshTimelineEvents().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailInitialTab, candidate.id, hasLoadedTimeline]);
 
   useEffect(() => {
     if (viewMode === 'scheduling') loadUsers();
@@ -262,7 +280,9 @@ export function CandidateDetailClient({
   };
 
   const loadAvailableStages = async () => {
-    if (!candidate.job_posts?.id) {
+    // ✅ job_posts는 쿼리 레이어에서 단일 객체로 정규화됩니다.
+    const jobPost = candidate.job_posts;
+    if (!jobPost?.id) {
       toast.error('채용 공고 정보를 찾을 수 없습니다.');
       return;
     }
@@ -272,7 +292,7 @@ export function CandidateDetailClient({
     }
     setIsLoadingStages(true);
     try {
-      const result = await getAvailableStagesAction(candidate.job_posts.id, currentStageId);
+      const result = await getAvailableStagesAction(jobPost.id, currentStageId);
       if (result.error) {
         toast.error(result.error || '단계 목록을 불러오는데 실패했습니다.');
       } else {
@@ -291,7 +311,9 @@ export function CandidateDetailClient({
   };
 
   const handleMoveToStage = async (targetStageId: string) => {
-    if (!currentStageId?.trim() || !candidate.job_posts?.id) {
+    // ✅ job_posts는 쿼리 레이어에서 단일 객체로 정규화됩니다.
+    const jobPost = candidate.job_posts;
+    if (!currentStageId?.trim() || !jobPost?.id) {
       toast.error('전형 정보를 찾을 수 없습니다.');
       return;
     }
@@ -644,7 +666,9 @@ export function CandidateDetailClient({
   const getCurrentStageName = (): string => {
     if (!currentStageId) return 'New Application';
     if (STAGE_ID_TO_NAME_MAP[currentStageId]) return STAGE_ID_TO_NAME_MAP[currentStageId];
-    const stages = candidate.job_posts?.processes?.stages;
+    // ✅ job_posts는 쿼리 레이어에서 단일 객체로 정규화됩니다.
+    const jobPost = candidate.job_posts;
+    const stages = jobPost?.processes?.stages;
     if (stages?.length) {
       const stage = stages.find((s) => s.id === currentStageId);
       if (stage?.name) return stage.name;
@@ -693,6 +717,8 @@ export function CandidateDetailClient({
           onEmailClick={() => setIsEmailModalOpen(true)}
           onArchiveClick={() => setIsArchiveModalOpen(true)}
           timelineEvents={timelineEventsState}
+          isTimelineLoading={isLoadingTimeline}
+          hasLoadedTimeline={hasLoadedTimeline}
           expandedEmails={expandedEmails}
           onToggleEmailExpand={toggleEmailExpand}
           onAddComment={() => setIsCommentModalOpen(true)}

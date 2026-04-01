@@ -4,6 +4,7 @@
  */
 
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { cache } from 'react';
 
 /**
  * 권한 레벨 타입 정의
@@ -36,7 +37,12 @@ export function checkRole(userRole: UserRole, requiredRole: UserRole): boolean {
  * @returns 사용자 정보와 organization_id, auth.user 정보 포함
  * @throws 인증되지 않은 경우 에러 발생
  */
-export async function getCurrentUser() {
+/**
+ * 현재 요청(request) 범위에서만 캐시되는 getCurrentUser()
+ * - 같은 서버 렌더/서버 액션 흐름에서 여러 번 호출되어도 DB 왕복을 줄입니다.
+ * - 주의: 사용자/조직 정보가 즉시 반영되어야 하는 경우는 별도 함수로 처리해야 합니다.
+ */
+export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
   
   // 현재 로그인한 사용자 확인
@@ -228,7 +234,7 @@ export async function getCurrentUser() {
     // auth.user 객체 정보 (프로필 이미지 등에 사용)
     authUser: user,
   };
-}
+});
 
 /**
  * 특정 organization_id에 대한 접근 권한을 확인합니다.

@@ -43,6 +43,10 @@ export interface Candidate {
   ai_score?: number | null;
   parsed_data: CandidateParsedData | null;
   created_at: string;
+  /**
+   * 후보자 목록(getCandidates)에서는 쿼리 레이어에서 job_posts를 "단일 객체"로 정규화합니다.
+   * 따라서 앱 전체에서 job_posts는 객체로 사용합니다.
+   */
   job_posts?: {
     id?: string;
     title: string;

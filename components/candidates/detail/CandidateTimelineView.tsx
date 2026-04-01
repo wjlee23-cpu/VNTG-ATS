@@ -15,6 +15,10 @@ import { toast } from 'sonner';
 interface CandidateTimelineViewProps {
   candidateName: string;
   events: TimelineEvent[];
+  /** 타임라인 데이터를 불러오는 중인지(탭 지연 로딩) */
+  isLoading?: boolean;
+  /** 타임라인을 한 번이라도 로드해본 적이 있는지(빈 상태 메시지 제어) */
+  hasLoaded?: boolean;
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
   candidateId: string;
@@ -33,6 +37,8 @@ interface CandidateTimelineViewProps {
 export function CandidateTimelineView({
   candidateName,
   events,
+  isLoading = false,
+  hasLoaded = true,
   expandedEmails,
   onToggleEmailExpand,
   candidateId,
@@ -222,9 +228,15 @@ export function CandidateTimelineView({
         </div>
 
         {/* 타임라인 이벤트 리스트 */}
-        {events.length === 0 ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <p className="text-sm text-neutral-500">타임라인 이벤트가 없습니다.</p>
+            <p className="text-sm text-neutral-500">타임라인을 불러오는 중입니다...</p>
+          </div>
+        ) : events.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <p className="text-sm text-neutral-500">
+              {hasLoaded ? '타임라인 이벤트가 없습니다.' : '타임라인을 불러올 준비 중입니다...'}
+            </p>
           </div>
         ) : (
           <div className="relative border-l border-neutral-200 ml-[15px] pb-8">

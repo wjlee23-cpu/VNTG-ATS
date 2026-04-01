@@ -9,10 +9,17 @@ import { withErrorHandling } from '@/api/utils/errors';
  * 특정 후보자의 타임라인 이벤트 조회
  * @param candidateId 후보자 ID
  * @param limit 조회할 이벤트 수 (기본값: 50)
+ * @param options 추가 옵션 (기본값: { includeEmails: true })
  * @returns 타임라인 이벤트 목록
  */
-export async function getTimelineEvents(candidateId: string, limit: number = 50) {
+export async function getTimelineEvents(
+  candidateId: string,
+  limit: number = 50,
+  options: { includeEmails?: boolean } = {}
+) {
   return withErrorHandling(async () => {
+    const includeEmails = options.includeEmails ?? true;
+
     // 접근 권한 확인
     await verifyCandidateAccess(candidateId);
     const user = await getCurrentUser();
@@ -22,21 +29,8 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
     // 이미 verifyCandidateAccess로 권한 확인을 끝냈으니 Service Role로 안전하게 조회합니다.
     const supabase = createServiceClient();
 
-    // 먼저 단순 조회로 테스트
-    const { data: simpleData, error: simpleError } = await supabase
-      .from('timeline_events')
-      .select('*')
-      .eq('candidate_id', candidateId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (simpleError) {
-      console.error('[타임라인 조회] 단순 조회 실패:', simpleError);
-      throw new Error(`타임라인 이벤트 조회 실패: ${simpleError.message}`);
-    }
-
-    // 조인 쿼리 시도 (LEFT JOIN 사용: created_by가 null인 경우에도 조회 가능)
-    // 외래 키 관계를 명시하기 위해 `!` 사용
+    // ✅ 라이트 모드(기본): created_by_user 조인만 포함하고, emails 병합은 하지 않습니다.
+    // - 탭 진입 시 빠르게 보여주기 위한 목적
     const { data, error } = await supabase
       .from('timeline_events')
       .select(`
@@ -52,31 +46,18 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    // 조인 쿼리 결과 처리: data가 없거나 조인 실패 시 simpleData 사용
-    let timelineData: any[] = [];
-    let useSimpleData = false;
-    
     if (error) {
-      console.error('[타임라인 조회] 조인 쿼리 실패:', error);
-      console.log('[타임라인 조회] 조인 없이 단순 조회 결과 사용');
-      timelineData = simpleData || [];
-      useSimpleData = true;
-    } else if (data && simpleData && data.length < simpleData.length) {
-      console.warn(`[타임라인 조회] 조인 결과가 단순 조회보다 적음 (조인: ${data.length}, 단순: ${simpleData.length}). 단순 조회 결과 사용`);
-      // 단순 조회 결과에 created_by_user 정보를 수동으로 추가
-      timelineData = simpleData.map((event: any) => {
-        if (event.created_by) {
-          const joinedEvent = data.find((e: any) => e.id === event.id);
-          if (joinedEvent && joinedEvent.created_by_user) {
-            return { ...event, created_by_user: joinedEvent.created_by_user };
-          }
-        }
-        return event;
-      });
-      useSimpleData = true;
-    } else {
-      timelineData = data || [];
-      console.log(`[타임라인 조회] 성공: ${timelineData.length}개 이벤트`);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[타임라인 조회] 조인 쿼리 실패:', error);
+      }
+      throw new Error(`타임라인 이벤트 조회 실패: ${error.message}`);
+    }
+
+    const timelineData: any[] = data || [];
+
+    // includeEmails=false인 경우는 여기서 바로 반환(가장 빠름)
+    if (!includeEmails) {
+      return timelineData;
     }
     
     // 이메일 타입 이벤트의 경우 emails 테이블에서 실제 이메일 내용 가져오기
@@ -97,7 +78,9 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
     // emails 테이블에서 해당 후보자의 모든 이메일 조회 (타임라인 이벤트가 없는 이메일도 포함)
     // RLS 정책 우회를 위해 Service Role Client 사용
     const emailSupabase = createServiceClient();
-    console.log(`[타임라인 조회] 이메일 조회 시작 - 후보자 ID: ${candidateId}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[타임라인 조회] 이메일 조회 시작 - 후보자 ID: ${candidateId}`);
+    }
     const { data: allEmails, error: allEmailsError } = await emailSupabase
       .from('emails')
       .select('id, subject, body, from_email, to_email, direction, sent_at, received_at, created_at')
@@ -106,44 +89,13 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
       .limit(limit * 2); // 타임라인 이벤트보다 더 많이 조회하여 누락된 이메일도 찾기
     
     if (allEmailsError) {
-      console.error('[타임라인 조회] 이메일 조회 실패:', allEmailsError);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[타임라인 조회] 이메일 조회 실패:', allEmailsError);
+      }
       // 에러가 발생해도 계속 진행 (타임라인 이벤트는 표시)
     } else {
-      console.log(`[타임라인 조회] 이메일 조회 성공: ${allEmails?.length || 0}개 이메일`);
-      if (allEmails && allEmails.length > 0) {
-        console.log(`[타임라인 조회] 이메일 방향 분포: inbound ${allEmails.filter((e: any) => e.direction === 'inbound').length}개, outbound ${allEmails.filter((e: any) => e.direction === 'outbound').length}개`);
-        // 디버깅: 이메일 샘플 출력 (처음 5개만, 날짜 정보 포함)
-        allEmails.slice(0, 5).forEach((email: any, index: number) => {
-          const emailDate = email.received_at || email.sent_at || email.created_at;
-          const dateStr = emailDate ? new Date(emailDate).toLocaleString('ko-KR') : '날짜 없음';
-          console.log(`[타임라인 조회] 이메일 ${index + 1}: ${email.subject || '제목 없음'} (${email.direction}) - From: ${email.from_email}, To: ${email.to_email}, 날짜: ${dateStr}`);
-        });
-        
-        // 특정 날짜(2월 24일) 이메일 확인
-        const targetDate = new Date('2026-02-24T17:35:00');
-        const targetDateStart = new Date(targetDate);
-        targetDateStart.setHours(0, 0, 0, 0);
-        const targetDateEnd = new Date(targetDate);
-        targetDateEnd.setHours(23, 59, 59, 999);
-        
-        const emailsOnTargetDate = allEmails.filter((email: any) => {
-          const emailDate = email.received_at || email.sent_at || email.created_at;
-          if (!emailDate) return false;
-          const date = new Date(emailDate);
-          return date >= targetDateStart && date <= targetDateEnd;
-        });
-        
-        if (emailsOnTargetDate.length > 0) {
-          console.log(`[타임라인 조회] 2026-02-24 날짜의 이메일 발견: ${emailsOnTargetDate.length}개`);
-          emailsOnTargetDate.forEach((email: any, index: number) => {
-            const emailDate = email.received_at || email.sent_at || email.created_at;
-            console.log(`[타임라인 조회] 2월 24일 이메일 ${index + 1}: ${email.subject || '제목 없음'} - ${new Date(emailDate).toLocaleString('ko-KR')}`);
-          });
-        } else {
-          console.warn(`[타임라인 조회] 2026-02-24 날짜의 이메일을 찾을 수 없습니다.`);
-        }
-      } else {
-        console.warn(`[타임라인 조회] 후보자 ID ${candidateId}에 대한 이메일이 없습니다. 이메일 동기화가 필요할 수 있습니다.`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[타임라인 조회] 이메일 조회 성공: ${allEmails?.length || 0}개 이메일`);
       }
     }
     
@@ -213,9 +165,13 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
         emails.forEach((email: any) => {
           emailDataMap.set(email.id, email);
         });
-        console.log(`[타임라인 조회] 타임라인 이벤트 연결 이메일 조회 성공: ${emails.length}개`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[타임라인 조회] 타임라인 이벤트 연결 이메일 조회 성공: ${emails.length}개`);
+        }
       } else if (emailError) {
-        console.error('[타임라인 조회] 타임라인 이벤트 연결 이메일 조회 실패:', emailError);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[타임라인 조회] 타임라인 이벤트 연결 이메일 조회 실패:', emailError);
+        }
       }
     }
     
@@ -261,16 +217,21 @@ export async function getTimelineEvents(candidateId: string, limit: number = 50)
     
     // 이메일 이벤트 개수 확인
     const emailEventCount = allEvents.filter((e: any) => e.type === 'email' || e.type === 'email_received').length;
-    const dataSource = useSimpleData ? '단순 조회' : '조인 조회';
-    console.log(`[타임라인 조회] 최종 결과 (${dataSource}): 타임라인 이벤트 ${enrichedData.length}개, 누락된 이메일 ${missingEmailEvents.length}개, 총 ${allEvents.length}개 (이메일 이벤트: ${emailEventCount}개)`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `[타임라인 조회] 최종 결과: 타임라인 이벤트 ${enrichedData.length}개, 누락된 이메일 ${missingEmailEvents.length}개, 총 ${allEvents.length}개 (이메일 이벤트: ${emailEventCount}개)`,
+      );
+    }
     
     // 이메일 동기화 상태 확인 및 경고
-    if (!allEmailsError && allEmails && allEmails.length === 0) {
-      console.warn(`[타임라인 조회] ⚠️ 후보자 ID ${candidateId}에 대한 이메일이 emails 테이블에 없습니다.`);
-      console.warn(`[타임라인 조회] ⚠️ 이메일을 타임라인에 표시하려면 syncCandidateEmails 함수를 실행하여 Gmail에서 이메일을 동기화해야 합니다.`);
-    } else if (allEmails && allEmails.length > 0 && emailEventCount === 0) {
-      console.warn(`[타임라인 조회] ⚠️ emails 테이블에 ${allEmails.length}개의 이메일이 있지만, 타임라인에 표시되지 않았습니다.`);
-      console.warn(`[타임라인 조회] ⚠️ 이메일의 candidate_id가 올바른지 확인하세요.`);
+    if (process.env.NODE_ENV === 'development') {
+      if (!allEmailsError && allEmails && allEmails.length === 0) {
+        console.warn(`[타임라인 조회] ⚠️ 후보자 ID ${candidateId}에 대한 이메일이 emails 테이블에 없습니다.`);
+        console.warn(`[타임라인 조회] ⚠️ 이메일을 타임라인에 표시하려면 syncCandidateEmails 함수를 실행하여 Gmail에서 이메일을 동기화해야 합니다.`);
+      } else if (allEmails && allEmails.length > 0 && emailEventCount === 0) {
+        console.warn(`[타임라인 조회] ⚠️ emails 테이블에 ${allEmails.length}개의 이메일이 있지만, 타임라인에 표시되지 않았습니다.`);
+        console.warn(`[타임라인 조회] ⚠️ 이메일의 candidate_id가 올바른지 확인하세요.`);
+      }
     }
     
     // ✅ 일정 자동화 타임라인 중복 정리(레거시 이벤트 대비)

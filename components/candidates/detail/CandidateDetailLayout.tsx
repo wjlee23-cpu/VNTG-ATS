@@ -31,6 +31,10 @@ interface CandidateDetailLayoutProps {
   onEmailClick: () => void;
   onArchiveClick: () => void;
   timelineEvents: TimelineEvent[];
+  /** 타임라인 탭에서 데이터를 불러오는 중인지(지연 로딩) */
+  isTimelineLoading?: boolean;
+  /** 타임라인을 한 번이라도 로드해본 적이 있는지(빈 상태 메시지 제어) */
+  hasLoadedTimeline?: boolean;
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
   onAddComment: () => void;
@@ -68,6 +72,8 @@ export function CandidateDetailLayout({
   onEmailClick,
   onArchiveClick,
   timelineEvents,
+  isTimelineLoading = false,
+  hasLoadedTimeline = false,
   expandedEmails,
   onToggleEmailExpand,
   onAddComment,
@@ -156,6 +162,8 @@ export function CandidateDetailLayout({
           <CandidateTimelineView
             candidateName={candidate.name}
             events={timelineEvents}
+            isLoading={isTimelineLoading}
+            hasLoaded={hasLoadedTimeline}
             expandedEmails={expandedEmails}
             onToggleEmailExpand={onToggleEmailExpand}
             candidateId={candidate.id}

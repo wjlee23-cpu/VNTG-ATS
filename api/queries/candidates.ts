@@ -39,12 +39,22 @@ export async function getCandidates(jobPostId?: string) {
       ? [validateUUID(jobPostId, '채용 공고 ID')]
       : jobPosts.map(jp => jp.id);
 
-    // job_post_id 필터링 및 후보자 조회 (process 정보 포함)
-    // 기본적으로 아카이브되지 않은 후보자만 조회
+    // job_post_id 필터링 및 후보자 조회
+    // - 목록 테이블에서 필요한 필드만 선택해 페이로드를 줄입니다.
+    // - 기본적으로 아카이브되지 않은 후보자만 조회합니다.
     const { data, error } = await supabase
       .from('candidates')
       .select(`
-        *,
+        id,
+        name,
+        email,
+        phone,
+        status,
+        current_stage_id,
+        job_post_id,
+        ai_score,
+        parsed_data,
+        created_at,
         job_posts (
           id,
           title,
@@ -65,7 +75,18 @@ export async function getCandidates(jobPostId?: string) {
       throw new Error(`후보자 조회 실패: ${error.message}`);
     }
 
-    return data || [];
+    // ✅ Supabase join 결과가 job_posts를 배열로 내려주는 경우가 있어,
+    // UI에서 항상 "단일 객체"로 다룰 수 있게 여기서 정규화합니다.
+    const normalized =
+      (data || []).map((row: any) => {
+        const jp = row?.job_posts;
+        return {
+          ...row,
+          job_posts: Array.isArray(jp) ? jp[0] : jp,
+        };
+      }) || [];
+
+    return normalized;
   });
 }
 

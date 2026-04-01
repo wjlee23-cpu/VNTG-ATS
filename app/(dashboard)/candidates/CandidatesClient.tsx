@@ -5,10 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getStageNameByStageId, getStageNameById } from "@/constants/stages";
 import { CANDIDATE_STATUS_CONFIG } from "@/constants/candidates";
 import {
-  getCandidateById,
   getArchivedCandidates,
   getConfirmedCandidates,
 } from "@/api/queries/candidates";
+import { getCandidateDetailBundle } from "@/api/queries/candidate-detail-bundle";
 import { confirmHire } from "@/api/actions/offers";
 import { sendEmailToCandidate } from "@/api/actions/emails";
 import {
@@ -16,8 +16,6 @@ import {
   bulkMoveToStage,
 } from "@/api/actions/candidates-archive";
 import { toast } from "sonner";
-import { getSchedulesByCandidate } from "@/api/queries/schedules";
-import { getTimelineEvents } from "@/api/queries/timeline";
 import type { Candidate, CandidateWithArchiveReason } from "@/types/candidates";
 import { ArchiveCandidateModal } from "@/components/candidates/ArchiveCandidateModal";
 import { AddCandidateModal } from "@/components/candidates/AddCandidateModal";
@@ -188,25 +186,23 @@ export function CandidatesClient({
       setCandidateDetail({ ...initialCandidate });
     }
     try {
-      const [candidateResult, schedulesResult, timelineResult] =
-        await Promise.all([
-          getCandidateById(candidateId),
-          getSchedulesByCandidate(candidateId),
-          getTimelineEvents(candidateId),
-        ]);
-      if (candidateResult.error || !candidateResult.data) {
+      // ✅ 상세 데이터는 서버에서 한 번에 번들로 가져와 네트워크 요청 수를 줄입니다.
+      // - 타임라인은 기본적으로 포함하지 않고(빈 배열), 탭 진입 시 로드합니다.
+      const bundleResult = await getCandidateDetailBundle(candidateId);
+
+      if (bundleResult.error || !bundleResult.data?.candidate) {
         if (!initialCandidate) {
           setDetailError(
-            candidateResult.error || "후보자를 찾을 수 없습니다.",
+            bundleResult.error || "후보자를 찾을 수 없습니다.",
           );
           setCandidateDetail(null);
         } else {
           setDetailError(null);
         }
       } else {
-        setCandidateDetail(candidateResult.data);
-        setSchedules(schedulesResult.data || []);
-        setTimelineEvents(timelineResult.data || []);
+        setCandidateDetail(bundleResult.data.candidate);
+        setSchedules(bundleResult.data.schedules || []);
+        setTimelineEvents(bundleResult.data.timelineEvents || []);
         setDetailError(null);
       }
     } catch (err) {

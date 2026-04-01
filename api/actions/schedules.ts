@@ -28,6 +28,7 @@ import { findAvailableTimeSlots } from '@/lib/ai/schedule';
 import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gmail';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
+import { toZonedTime } from 'date-fns-tz';
 import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
 import { getStageNameByStageId } from '@/constants/stages';
 import { randomUUID } from 'crypto';
@@ -45,6 +46,18 @@ type ExcludedTimeRange = {
 };
 
 type AllowedTimeRange = ExcludedTimeRange;
+
+// KST 타임존 상수 (타임라인/이력/메일 표기 통일용)
+const KST_TIMEZONE = 'Asia/Seoul';
+
+/**
+ * 서버 타임존(UTC 등)과 상관없이 KST 기준으로 시간을 포맷합니다.
+ */
+function formatInKst(dateLike: string | Date, fmt: string) {
+  const date = typeof dateLike === 'string' ? new Date(dateLike) : dateLike;
+  const kstDate = toZonedTime(date, KST_TIMEZONE);
+  return format(kstDate, fmt, { locale: ko });
+}
 
 function readExternalInterviewerEmails(formData: FormData): string[] {
   const raw = formData.get('external_interviewer_emails');
@@ -803,9 +816,31 @@ export async function respondToSchedule(
     }
 
     // 후보자가 거절했고, workflow_status가 'pending_candidate'인 경우 새로운 일정 옵션 자동 생성
+    // ✅ 동시/중복 호출(링크 재클릭 등)에도 재생성이 2번 실행되지 않도록 락을 잡습니다.
     if (response === 'rejected' && schedule.workflow_status === 'pending_candidate') {
       console.log(`후보자가 거절함. 새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
       try {
+        // 1) 재생성 락 획득 (pending_candidate → regenerating)
+        const { data: lockedRows, error: lockError } = await supabase
+          .from('schedules')
+          .update({ workflow_status: 'regenerating' as any })
+          .eq('id', scheduleId)
+          .eq('workflow_status', 'pending_candidate')
+          .select('id');
+
+        if (lockError) {
+          console.error('재생성 락 획득 실패(후보자 거절):', lockError);
+        }
+
+        // 이미 다른 요청이 재생성을 시작한 경우
+        if (!lockedRows || lockedRows.length === 0) {
+          return {
+            ...data,
+            regenerated: false,
+            message: '이미 일정 재생성이 진행 중입니다. 잠시 후 다시 확인해주세요.',
+          };
+        }
+
         // ✅ 후보자 응답 경로(세션 있음)에서도 동일 함수를 재사용합니다.
         // createdBy는 타임라인 표시용(누가 실행했는지)입니다.
         // 후보자 응답은 "로그인 세션"이 없을 수 있으므로, 여기서는 첫 번째 면접관 ID(있으면)를 사용합니다.
@@ -1202,6 +1237,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       external_interviewer_emails: externalInterviewerEmails,
       candidate_response: 'pending' as const,
       workflow_status: 'pending_interviewers' as const,
+      // ✅ 최초 옵션 개수 저장: 재생성 시 이 값을 사용하여 옵션 개수를 고정합니다.
+      initial_num_options: numOptions,
       // 마이그레이션이 적용된 경우에만 이 필드들을 포함 (타입 단언 사용)
       original_start_date: originalStartDate.toISOString(),
       original_end_date: originalEndDate.toISOString(),
@@ -1472,14 +1509,15 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       
       // 일정 옵션 목록을 HTML로 포맷팅
       const optionsListHtml = scheduleOptions.map((opt, index) => {
-        const date = new Date(opt.scheduled_at);
-        const endTime = new Date(date);
-        endTime.setMinutes(endTime.getMinutes() + durationMinutes);
+        // ✅ 메일 표기는 KST로 통일
+        const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
+        const endTimeKst = new Date(dateKst);
+        endTimeKst.setMinutes(endTimeKst.getMinutes() + durationMinutes);
         
         return `
           <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
             <p style="margin: 0; font-weight: bold; color: #333;">
-              옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+              옵션 ${index + 1}: ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })}
             </p>
           </div>
         `;
@@ -1741,15 +1779,13 @@ async function regenerateScheduleOptions(
     .eq('schedule_id', scheduleId)
     .in('status', ['rejected', 'pending']); // 거절된 옵션과 대기 중인 옵션 모두 제외
 
-  // 기존에 생성된 일정 옵션의 개수를 확인하여 동일한 개수로 재생성
-  // (처음 생성 시 설정한 개수와 동일하게 유지)
-  const { count: existingOptionsCount } = await supabase
-    .from('schedule_options')
-    .select('id', { count: 'exact', head: true })
-    .eq('schedule_id', scheduleId);
-  
-  // 기존 일정 옵션 개수가 있으면 그 개수를 사용하고, 없으면 기본값 2 사용
-  const numOptions = existingOptionsCount && existingOptionsCount > 0 ? existingOptionsCount : 2;
+  // ✅ 재생성 옵션 개수는 "최초 설정값"으로 고정합니다.
+  // - schedule_options 누적 개수로 계산하면 2→4→6처럼 증가할 수 있어 정책 위반이 됩니다.
+  // - 최초 값이 없다면 안전하게 2개를 기본으로 사용합니다.
+  const numOptions =
+    typeof (schedule as any).initial_num_options === 'number' && (schedule as any).initial_num_options > 0
+      ? (schedule as any).initial_num_options
+      : 2;
 
   // 원본 날짜 범위 확인 (없으면 현재 날짜 기준으로 설정)
   const originalStartDate = schedule.original_start_date 
@@ -2033,14 +2069,15 @@ async function regenerateScheduleOptions(
     const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
     
     const optionsListHtml = scheduleOptions.map((opt, index) => {
-      const date = new Date(opt.scheduled_at);
-      const endTime = new Date(date);
-      endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+      // ✅ 메일 표기는 KST로 통일
+      const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
+      const endTimeKst = new Date(dateKst);
+      endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
       
       return `
         <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
           <p style="margin: 0; font-weight: bold; color: #333;">
-            옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+            옵션 ${index + 1}: ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })}
           </p>
         </div>
       `;
@@ -2233,7 +2270,8 @@ export async function checkInterviewerResponses(
 
     // ✅ 타임라인은 "새 이벤트 추가"가 아니라 "자동화 카드 1개 업데이트"가 목표입니다.
     // - 면접관 응답 변경/전원 거절/재생성/혼합 응답 등 중요한 변화는 history로 누적합니다.
-    const timelineHistory: Array<{ at: string; message: string }> = [];
+    // ✅ history에 멱등 키(key)를 넣어 중복 웹훅 호출에도 같은 로그가 2번 쌓이지 않게 합니다.
+    const timelineHistory: Array<{ at: string; message: string; key?: string }> = [];
     const nowIso = new Date().toISOString();
 
     // 일정 옵션 조회
@@ -2392,9 +2430,12 @@ export async function checkInterviewerResponses(
                   : changed.newResponse === 'declined'
                     ? '거절'
                     : '보류';
-              const optionDate = new Date(option.scheduled_at);
-              const msg = `${changed.interviewerEmail}님이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 ${responseText}했습니다.`;
-              timelineHistory.push({ at: new Date().toISOString(), message: msg });
+              // ✅ 타임라인 표기는 KST로 통일 (서버 타임존이 UTC여도 깨지지 않게)
+              const optionKst = formatInKst(option.scheduled_at, 'yyyy-MM-dd HH:mm');
+              const msg = `${changed.interviewerEmail}님이 일정 옵션(${optionKst})을 ${responseText}했습니다.`;
+              // ✅ 웹훅 중복 호출에도 같은 변경은 1번만 누적되도록 멱등 키를 부여합니다.
+              const historyKey = `interviewer_response::${option.id}::${changed.interviewerId}::${changed.newResponse}`;
+              timelineHistory.push({ at: new Date().toISOString(), message: msg, key: historyKey });
             }
           } else {
             console.log(
@@ -2492,9 +2533,11 @@ export async function checkInterviewerResponses(
       console.log(`모든 면접관이 수락한 일정이 있어 후보자에게 전송 시작: scheduleId=${scheduleId}, optionId=${allAcceptedOption.id}`);
       
       // ✅ 전원 수락 이벤트도 새 줄로 쌓지 않고, 자동화 카드(history)에 누적합니다.
-      const optionDate = new Date(allAcceptedOption.scheduled_at);
-      const allAcceptedMsg = `모든 면접관이 일정 옵션(${format(optionDate, 'yyyy-MM-dd HH:mm', { locale: ko })})을 수락했습니다. 후보자에게 전송됩니다.`;
-      timelineHistory.push({ at: nowIso, message: allAcceptedMsg });
+      const optionKst = formatInKst(allAcceptedOption.scheduled_at, 'yyyy-MM-dd HH:mm');
+      const allAcceptedMsg = `모든 면접관이 일정 옵션(${optionKst})을 수락했습니다. 후보자에게 전송됩니다.`;
+      // ✅ 전원 수락 메시지도 중복 누적 방지(멱등 키)
+      const allAcceptedKey = `all_accepted::${allAcceptedOption.id}`;
+      timelineHistory.push({ at: nowIso, message: allAcceptedMsg, key: allAcceptedKey });
       
       try {
         // 후보자에게 일정 옵션 전송
@@ -2642,6 +2685,32 @@ export async function checkInterviewerResponses(
         }
 
         console.log(`새로운 일정 옵션 자동 생성 시작: scheduleId=${scheduleId}`);
+        // ✅ 동시 웹훅/중복 호출에도 재생성이 2번 실행되지 않도록 락을 잡습니다.
+        // - pending_interviewers → regenerating 으로 원자적 전이를 시도
+        // - 성공한 1개의 요청만 재생성을 수행
+        const { data: lockedRows, error: lockError } = await supabase
+          .from('schedules')
+          .update({ workflow_status: 'regenerating' as any })
+          .eq('id', scheduleId)
+          .eq('workflow_status', 'pending_interviewers')
+          .select('id');
+
+        if (lockError) {
+          console.error('재생성 락 획득 실패(웹훅):', lockError);
+        }
+
+        if (!lockedRows || lockedRows.length === 0) {
+          // 이미 다른 요청이 재생성을 시작한 경우
+          revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+          revalidatePath('/dashboard/schedules');
+          return {
+            message: '이미 일정 재생성이 진행 중입니다. 잠시 후 다시 확인해주세요.',
+            allAccepted: false,
+            allDeclined: true,
+            regenerated: false,
+          };
+        }
+
         // ✅ 웹훅/백그라운드 경로에서는 세션이 없으므로 bypassAuth로 실행합니다.
         const regenerateResult = await regenerateScheduleOptions(scheduleId, {
           bypassAuth: true,
@@ -3495,14 +3564,15 @@ export async function sendReminderEmailsToInterviewers() {
           
           // 일정 옵션 목록을 HTML로 포맷팅
           const optionsListHtml = options.map((opt, index) => {
-            const date = new Date(opt.scheduled_at);
-            const endTime = new Date(date);
-            endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+            // ✅ 메일 표기는 KST로 통일
+            const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
+            const endTimeKst = new Date(dateKst);
+            endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
             
             return `
               <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
                 <p style="margin: 0; font-weight: bold; color: #333;">
-                  옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+                  옵션 ${index + 1}: ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })}
                 </p>
               </div>
             `;
@@ -3959,14 +4029,15 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
     const organizerForMail = interviewersWithCalendar[0];
     if (organizerForMail?.calendar_access_token && organizerForMail?.calendar_refresh_token && organizerForMail?.email) {
       const optionsListHtml = scheduleOptions.map((opt, index) => {
-        const date = new Date(opt.scheduled_at);
-        const endTime = new Date(date);
-        endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+        // ✅ 메일 표기는 KST로 통일
+        const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
+        const endTimeKst = new Date(dateKst);
+        endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
         
         return `
           <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
             <p style="margin: 0; font-weight: bold; color: #333;">
-              옵션 ${index + 1}: ${format(date, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTime, 'HH:mm', { locale: ko })}
+              옵션 ${index + 1}: ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })}
             </p>
           </div>
         `;
