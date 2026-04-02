@@ -53,8 +53,11 @@ const KST_TIMEZONE = 'Asia/Seoul';
 // 인터뷰룸 전용 캘린더 ID를 "호출 시점"에 읽어옵니다.
 // Cloud Run 등 배포 환경에서 리비전/런타임 재시작 후 값을 안정적으로 반영하기 위함.
 function getRoomCalendarId(): string {
+  const DEFAULT_ROOM_CALENDAR_ID =
+    'c_7a0bedbaf87e6bc93e3b6944b4f5f61d29b01877c9644374a37c840a75c488d8@group.calendar.google.com';
   const envValue = process.env.INTERVIEW_ROOM_CALENDAR_ID;
-  const value = envValue && envValue.trim().length > 0 ? envValue.trim() : 'primary';
+  const value =
+    envValue && envValue.trim().length > 0 ? envValue.trim() : DEFAULT_ROOM_CALENDAR_ID;
   // 운영 로그로 어떤 값이 사용되는지 남깁니다. (민감정보 아님)
   console.log('[ScheduleActions] Using INTERVIEW_ROOM_CALENDAR_ID =', value);
   return value;
