@@ -33,3 +33,9 @@
 - 모든 이벤트 생성 시 `timeZone: 'Asia/Seoul'`을 명시하여 사용자 캘린더 표시와 일치시킵니다.
 - 재시도/재조율 로직은 기존 옵션과 중복되지 않도록 busy time에 포함하여 필터링합니다.
 
+## 인터뷰룸 캘린더 정책
+- 면접 일정은 면접관 개인 캘린더가 아니라 “인터뷰룸 전용 캘린더”에 직접 생성합니다.
+- Organizer(주최자)는 기존과 동일하게 채용담당자 계정을 사용합니다.
+- 사용 캘린더 ID는 환경변수 `INTERVIEW_ROOM_CALENDAR_ID`로 주입되며, 미설정 시 `primary`로 폴백합니다.
+- 생성/수정/삭제 등 모든 Calendar API 호출은 동일한 캘린더 ID로 수행됩니다.
+- 운영 추적을 위해 `schedule_options.interviewer_responses._metadata.googleCalendarIdUsed`에 사용한 캘린더 ID를 기록합니다.

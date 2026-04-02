@@ -29,7 +29,7 @@ export default async function CandidateSchedulePage({
   const serviceClient = createServiceClient();
   const { data: candidate, error: candidateError } = await serviceClient
     .from('candidates')
-    .select('id, name, email, token')
+    .select('id, name, email, token, job_posts ( id, title )')
     .eq('id', candidateId)
     .eq('token', token)
     .single();
@@ -44,6 +44,11 @@ export default async function CandidateSchedulePage({
       </div>
     );
   }
+
+  // 첨부 웹 디자인에서 “포지션” 라벨에 사용할 값(job_posts.title)을 추출합니다.
+  const jobPost =
+    Array.isArray((candidate as any).job_posts) ? (candidate as any).job_posts[0] : (candidate as any).job_posts;
+  const positionName = jobPost?.title || '포지션 미지정';
 
   // 토큰 검증 완료 후에도 동일한 Service Role Client로 스케줄을 조회합니다.
 
@@ -89,6 +94,7 @@ export default async function CandidateSchedulePage({
           schedule={schedule}
           options={[confirmedOption]}
           token={token}
+          positionName={positionName}
           isConfirmed={true}
         />
       );
@@ -105,6 +111,7 @@ export default async function CandidateSchedulePage({
           status: 'selected'
         }]}
         token={token}
+        positionName={positionName}
         isConfirmed={true}
       />
     );
@@ -150,6 +157,7 @@ export default async function CandidateSchedulePage({
       schedule={schedule}
       options={availableOptions}
       token={token}
+      positionName={positionName}
       isConfirmed={false}
     />
   );

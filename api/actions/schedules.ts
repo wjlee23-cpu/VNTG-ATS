@@ -1,5 +1,7 @@
 'use server';
 
+import React from 'react';
+
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
@@ -26,6 +28,7 @@ import {
 } from '@/lib/calendar/google';
 import { findAvailableTimeSlots } from '@/lib/ai/schedule';
 import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gmail';
+import { render } from '@react-email/render';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
@@ -34,6 +37,9 @@ import { getStageNameByStageId } from '@/constants/stages';
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { upsertScheduleAutomationTimeline } from '@/api/actions/timeline';
+import { InterviewerScheduleRequestEmail } from '@/emails/InterviewerScheduleRequestEmail';
+import { CandidateScheduleSelectionRequestEmail } from '@/emails/CandidateScheduleSelectionRequestEmail';
+import { CandidateScheduleConfirmedEmail } from '@/emails/CandidateScheduleConfirmedEmail';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -1021,6 +1027,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     // 내부 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
     let interviewers: Array<{
       id: string;
+      name?: string | null;
       email: string;
       organization_id: string;
       calendar_provider: string | null;
@@ -1031,7 +1038,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     if (interviewerIds.length > 0) {
       const { data: internalInterviewers, error: interviewersError } = await supabase
         .from('users')
-        .select('id, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
+        .select('id, name, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
         .in('id', interviewerIds);
 
       if (interviewersError || !internalInterviewers || internalInterviewers.length !== interviewerIds.length) {
@@ -1532,98 +1539,30 @@ export async function scheduleInterviewAutomated(formData: FormData) {
 
     // 면접관들에게 일정 확인 안내 메일 발송
     if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
-      // stage ID를 프로세스 이름으로 변환
-      const stageName = getStageNameByStageId(stageId) || stageId;
-      
-      // 일정 옵션 목록을 HTML로 포맷팅
-      const optionsListHtml = scheduleOptions.map((opt, index) => {
-        // ✅ 메일 표기는 KST로 통일
-        const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
-        const endTimeKst = new Date(dateKst);
-        endTimeKst.setMinutes(endTimeKst.getMinutes() + durationMinutes);
-        
-        return `
-          <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
-            <p style="margin: 0; font-weight: bold; color: #333;">
-              옵션 ${index + 1}: ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })}
-            </p>
-          </div>
-        `;
-      }).join('');
+      // ✅ 새 이메일 컴포넌트에 맞춰, 첨부 디자인(요청 일시 1개 카드) 기준으로 “첫 번째 일정 옵션”만 표시합니다.
+      const primaryOption = scheduleOptions[0];
+      const primaryStartKst = toZonedTime(new Date(primaryOption.scheduled_at), KST_TIMEZONE);
+      const primaryEndKst = new Date(primaryStartKst);
+      primaryEndKst.setMinutes(primaryEndKst.getMinutes() + durationMinutes);
+      const primaryRequestPillLabel = `${format(primaryStartKst, 'yyyy. MM. dd (EEE) HH:mm', { locale: ko })} - ${format(primaryEndKst, 'HH:mm', { locale: ko })}`;
 
-      const notificationMessage = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.6; color: #333; }
-          </style>
-        </head>
-        <body>
-          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-              면접 일정 확인 요청
-            </h2>
-            
-            <p style="font-size: 16px; margin-top: 20px;">
-              안녕하세요,
-            </p>
-            
-            <p style="font-size: 14px; margin-top: 15px;">
-              <strong>${candidate.name}</strong>님의 면접 일정이 생성되었습니다. 
-              구글 캘린더에 초대가 전송되었으니 확인 후 수락 또는 거절해주시기 바랍니다.
-            </p>
-            
-            <div style="margin: 25px 0; padding: 20px; background-color: #f0f9ff; border-left: 4px solid #2563eb; border-radius: 5px;">
-              <p style="margin: 0 0 10px 0; font-weight: bold; color: #1e40af;">
-                면접 정보
-              </p>
-              <p style="margin: 5px 0; font-size: 14px;">
-                <strong>포지션:</strong> ${positionName}
-              </p>
-              <p style="margin: 5px 0; font-size: 14px;">
-                <strong>후보자:</strong> ${candidate.name}
-              </p>
-              <p style="margin: 5px 0; font-size: 14px;">
-                <strong>면접 단계:</strong> ${stageName}
-              </p>
-              <p style="margin: 5px 0; font-size: 14px;">
-                <strong>면접 시간:</strong> ${durationMinutes}분
-              </p>
-            </div>
-            
-            <div style="margin: 25px 0;">
-              <p style="font-weight: bold; color: #333; margin-bottom: 10px;">
-                생성된 일정 옵션:
-              </p>
-              ${optionsListHtml}
-            </div>
-            
-            <div style="margin: 30px 0; padding: 15px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 5px;">
-              <p style="margin: 0; font-size: 14px; color: #92400e;">
-                <strong>⚠️ 중요:</strong> 구글 캘린더에서 각 일정 초대에 대해 수락 또는 거절을 선택해주세요. 
-                모든 면접관이 수락한 일정이 후보자에게 전송됩니다.
-              </p>
-            </div>
-            
-            <p style="margin-top: 30px; font-size: 14px; color: #666;">
-              구글 캘린더에서 일정을 확인하고 응답해주시기 바랍니다.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-            <p style="font-size: 12px; color: #999; text-align: center;">
-              이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
-            </p>
-          </div>
-        </body>
-        </html>
-      `;
+      // watch/metadata가 없더라도 첨부 HTML의 href="#" 톤을 유지하기 위해 기본값을 '#'로 둡니다.
+      const googleCalendarLink =
+        (primaryOption.interviewer_responses as any)?._metadata?.googleEventHtmlLink || '#';
 
       // 모든 면접관에게 안내 메일 발송
       for (const interviewer of interviewersWithCalendar) {
         if (interviewer.email) {
           try {
+            const html = await render(
+              React.createElement(InterviewerScheduleRequestEmail, {
+                candidateName: candidate.name,
+                interviewerName: interviewer.name || interviewer.email,
+                positionName: positionName,
+                requestTimePills: [{ label: primaryRequestPillLabel }],
+                googleCalendarLink: googleCalendarLink,
+              }),
+            );
             await sendEmailViaGmail(
               organizer.calendar_access_token,
               organizer.calendar_refresh_token,
@@ -1631,7 +1570,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
                 to: interviewer.email,
                 from: organizer.email,
                 subject: `[면접 일정 확인 요청] ${candidate.name}님의 면접 일정이 생성되었습니다`,
-                html: notificationMessage,
+                html,
                 replyTo: organizer.email,
               }
             );
@@ -1778,7 +1717,7 @@ async function regenerateScheduleOptions(
   // 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
   const { data: interviewers, error: interviewersError } = await supabase
     .from('users')
-    .select('id, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
+    .select('id, name, email, organization_id, calendar_provider, calendar_access_token, calendar_refresh_token')
     .in('id', schedule.interviewer_ids);
 
   if (interviewersError || !interviewers || interviewers.length !== schedule.interviewer_ids.length) {
@@ -2098,97 +2037,30 @@ async function regenerateScheduleOptions(
   // 면접관들에게 새로운 일정 확인 안내 메일 발송
   const organizer = interviewersWithCalendar[0];
   if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
-    // stage ID를 프로세스 이름으로 변환
-    const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
-    
-    const optionsListHtml = scheduleOptions.map((opt, index) => {
-      // ✅ 메일 표기는 KST로 통일
-      const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
-      const endTimeKst = new Date(dateKst);
-      endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
-      
-      return `
-        <div style="margin: 15px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
-          <p style="margin: 0; font-weight: bold; color: #333;">
-            옵션 ${index + 1}: ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })}
-          </p>
-        </div>
-      `;
-    }).join('');
+    // ✅ 새 이메일 컴포넌트(첨부 디자인) 기준으로 “첫 번째 일정 옵션”만 표시합니다.
+    const primaryOption = scheduleOptions[0];
+    const primaryStartKst = toZonedTime(new Date(primaryOption.scheduled_at), KST_TIMEZONE);
+    const primaryEndKst = new Date(primaryStartKst);
+    primaryEndKst.setMinutes(primaryEndKst.getMinutes() + schedule.duration_minutes);
+    const primaryRequestPillLabel = `${format(primaryStartKst, 'yyyy. MM. dd (EEE) HH:mm', { locale: ko })} - ${format(primaryEndKst, 'HH:mm', { locale: ko })}`;
 
-    const notificationMessage = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.6; color: #333; }
-        </style>
-      </head>
-      <body>
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-            새로운 면접 일정 확인 요청
-          </h2>
-          
-          <p style="font-size: 16px; margin-top: 20px;">
-            안녕하세요,
-          </p>
-          
-          <p style="font-size: 14px; margin-top: 15px;">
-            이전 일정 옵션이 모두 거절되어 <strong>${candidate.name}</strong>님의 새로운 면접 일정 옵션이 생성되었습니다. 
-            구글 캘린더에 초대가 전송되었으니 확인 후 수락 또는 거절해주시기 바랍니다.
-          </p>
-          
-          <div style="margin: 25px 0; padding: 20px; background-color: #f0f9ff; border-left: 4px solid #2563eb; border-radius: 5px;">
-            <p style="margin: 0 0 10px 0; font-weight: bold; color: #1e40af;">
-              면접 정보
-            </p>
-            <p style="margin: 5px 0; font-size: 14px;">
-              <strong>포지션:</strong> ${positionName}
-            </p>
-            <p style="margin: 5px 0; font-size: 14px;">
-              <strong>후보자:</strong> ${candidate.name}
-            </p>
-            <p style="margin: 5px 0; font-size: 14px;">
-              <strong>면접 단계:</strong> ${stageName}
-            </p>
-            <p style="margin: 5px 0; font-size: 14px;">
-              <strong>면접 시간:</strong> ${schedule.duration_minutes}분
-            </p>
-          </div>
-          
-          <div style="margin: 25px 0;">
-            <p style="font-weight: bold; color: #333; margin-bottom: 10px;">
-              새로 생성된 일정 옵션:
-            </p>
-            ${optionsListHtml}
-          </div>
-          
-          <div style="margin: 30px 0; padding: 15px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 5px;">
-            <p style="margin: 0; font-size: 14px; color: #92400e;">
-              <strong>⚠️ 중요:</strong> 구글 캘린더에서 각 일정 초대에 대해 수락 또는 거절을 선택해주세요. 
-              모든 면접관이 수락한 일정이 후보자에게 전송됩니다.
-            </p>
-          </div>
-          
-          <p style="margin-top: 30px; font-size: 14px; color: #666;">
-            구글 캘린더에서 일정을 확인하고 응답해주시기 바랍니다.
-          </p>
-          
-          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-          <p style="font-size: 12px; color: #999; text-align: center;">
-            이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
-          </p>
-        </div>
-      </body>
-      </html>
-    `;
+    // 첨부 HTML은 버튼 href="#" 톤을 사용하지만, metadata가 있으면 그대로 열리도록 합니다.
+    const googleCalendarLink =
+      (primaryOption.interviewer_responses as any)?._metadata?.googleEventHtmlLink || '#';
 
     // 모든 면접관에게 안내 메일 발송
     for (const interviewer of interviewersWithCalendar) {
       if (interviewer.email) {
         try {
+          const html = await render(
+            React.createElement(InterviewerScheduleRequestEmail, {
+              candidateName: candidate.name,
+              interviewerName: interviewer.name || interviewer.email,
+              positionName: positionName,
+              requestTimePills: [{ label: primaryRequestPillLabel }],
+              googleCalendarLink: googleCalendarLink,
+            })
+          );
           await sendEmailViaGmail(
             organizer.calendar_access_token,
             organizer.calendar_refresh_token,
@@ -2196,7 +2068,7 @@ async function regenerateScheduleOptions(
               to: interviewer.email,
               from: organizer.email,
               subject: `[새로운 면접 일정 확인 요청] ${candidate.name}님의 면접 일정이 재생성되었습니다`,
-              html: notificationMessage,
+              html,
               replyTo: organizer.email,
             }
           );
@@ -2282,7 +2154,11 @@ export async function checkInterviewerResponses(
           id,
           name,
           email,
-          token
+          token,
+          job_posts (
+            id,
+            title
+          )
         )
       `)
       .eq('id', scheduleId)
@@ -3023,10 +2899,24 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
 
-    const candidate = schedule.candidates as { id: string; name: string; email: string; token: string } | null | undefined;
+    const candidate = schedule.candidates as
+      | {
+          id: string;
+          name: string;
+          email: string;
+          token: string;
+          job_posts?: Array<{ id: string; title: string }> | { id: string; title: string } | null;
+        }
+      | null
+      | undefined;
     if (!candidate) {
       throw new Error('후보자 정보를 찾을 수 없습니다.');
     }
+
+    // 첨부 디자인에서 노출하는 포지션명(= job_posts.title)을 추출합니다.
+    const jobPost =
+      Array.isArray(candidate.job_posts) ? candidate.job_posts[0] : (candidate.job_posts as any);
+    const positionName = jobPost?.title || '포지션 미지정';
 
     // 스케줄의 "주최자(organizer)"를 찾아 Gmail API 발송에 사용할 토큰을 얻습니다.
     const { data: interviewers } = await supabase
@@ -3119,58 +3009,13 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
 
     // 이메일 본문 생성
     const selectionUrl = generateScheduleSelectionUrl(candidate.id, candidateToken);
-    // 후보자 메일의 시간 표기를 한국시간(KST)으로 통일하고, 종료 시각까지 함께 표기합니다.
-    const optionsHtml = acceptedOptions
-      .map((opt, index) => {
-        // KST 기준으로 시작/종료 시각 계산
-        const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
-        const endTimeKst = new Date(dateKst);
-        endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
-        return `
-          <div style="margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
-            <h3 style="margin: 0 0 10px 0; color: #333;">옵션 ${index + 1}</h3>
-            <p style="margin: 0; font-size: 16px; color: #666;">
-              📅 ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })} (KST)
-            </p>
-            <p style="margin: 5px 0 0 0; font-size: 14px; color: #999;">
-              소요 시간: ${schedule.duration_minutes}분
-            </p>
-          </div>
-        `;
+    const emailHtml = await render(
+      React.createElement(CandidateScheduleSelectionRequestEmail, {
+        candidateName: candidate.name,
+        positionName: positionName,
+        selectionLink: selectionUrl,
       })
-      .join('');
-
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2563eb;">면접 일정 선택 요청</h2>
-        <p>안녕하세요, ${candidate.name}님.</p>
-        <p>면접 일정을 확정하기 위해 아래 일정 중 하나를 선택해주시기 바랍니다.</p>
-        
-        ${optionsHtml}
-        
-        <div style="margin: 30px 0; text-align: center;">
-          <a href="${selectionUrl}" 
-             style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
-            일정 선택하기
-          </a>
-        </div>
-        
-        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-          위 링크를 클릭하시면 일정 선택 페이지로 이동합니다.
-        </p>
-        
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-        <p style="font-size: 12px; color: #999; text-align: center;">
-          이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
-        </p>
-      </body>
-      </html>
-    `;
+    );
 
     // Gmail API를 사용하여 이메일 발송
     console.log(`후보자에게 이메일 발송 시작: ${candidate.email}, 옵션 수: ${acceptedOptions.length}`);
@@ -3438,45 +3283,23 @@ export async function confirmCandidateSchedule(
       .eq('id', scheduleId);
 
     // 최종 확정 안내 메시지 전송 (면접관 및 후보자)
-    const confirmedDate = new Date(selectedOption.scheduled_at);
-    const confirmedEndTime = new Date(confirmedDate);
-    confirmedEndTime.setMinutes(confirmedEndTime.getMinutes() + schedule.duration_minutes);
+    const confirmedDateKst = toZonedTime(new Date(selectedOption.scheduled_at), KST_TIMEZONE);
+    const confirmedAtLabel = format(confirmedDateKst, 'yyyy. MM. dd (EEE) a h:mm', { locale: ko });
 
-    const confirmationMessage = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #16a34a;">면접 일정이 확정되었습니다</h2>
-        <p>안녕하세요.</p>
-        <p>면접 일정이 확정되었습니다. 아래 일정을 확인해주세요.</p>
-        
-        <div style="margin: 20px 0; padding: 20px; background-color: #f0f9ff; border-radius: 8px; border-left: 4px solid #2563eb;">
-          <h3 style="margin: 0 0 10px 0; color: #333;">확정된 면접 일정</h3>
-          <p style="margin: 5px 0; font-size: 16px;">
-            <strong>후보자:</strong> ${candidate.name}
-          </p>
-          <p style="margin: 5px 0; font-size: 16px;">
-            <strong>일시:</strong> ${format(confirmedDate, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(confirmedEndTime, 'HH:mm')}
-          </p>
-          <p style="margin: 5px 0; font-size: 16px;">
-            <strong>소요 시간:</strong> ${schedule.duration_minutes}분
-          </p>
-        </div>
-        
-        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-          구글 캘린더에 일정이 추가되었습니다. 확인해주세요.
-        </p>
-        
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-        <p style="font-size: 12px; color: #999; text-align: center;">
-          이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
-        </p>
-      </body>
-      </html>
-    `;
+    const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+    const scheduleTitle = `${positionName} ${stageName}`;
+
+    // 확정 완료 메일에서 “면접 상세 안내” 버튼은 후보자 일정 선택 페이지로 연결합니다.
+    const detailsLink = generateScheduleSelectionUrl(candidate.id, token);
+
+    const confirmationHtml = await render(
+      React.createElement(CandidateScheduleConfirmedEmail, {
+        candidateName: candidate.name,
+        scheduleTitle: scheduleTitle,
+        confirmedAtLabel: confirmedAtLabel,
+        detailsLink: detailsLink,
+      })
+    );
 
     // 면접관(organizer)의 Google Workspace 토큰을 사용하여 이메일 발송
     // organizer는 이미 위에서 찾았고, calendar_access_token과 calendar_refresh_token이 있음
@@ -3489,7 +3312,7 @@ export async function confirmCandidateSchedule(
           to: candidate.email,
           from: organizer.email,
           subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
-          html: confirmationMessage,
+          html: confirmationHtml,
           replyTo: organizer.email,
         }
       );
@@ -3504,7 +3327,7 @@ export async function confirmCandidateSchedule(
               to: interviewer.email,
               from: organizer.email,
               subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
-              html: confirmationMessage,
+              html: confirmationHtml,
               replyTo: organizer.email,
             }
           );
@@ -4642,45 +4465,23 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
       .eq('id', scheduleId);
 
     // 강제 확정 안내 메시지 전송 (면접관 및 후보자)
-    const confirmedDate = new Date(selectedOption.scheduled_at);
-    const confirmedEndTime = new Date(confirmedDate);
-    confirmedEndTime.setMinutes(confirmedEndTime.getMinutes() + schedule.duration_minutes);
+    const confirmedDateKst = toZonedTime(new Date(selectedOption.scheduled_at), KST_TIMEZONE);
+    const confirmedAtLabel = format(confirmedDateKst, 'yyyy. MM. dd (EEE) a h:mm', { locale: ko });
 
-    const confirmationMessage = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #dc2626;">면접 일정이 강제 확정되었습니다</h2>
-        <p>안녕하세요.</p>
-        <p>면접 일정이 관리자에 의해 강제 확정되었습니다. 아래 일정을 확인해주세요.</p>
-        
-        <div style="margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; border-left: 4px solid #dc2626;">
-          <h3 style="margin: 0 0 10px 0; color: #333;">확정된 면접 일정</h3>
-          <p style="margin: 5px 0; font-size: 16px;">
-            <strong>후보자:</strong> ${candidate.name}
-          </p>
-          <p style="margin: 5px 0; font-size: 16px;">
-            <strong>일시:</strong> ${format(confirmedDate, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(confirmedEndTime, 'HH:mm')}
-          </p>
-          <p style="margin: 5px 0; font-size: 16px;">
-            <strong>소요 시간:</strong> ${schedule.duration_minutes}분
-          </p>
-        </div>
-        
-        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-          구글 캘린더에 일정이 추가되었습니다. 확인해주세요.
-        </p>
-        
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-        <p style="font-size: 12px; color: #999; text-align: center;">
-          이 메일은 VNTG ATS 시스템에서 자동으로 발송되었습니다.
-        </p>
-      </body>
-      </html>
-    `;
+    const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+    const scheduleTitle = `${positionName} ${stageName}`;
+
+    // 강제 확정 메일 버튼은 “후보자 일정 선택 페이지”로 연결합니다.
+    const detailsLink = generateScheduleSelectionUrl(candidate.id, candidate.token);
+
+    const confirmationHtml = await render(
+      React.createElement(CandidateScheduleConfirmedEmail, {
+        candidateName: candidate.name,
+        scheduleTitle: scheduleTitle,
+        confirmedAtLabel: confirmedAtLabel,
+        detailsLink: detailsLink,
+      })
+    );
 
     // 면접관(organizer)의 Google Workspace 토큰을 사용하여 이메일 발송
     if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
@@ -4692,7 +4493,7 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
           to: candidate.email,
           from: organizer.email,
           subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
-          html: confirmationMessage,
+          html: confirmationHtml,
           replyTo: organizer.email,
         }
       );
@@ -4707,7 +4508,7 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
               to: interviewer.email,
               from: organizer.email,
               subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
-              html: confirmationMessage,
+              html: confirmationHtml,
               replyTo: organizer.email,
             }
           );

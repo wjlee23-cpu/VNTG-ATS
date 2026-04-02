@@ -44,3 +44,27 @@
    - 전원 수락 시: 후보자에게 메일 전송 후 `pending_candidate`로 전환
    - 전원 거절 또는 혼합 응답 시: `schedule_options` 상태/`needs_rescheduling` 전환을 확인합니다.
 
+## GitHub Actions / 커밋 메시지 한글 깨짐
+
+### 증상
+- GitHub Actions 탭(워크플로우 실행 기록)에서 커밋 메시지의 한글이 물음표/깨진 글자로 표시됨
+
+### 원인
+- Windows PowerShell 기본 인코딩이 UTF-8이 아니어서 `git commit -m "한글"` 시 커밋 메시지 바이트가 UTF-8이 아님
+- GitHub UI는 커밋 메시지를 UTF-8로 가정하고 렌더링 → 모지바케(깨짐) 발생
+
+### 해결
+1. Git 전역 설정을 UTF-8로 고정
+   ```powershell
+   pwsh -File .\scripts\setup-git-korean-utf8.ps1
+   ```
+2. 커밋 시 전용 스크립트를 사용(메시지를 UTF-8 파일로 저장 후 `-F`로 전달)
+   ```powershell
+   .\scripts\git-commit-utf8.ps1 -Message "[Fix] 한글 메시지 예시" -All
+   ```
+3. (선택) PowerShell 세션 출력 인코딩을 UTF-8로 유지하면 로그 표시도 안정적
+   - 위 스크립트가 세션 출력 인코딩을 UTF-8로 시도 설정합니다.
+
+### 추가 팁
+- 파일명 한글 깨짐을 줄이기 위해 `core.quotepath=false`가 설정되어야 합니다.
+- 이미 깨진 과거 기록은 되돌리기 어렵습니다. 새 커밋부터 위 규칙을 적용하세요.
