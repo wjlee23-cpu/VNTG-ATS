@@ -50,6 +50,16 @@ type AllowedTimeRange = ExcludedTimeRange;
 // KST 타임존 상수 (타임라인/이력/메일 표기 통일용)
 const KST_TIMEZONE = 'Asia/Seoul';
 
+// 인터뷰룸 전용 캘린더 ID를 "호출 시점"에 읽어옵니다.
+// Cloud Run 등 배포 환경에서 리비전/런타임 재시작 후 값을 안정적으로 반영하기 위함.
+function getRoomCalendarId(): string {
+  const envValue = process.env.INTERVIEW_ROOM_CALENDAR_ID;
+  const value = envValue && envValue.trim().length > 0 ? envValue.trim() : 'primary';
+  // 운영 로그로 어떤 값이 사용되는지 남깁니다. (민감정보 아님)
+  console.log('[ScheduleActions] Using INTERVIEW_ROOM_CALENDAR_ID =', value);
+  return value;
+}
+
 /**
  * 서버 타임존(UTC 등)과 상관없이 KST 기준으로 시간을 포맷합니다.
  */
@@ -557,7 +567,8 @@ export async function deleteSchedule(id: string) {
               await deleteCalendarEvent(
                 organizer.calendar_access_token,
                 organizer.calendar_refresh_token,
-                option.google_event_id
+                option.google_event_id,
+                getRoomCalendarId()
               );
               console.log(`구글 캘린더 이벤트 삭제 완료: ${option.google_event_id}`);
             } catch (error) {
@@ -1397,7 +1408,8 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             ...externalInterviewerEmails.map((email) => ({ email })),
           ],
           transparency: 'opaque', // block 일정이므로 불투명
-        }
+        },
+        getRoomCalendarId()
       );
 
       // 방어 로직: eventId가 비어있으면 성공으로 처리하지 않습니다.
@@ -1425,6 +1437,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         optionData.interviewer_responses = {
           _metadata: {
             googleEventHtmlLink: eventHtmlLink,
+            googleCalendarIdUsed: getRoomCalendarId(),
           },
         };
       }
@@ -1450,7 +1463,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       if (optionError || !option) {
         // 이벤트는 생성되었지만 DB 저장 실패 시 이벤트 삭제 시도
         try {
-          await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId);
+          await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId, getRoomCalendarId());
         } catch (deleteError) {
           console.error('이벤트 삭제 실패:', deleteError);
         }
@@ -1976,7 +1989,8 @@ async function regenerateScheduleOptions(
           ...externalInterviewerEmails.map((email: string) => ({ email })),
         ],
         transparency: 'opaque',
-      }
+      },
+      getRoomCalendarId()
     );
     const eventId = createdEvent.id;
 
@@ -1988,7 +2002,11 @@ async function regenerateScheduleOptions(
         scheduled_at: slot.scheduledAt.toISOString(),
         status: 'pending',
         google_event_id: eventId,
-        interviewer_responses: {},
+        interviewer_responses: {
+          _metadata: {
+            googleCalendarIdUsed: getRoomCalendarId(),
+          },
+        },
       })
       .select()
       .single();
@@ -1996,7 +2014,7 @@ async function regenerateScheduleOptions(
     if (optionError || !option) {
       // 이벤트는 생성되었지만 DB 저장 실패 시 이벤트 삭제 시도
       try {
-        await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId);
+        await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId, getRoomCalendarId());
       } catch (deleteError) {
         console.error('이벤트 삭제 실패:', deleteError);
       }
@@ -3361,7 +3379,8 @@ export async function confirmCandidateSchedule(
             timeZone: 'Asia/Seoul',
           },
           transparency: 'opaque',
-        }
+        },
+        getRoomCalendarId()
       );
     }
 
@@ -3373,7 +3392,8 @@ export async function confirmCandidateSchedule(
             await deleteCalendarEvent(
               organizer.calendar_access_token,
               organizer.calendar_refresh_token,
-              option.google_event_id
+              option.google_event_id,
+              getRoomCalendarId()
             );
           } catch (error) {
             console.error(`옵션 ${option.id}의 이벤트 삭제 실패:`, error);
@@ -3871,7 +3891,8 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
           await deleteCalendarEvent(
             organizer.calendar_access_token,
             organizer.calendar_refresh_token,
-            schedule.google_event_id
+            schedule.google_event_id,
+            getRoomCalendarId()
           );
           console.log(`기존 구글 캘린더 이벤트 삭제 완료: ${schedule.google_event_id}`);
         } catch (error) {
@@ -3900,7 +3921,8 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
               await deleteCalendarEvent(
                 organizer.calendar_access_token,
                 organizer.calendar_refresh_token,
-                option.google_event_id
+                option.google_event_id,
+                getRoomCalendarId()
               );
             } catch (error) {
               console.error(`옵션 ${option.id}의 이벤트 삭제 실패:`, error);
@@ -4047,7 +4069,8 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
             ...externalInterviewerEmails.map((email: string) => ({ email })),
           ],
           transparency: 'opaque',
-        }
+        },
+        getRoomCalendarId()
       );
       const eventId = createdEvent.id;
 
@@ -4059,7 +4082,11 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
           scheduled_at: slot.scheduledAt.toISOString(),
           status: 'pending',
           google_event_id: eventId,
-          interviewer_responses: {},
+          interviewer_responses: {
+            _metadata: {
+              googleCalendarIdUsed: getRoomCalendarId(),
+            },
+          },
           is_manual: false,
         })
         .select()
@@ -4068,7 +4095,7 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
       if (optionError || !option) {
         // 이벤트는 생성되었지만 DB 저장 실패 시 이벤트 삭제 시도
         try {
-          await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token, eventId);
+          await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token, eventId, getRoomCalendarId());
         } catch (deleteError) {
           console.error('이벤트 삭제 실패:', deleteError);
         }
@@ -4361,7 +4388,8 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
           ...externalInterviewerEmails.map((email: string) => ({ email })),
         ],
         transparency: 'opaque',
-      }
+    },
+    getRoomCalendarId()
     );
     const eventId = createdEvent.id;
 
@@ -4373,7 +4401,11 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
         scheduled_at: scheduledAt.toISOString(),
         status: 'pending',
         google_event_id: eventId,
-        interviewer_responses: {},
+      interviewer_responses: {
+        _metadata: {
+          googleCalendarIdUsed: getRoomCalendarId(),
+        },
+      },
         is_manual: true,
         added_by: user.userId,
       })
@@ -4383,7 +4415,7 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
     if (optionError || !option) {
       // 이벤트는 생성되었지만 DB 저장 실패 시 이벤트 삭제 시도
       try {
-        await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId);
+      await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId, getRoomCalendarId());
       } catch (deleteError) {
         console.error('이벤트 삭제 실패:', deleteError);
       }
@@ -4544,7 +4576,8 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
             timeZone: 'Asia/Seoul',
           },
           transparency: 'opaque',
-        }
+        },
+        getRoomCalendarId()
       );
     }
 
@@ -4561,7 +4594,8 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
             await deleteCalendarEvent(
               organizer.calendar_access_token,
               organizer.calendar_refresh_token,
-              option.google_event_id
+              option.google_event_id,
+              getRoomCalendarId()
             );
           } catch (error) {
             console.error(`옵션 ${option.id}의 이벤트 삭제 실패:`, error);
@@ -4843,7 +4877,8 @@ export async function updateScheduleWithManualOverride(scheduleId: string, formD
                 timeZone: 'Asia/Seoul',
               },
               transparency: 'opaque',
-            }
+            },
+            getRoomCalendarId()
           );
         } catch (error) {
           console.error('구글 캘린더 이벤트 업데이트 실패:', error);

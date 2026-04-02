@@ -284,6 +284,7 @@ async function persistAccessTokenToDB(userId: string, newAccessToken: string): P
 export async function createCalendarEvent(
   accessToken: string,
   refreshToken: string,
+  // 이벤트 생성에 사용할 캘린더 ID (기본: primary)
   eventData: {
     summary: string
     description?: string
@@ -291,7 +292,8 @@ export async function createCalendarEvent(
     end: { dateTime: string; timeZone: string }
     attendees: Array<{ email: string }>
     transparency?: 'opaque' | 'transparent'
-  }
+  },
+  calendarId: string = 'primary'
 ): Promise<{ id: string; htmlLink?: string }> {
   try {
     const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
@@ -310,7 +312,7 @@ export async function createCalendarEvent(
     }
 
     const response = await calendar.events.insert({
-      calendarId: 'primary',
+      calendarId,
       requestBody: event,
       sendUpdates: 'all', // 참석자들에게 초대 전송
     })
@@ -323,7 +325,7 @@ export async function createCalendarEvent(
     // (운영에서 "메일은 갔는데 캘린더에는 없음" 같은 혼란을 방지)
     try {
       const verify = await calendar.events.get({
-        calendarId: 'primary',
+        calendarId,
         eventId: response.data.id,
       })
 
@@ -365,13 +367,15 @@ export async function updateCalendarEvent(
   accessToken: string,
   refreshToken: string,
   eventId: string,
+  // 업데이트할 이벤트가 존재하는 캘린더 ID (기본: primary)
   updates: {
     summary?: string
     description?: string
     start?: { dateTime: string; timeZone: string }
     end?: { dateTime: string; timeZone: string }
     transparency?: 'opaque' | 'transparent'
-  }
+  },
+  calendarId: string = 'primary'
 ): Promise<void> {
   try {
     const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
@@ -379,7 +383,7 @@ export async function updateCalendarEvent(
 
     // 기존 이벤트 조회
     const existingEvent = await calendar.events.get({
-      calendarId: 'primary',
+      calendarId,
       eventId,
     })
 
@@ -398,7 +402,7 @@ export async function updateCalendarEvent(
     }
 
     await calendar.events.update({
-      calendarId: 'primary',
+      calendarId,
       eventId,
       requestBody: updatedEvent,
       sendUpdates: 'all', // 참석자들에게 업데이트 알림 전송
@@ -422,14 +426,16 @@ export async function updateCalendarEvent(
 export async function deleteCalendarEvent(
   accessToken: string,
   refreshToken: string,
-  eventId: string
+  eventId: string,
+  // 삭제할 이벤트가 존재하는 캘린더 ID (기본: primary)
+  calendarId: string = 'primary'
 ): Promise<void> {
   try {
     const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
     const calendar = await getCalendarClient(token)
 
     await calendar.events.delete({
-      calendarId: 'primary',
+      calendarId,
       eventId,
       sendUpdates: 'all', // 참석자들에게 삭제 알림 전송
     })

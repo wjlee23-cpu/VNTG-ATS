@@ -1,3 +1,30 @@
+## 인터뷰룸 전용 구글 캘린더 연동
+
+이제 면접 일정 자동화 시, 면접관 개인 캘린더가 아니라 인터뷰룸 전용 캘린더에 이벤트가 직접 생성됩니다. 주최자(Organizer)는 기존과 동일하게 채용담당자이며, 참석자들에게는 초대가 발송됩니다.
+
+### 설정 방법
+1. Google Calendar 관리 화면에서 인터뷰룸 캘린더의 캘린더 ID를 확인합니다.
+2. `.env` 또는 `.env.local`에 아래 변수를 추가합니다.
+
+```
+INTERVIEW_ROOM_CALENDAR_ID=캘린더ID_여기에_붙여넣기
+```
+
+예시:
+```
+INTERVIEW_ROOM_CALENDAR_ID=c_7a0bedbaf87e6bc93e3b6944b4f5f61d29b01877c9644374a37c840a75c488d8@group.calendar.google.com
+```
+
+필요 시 웹훅 수신을 위해 `GOOGLE_CALENDAR_WEBHOOK_URL`을 설정할 수 있습니다. 미설정 시 `NEXT_PUBLIC_APP_URL`을 사용합니다.
+
+### 주의사항
+- 인터뷰룸 캘린더에 대해 채용담당자 계정이 “이벤트 변경 권한(Make changes to events)”을 가지고 있어야 합니다.
+- iCal 비공개 주소는 코드나 설정에 하드코딩하지 마세요.
+- 변경 전 생성된 과거 이벤트는 기존 캘린더에 남아있을 수 있습니다.
+
+### 변경 이력
+- [x] 인터뷰룸 캘린더에 직접 이벤트 생성 (YYYY-MM-DD 적용)
+
 # RecruitOps - AI 기반 채용 관리 플랫폼
 
 AI 기반 일정 조율, 프로세스 관리, 후보자 대시보드를 포함한 채용 관리 플랫폼입니다.
@@ -215,3 +242,35 @@ export async function createJobPost() {
 ## 라이선스
 
 MIT
+
+## 한글 깨짐 없이 커밋/푸시하기
+
+GitHub Actions에서 커밋 메시지(한글)가 �깨져 보이는 문제를 방지하려면 아래 규칙을 지켜주세요.
+
+1) 최초 1회: Git 전역 설정을 UTF-8로 맞추기
+
+```powershell
+pwsh -File .\scripts\setup-git-korean-utf8.ps1
+```
+
+2) 커밋할 때는 PowerShell 인코딩 문제를 피하기 위해 반드시 전용 스크립트 사용
+
+```powershell
+# 전체 변경사항을 한 번에 커밋
+.\scripts\git-commit-utf8.ps1 -Message "[Fix] 면접 일정 재조율 시간 포맷 수정" -All
+
+# 또는, 이미 git add 로 스테이징했다면 -All 없이
+.\scripts\git-commit-utf8.ps1 -Message "[Feat] 일정 자동화: KST 기본 적용"
+```
+
+3) 자주 쓰는 분들은 PowerShell 프로필에 편의 함수 추가(선택)
+
+```powershell
+function gcu { param([string]$m, [switch]$All) .\scripts\git-commit-utf8.ps1 -Message $m @PSBoundParameters }
+# 사용 예시:
+gcu "[Chore] 워크플로우 코멘트 정리" -All
+```
+
+참고:
+- 위 스크립트는 메시지를 임시 파일(UTF-8)로 저장한 뒤 `git commit -F`로 전달합니다.
+- `core.quotepath=false`, `i18n.commitencoding=utf-8`, `i18n.logoutputencoding=utf-8`을 함께 설정하여 파일명/로그/커밋 메시지의 한글 표기를 안정화합니다.
