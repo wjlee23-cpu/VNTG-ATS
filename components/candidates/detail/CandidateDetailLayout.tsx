@@ -40,9 +40,7 @@ interface CandidateDetailLayoutProps {
   onAddComment: () => void;
   onRefreshTimeline?: () => void | Promise<void>;
   onSwitchToTimeline?: () => void;
-  onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
-  onRescheduleSchedule?: (scheduleId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;
   resumeFiles: ResumeFile[];
   canViewCompensation: boolean;
@@ -79,9 +77,7 @@ export function CandidateDetailLayout({
   onAddComment,
   onRefreshTimeline,
   onSwitchToTimeline,
-  onCancelSchedule,
   onDeleteSchedule,
-  onRescheduleSchedule,
   onCheckSchedule,
   resumeFiles,
   canViewCompensation,
@@ -172,9 +168,7 @@ export function CandidateDetailLayout({
             onAddComment={onAddComment}
             onRefreshTimeline={onRefreshTimeline}
             onSwitchToTimeline={handleSwitchToTimeline}
-            onCancelSchedule={onCancelSchedule}
             onDeleteSchedule={onDeleteSchedule}
-            onRescheduleSchedule={onRescheduleSchedule}
             onCheckSchedule={onCheckSchedule}
           />
         )}

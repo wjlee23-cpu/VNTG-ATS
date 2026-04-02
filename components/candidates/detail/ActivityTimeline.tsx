@@ -23,9 +23,7 @@ interface ActivityTimelineProps {
   onAddComment: () => void;
   onAddEvaluation: () => void;
   // 일정 관련 액션 콜백 (후보자 상세 컨테이너에서 주입)
-  onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
-  onRescheduleSchedule?: (scheduleId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;
 }
 
@@ -41,9 +39,7 @@ export function ActivityTimeline({
   onSyncEmails,
   onAddComment,
   onAddEvaluation,
-  onCancelSchedule,
   onDeleteSchedule,
-  onRescheduleSchedule,
   onCheckSchedule,
 }: ActivityTimelineProps) {
   const showUserAvatar = (event: TimelineEvent) => {
@@ -171,9 +167,7 @@ export function ActivityTimeline({
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
                           // 일정 관리 액션들은 아직 UI 리디자인 단계에서 사용할 예정
-                          onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
-                          onRescheduleSchedule={onRescheduleSchedule}
                           onCheckSchedule={onCheckSchedule}
                         />
                       </div>

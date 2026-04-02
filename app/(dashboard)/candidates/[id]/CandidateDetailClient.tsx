@@ -16,7 +16,7 @@ import { confirmHire } from '@/api/actions/offers';
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
-import { scheduleInterviewAutomated, deleteSchedule, cancelSchedule, rescheduleInterview, checkInterviewerResponses } from '@/api/actions/schedules';
+import { scheduleInterviewAutomated, deleteSchedule, checkInterviewerResponses } from '@/api/actions/schedules';
 import { getExternalInterviewers, getUsers } from '@/api/queries/users';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -571,27 +571,6 @@ export function CandidateDetailClient({
     }
   };
 
-  // 타임라인에서 일정 취소
-  const handleCancelScheduleFromTimeline = async (scheduleId: string) => {
-    if (!confirm('이 면접 일정을 취소하시겠습니까? 구글 캘린더의 이벤트도 함께 삭제됩니다.')) return;
-    setScheduleActionLoadingId(scheduleId);
-    try {
-      const result = await cancelSchedule(scheduleId);
-      if ((result as { error?: string }).error) {
-        toast.error((result as { error: string }).error);
-      } else {
-        toast.success('면접 일정이 취소되었습니다.');
-        refreshCandidateData().catch(() => {});
-        refreshTimelineEvents().catch(() => {});
-      }
-    } catch (error) {
-      console.error('[CandidateDetailClient] 면접 일정 취소 실패:', error);
-      toast.error('면접 일정 취소 중 오류가 발생했습니다.');
-    } finally {
-      setScheduleActionLoadingId(null);
-    }
-  };
-
   // 타임라인에서 일정 삭제
   const handleDeleteScheduleFromTimeline = async (scheduleId: string) => {
     if (!confirm('정말로 이 면접 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
@@ -607,31 +586,9 @@ export function CandidateDetailClient({
       }
     } catch (error) {
       console.error('[CandidateDetailClient] 면접 일정 삭제 실패:', error);
-      toast.error('면접 일정 삭제 중 오류가 발생했습니다.');
-    } finally {
-      setScheduleActionLoadingId(null);
-    }
-  };
-
-  // 타임라인에서 일정 재조율
-  const handleRescheduleScheduleFromTimeline = async (scheduleId: string) => {
-    if (!confirm('이 면접 일정을 기준으로 새로운 일정 옵션을 재조율하시겠습니까?')) return;
-    setScheduleActionLoadingId(scheduleId);
-    try {
-      const formData = new FormData();
-      formData.append('rescheduling_reason', '관리자 요청');
-      formData.append('num_options', '2');
-      const result = await rescheduleInterview(scheduleId, formData);
-      if ((result as { error?: string }).error) {
-        toast.error((result as { error: string }).error);
-      } else {
-        toast.success('재조율이 완료되었습니다.');
-        refreshCandidateData().catch(() => {});
-        refreshTimelineEvents().catch(() => {});
-      }
-    } catch (error) {
-      console.error('[CandidateDetailClient] 면접 일정 재조율 실패:', error);
-      toast.error('재조율 중 오류가 발생했습니다.');
+      // 서버 액션이 500 등으로 실패하면 throw로 떨어질 수 있어, 가능하면 메시지를 그대로 보여줍니다.
+      const msg = error instanceof Error ? error.message : '면접 일정 삭제 중 오류가 발생했습니다.';
+      toast.error(msg);
     } finally {
       setScheduleActionLoadingId(null);
     }
@@ -724,9 +681,7 @@ export function CandidateDetailClient({
           onToggleEmailExpand={toggleEmailExpand}
           onAddComment={() => setIsCommentModalOpen(true)}
           onRefreshTimeline={refreshTimelineEvents}
-          onCancelSchedule={handleCancelScheduleFromTimeline}
           onDeleteSchedule={handleDeleteScheduleFromTimeline}
-          onRescheduleSchedule={handleRescheduleScheduleFromTimeline}
           onCheckSchedule={handleCheckScheduleFromTimeline}
           resumeFiles={resumeFiles}
           canViewCompensation={canViewCompensation}

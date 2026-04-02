@@ -501,11 +501,15 @@ export async function updateSchedule(id: string, formData: FormData) {
 export async function deleteSchedule(id: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    const isAdmin = user.role === 'admin';
-    const supabase = isAdmin ? createServiceClient() : await createClient();
+    // ✅ "완전 삭제"는 관련 테이블(예: scorecards 등)로 CASCADE가 걸려 있을 수 있습니다.
+    //    이 때 일반 클라이언트(RLS 적용)로 삭제하면 연쇄 삭제가 RLS에 막혀 500 에러가 날 수 있어,
+    //    접근 권한은 RLS로 검증하되 실제 삭제는 Service Role로 수행합니다.
+    //    (사용자 권한 검증은 아래 verifyCandidateAccess로 보장)
+    const authSupabase = await createClient();
+    const serviceSupabase = createServiceClient();
 
     // 면접 일정 조회 및 권한 확인
-    const { data: schedule, error: scheduleError } = await supabase
+    const { data: schedule, error: scheduleError } = await authSupabase
       .from('schedules')
       .select('id, candidate_id, interviewer_ids')
       .eq('id', id)
@@ -518,7 +522,7 @@ export async function deleteSchedule(id: string) {
     await verifyCandidateAccess(schedule.candidate_id);
 
     // schedule_options 별도 조회 (구글 캘린더 이벤트 ID 포함)
-    const { data: scheduleOptions, error: optionsError } = await supabase
+    const { data: scheduleOptions, error: optionsError } = await serviceSupabase
       .from('schedule_options')
       .select('id, google_event_id, watch_channel_id, watch_resource_id')
       .eq('schedule_id', id)
@@ -529,7 +533,7 @@ export async function deleteSchedule(id: string) {
     }
 
     // 면접관 정보 조회 (구글 캘린더 이벤트 삭제용)
-    const { data: interviewers } = await supabase
+    const { data: interviewers } = await serviceSupabase
       .from('users')
       .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
       .in('id', schedule.interviewer_ids || []);
@@ -557,7 +561,7 @@ export async function deleteSchedule(id: string) {
                 );
 
                 // watch 매핑 값 정리 (선택: 실패해도 계속 진행)
-                const { error: clearWatchError } = await supabase
+                const { error: clearWatchError } = await serviceSupabase
                   .from('schedule_options')
                   .update({
                     watch_channel_id: null,
@@ -606,7 +610,7 @@ export async function deleteSchedule(id: string) {
     }
 
     // 면접 일정 삭제 (CASCADE로 schedule_options도 자동 삭제됨)
-    const { error } = await supabase
+    const { error } = await serviceSupabase
       .from('schedules')
       .delete()
       .eq('id', id);

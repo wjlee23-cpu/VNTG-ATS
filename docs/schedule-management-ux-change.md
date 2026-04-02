@@ -28,7 +28,7 @@
 
 ### 컴포넌트 변경
 
-- `ActivityTimeline`: 일정 관련 액션 콜백 props 추가 (`onCancelSchedule`, `onDeleteSchedule`, `onRescheduleSchedule`)
+- `ActivityTimeline`: 일정 관련 액션 콜백 props 추가 (`onDeleteSchedule`, `onCheckSchedule`)
 - `TimelineEventContent`: 일정 카드에서 인라인 액션 버튼 렌더링
 - `CandidateDetailClient`: 일정 액션 핸들러 구현 및 타임라인 재조회 로직 추가
 

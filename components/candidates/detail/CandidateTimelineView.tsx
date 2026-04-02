@@ -27,9 +27,7 @@ interface CandidateTimelineViewProps {
   onAddComment: () => void;
   onRefreshTimeline?: () => void | Promise<void>;
   onSwitchToTimeline?: () => void;
-  onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
-  onRescheduleSchedule?: (scheduleId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;
 }
 
@@ -47,9 +45,7 @@ export function CandidateTimelineView({
   onAddComment,
   onRefreshTimeline,
   onSwitchToTimeline,
-  onCancelSchedule,
   onDeleteSchedule,
-  onRescheduleSchedule,
   onCheckSchedule,
 }: CandidateTimelineViewProps) {
   const router = useRouter();
@@ -305,9 +301,7 @@ export function CandidateTimelineView({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
-                          onRescheduleSchedule={onRescheduleSchedule}
                           onCheckSchedule={onCheckSchedule}
                         />
                       </div>
@@ -318,9 +312,7 @@ export function CandidateTimelineView({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
-                          onRescheduleSchedule={onRescheduleSchedule}
                           onCheckSchedule={onCheckSchedule}
                         />
                       </div>
@@ -331,9 +323,7 @@ export function CandidateTimelineView({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          onCancelSchedule={onCancelSchedule}
                           onDeleteSchedule={onDeleteSchedule}
-                          onRescheduleSchedule={onRescheduleSchedule}
                           onCheckSchedule={onCheckSchedule}
                         />
                       </div>
@@ -343,9 +333,7 @@ export function CandidateTimelineView({
                         expandedEmails={expandedEmails}
                         onToggleEmailExpand={onToggleEmailExpand}
                         candidateId={candidateId}
-                        onCancelSchedule={onCancelSchedule}
                         onDeleteSchedule={onDeleteSchedule}
-                        onRescheduleSchedule={onRescheduleSchedule}
                         onCheckSchedule={onCheckSchedule}
                       />
                     )}

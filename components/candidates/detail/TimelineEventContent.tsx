@@ -7,8 +7,6 @@ import {
   ArrowDownLeft,
   ArrowUp,
   ArrowDown,
-  Settings2,
-  CalendarOff,
   Trash2,
   Calendar,
   RefreshCw,
@@ -90,9 +88,7 @@ interface TimelineEventContentProps {
   onToggleEmailExpand: (eventId: string) => void;
   candidateId: string;
   // 일정 관련 액션 콜백 (타임라인 헤더에서 내려옴)
-  onCancelSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
-  onRescheduleSchedule?: (scheduleId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;
 }
 
@@ -102,9 +98,7 @@ export function TimelineEventContent({
   expandedEmails,
   onToggleEmailExpand,
   candidateId,
-  onCancelSchedule,
   onDeleteSchedule,
-  onRescheduleSchedule,
   onCheckSchedule,
 }: TimelineEventContentProps) {
   const router = useRouter();
@@ -410,7 +404,7 @@ export function TimelineEventContent({
 
           {scheduleId &&
             actionPolicy.showActions &&
-            (onRescheduleSchedule || onCancelSchedule || onDeleteSchedule || onCheckSchedule) && (
+            (onDeleteSchedule || onCheckSchedule) && (
             <div className="flex items-center gap-4 mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               {onCheckSchedule && (
                 <button
@@ -429,44 +423,6 @@ export function TimelineEventContent({
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   일정 확인
-                </button>
-              )}
-              {onRescheduleSchedule && (
-                <button
-                  onClick={() => {
-                    if (!actionPolicy.canReschedule) return;
-                    onRescheduleSchedule(scheduleId);
-                  }}
-                  disabled={!actionPolicy.canReschedule}
-                  title={!actionPolicy.canReschedule ? '현재 상태에서는 재조율할 수 없습니다.' : '새 일정 옵션을 다시 생성합니다.'}
-                  className={[
-                    'flex items-center gap-1.5 text-xs font-medium transition-colors',
-                    actionPolicy.canReschedule
-                      ? 'text-neutral-400 hover:text-neutral-900'
-                      : 'text-neutral-300 cursor-not-allowed',
-                  ].join(' ')}
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                  재조율
-                </button>
-              )}
-              {onCancelSchedule && (
-                <button
-                  onClick={() => {
-                    if (!actionPolicy.canCancel) return;
-                    onCancelSchedule(scheduleId);
-                  }}
-                  disabled={!actionPolicy.canCancel}
-                  title={!actionPolicy.canCancel ? '이미 취소/삭제된 일정입니다.' : '일정을 취소합니다. (구글 캘린더 이벤트도 삭제)'}
-                  className={[
-                    'flex items-center gap-1.5 text-xs font-medium transition-colors',
-                    actionPolicy.canCancel
-                      ? 'text-neutral-400 hover:text-red-600'
-                      : 'text-neutral-300 cursor-not-allowed',
-                  ].join(' ')}
-                >
-                  <CalendarOff className="w-3.5 h-3.5" />
-                  일정 취소
                 </button>
               )}
               {onDeleteSchedule && (
