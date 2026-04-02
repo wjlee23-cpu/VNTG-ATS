@@ -28,7 +28,7 @@ import { findAvailableTimeSlots } from '@/lib/ai/schedule';
 import { sendEmailViaGmail, generateScheduleSelectionUrl } from '@/lib/email/gmail';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
-import { toZonedTime } from 'date-fns-tz';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
 import { getStageNameByStageId } from '@/constants/stages';
 import { randomUUID } from 'crypto';
@@ -908,14 +908,26 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     if (interviewerIds.length === 0 && externalInterviewerEmails.length === 0) {
       throw new Error('면접관은 최소 1명 이상 필요합니다.');
     }
-    const startDate = validateFutureDate(
+    let startDate = validateFutureDate(
       new Date(validateRequired(formData.get('start_date'), '시작 날짜')),
       '시작 날짜'
     );
-    const endDate = validateFutureDate(
+    let endDate = validateFutureDate(
       new Date(validateRequired(formData.get('end_date'), '종료 날짜')),
       '종료 날짜'
     );
+    // KST 기준으로 시작/종료 시각을 정규화하여 종료일을 '포함' 처리합니다.
+    // - startDate: 해당 날짜 00:00:00.000 (KST) → UTC
+    // - endDate: 해당 날짜 23:59:59.999 (KST) → UTC
+    {
+      const KST = 'Asia/Seoul';
+      const kstStart = toZonedTime(startDate, KST);
+      kstStart.setHours(0, 0, 0, 0);
+      startDate = fromZonedTime(kstStart, KST);
+      const kstEnd = toZonedTime(endDate, KST);
+      kstEnd.setHours(23, 59, 59, 999);
+      endDate = fromZonedTime(kstEnd, KST);
+    }
     const durationMinutes = validateNumberRange(
       parseInt(validateRequired(formData.get('duration_minutes'), '면접 시간') || '60'),
       15,
@@ -3071,8 +3083,21 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       console.error('옵션 status 업데이트 실패:', updateStatusError);
     }
 
+    // 후보자 token이 비어있을 수 있는 레거시 대비: 없으면 생성/저장 후 사용
+    let candidateToken = candidate.token;
+    if (!candidateToken || candidateToken.trim() === '') {
+      candidateToken = randomUUID();
+      const { error: tokenUpdateError } = await supabase
+        .from('candidates')
+        .update({ token: candidateToken })
+        .eq('id', candidate.id);
+      if (tokenUpdateError) {
+        console.error('후보자 토큰 생성/저장 실패:', tokenUpdateError);
+      }
+    }
+
     // 이메일 본문 생성
-    const selectionUrl = generateScheduleSelectionUrl(candidate.id, candidate.token);
+    const selectionUrl = generateScheduleSelectionUrl(candidate.id, candidateToken);
     const optionsHtml = acceptedOptions
       .map((opt, index) => {
         const date = new Date(opt.scheduled_at);
@@ -3882,16 +3907,26 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
     }
 
     // 재조율을 위한 새로운 날짜 범위 확인
-    const newStartDate = formData.get('start_date') 
+    // KST 기준으로 재조율 날짜 범위를 정규화합니다.
+    const KST = 'Asia/Seoul';
+    let newStartDate = formData.get('start_date') 
       ? new Date(formData.get('start_date') as string)
       : new Date(); // 기본값: 오늘부터
-    const newEndDate = formData.get('end_date')
+    let newEndDate = formData.get('end_date')
       ? new Date(formData.get('end_date') as string)
       : (() => {
           const end = new Date();
           end.setDate(end.getDate() + 7); // 기본값: 7일 후
           return end;
         })();
+    {
+      const kstStart = toZonedTime(newStartDate, KST);
+      kstStart.setHours(0, 0, 0, 0);
+      newStartDate = fromZonedTime(kstStart, KST);
+      const kstEnd = toZonedTime(newEndDate, KST);
+      kstEnd.setHours(23, 59, 59, 999);
+      newEndDate = fromZonedTime(kstEnd, KST);
+    }
 
     if (newStartDate >= newEndDate) {
       throw new Error('종료 날짜는 시작 날짜보다 이후여야 합니다.');

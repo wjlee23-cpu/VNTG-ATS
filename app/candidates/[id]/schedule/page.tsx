@@ -25,10 +25,9 @@ export default async function CandidateSchedulePage({
     );
   }
 
-  // 후보자는 로그인하지 않았으므로 Service Role Client를 사용하여 RLS 우회
-  // 먼저 일반 클라이언트로 토큰 검증만 수행
-  const supabase = await createClient();
-  const { data: candidate, error: candidateError } = await supabase
+  // 후보자는 로그인하지 않으므로 Service Role Client로 직접 토큰을 검증합니다. (RLS 우회)
+  const serviceClient = createServiceClient();
+  const { data: candidate, error: candidateError } = await serviceClient
     .from('candidates')
     .select('id, name, email, token')
     .eq('id', candidateId)
@@ -46,8 +45,7 @@ export default async function CandidateSchedulePage({
     );
   }
 
-  // 토큰 검증 완료 후 Service Role Client로 전환하여 RLS 우회
-  const serviceClient = createServiceClient();
+  // 토큰 검증 완료 후에도 동일한 Service Role Client로 스케줄을 조회합니다.
 
   // 스케줄 조회 (확정된 일정 또는 선택 대기 중인 일정 모두 조회)
   const { data: schedule } = await serviceClient
