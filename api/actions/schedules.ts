@@ -3098,14 +3098,18 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
 
     // 이메일 본문 생성
     const selectionUrl = generateScheduleSelectionUrl(candidate.id, candidateToken);
+    // 후보자 메일의 시간 표기를 한국시간(KST)으로 통일하고, 종료 시각까지 함께 표기합니다.
     const optionsHtml = acceptedOptions
       .map((opt, index) => {
-        const date = new Date(opt.scheduled_at);
+        // KST 기준으로 시작/종료 시각 계산
+        const dateKst = toZonedTime(new Date(opt.scheduled_at), KST_TIMEZONE);
+        const endTimeKst = new Date(dateKst);
+        endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
         return `
           <div style="margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
             <h3 style="margin: 0 0 10px 0; color: #333;">옵션 ${index + 1}</h3>
             <p style="margin: 0; font-size: 16px; color: #666;">
-              📅 ${format(date, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })} ${format(date, 'HH:mm')}
+              📅 ${format(dateKst, 'yyyy년 MM월 dd일 (EEE) HH:mm', { locale: ko })} - ${format(endTimeKst, 'HH:mm', { locale: ko })} (KST)
             </p>
             <p style="margin: 5px 0 0 0; font-size: 14px; color: #999;">
               소요 시간: ${schedule.duration_minutes}분

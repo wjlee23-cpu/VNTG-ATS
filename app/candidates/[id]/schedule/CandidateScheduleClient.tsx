@@ -5,6 +5,7 @@ import { Calendar, Clock, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { confirmCandidateSchedule } from '@/api/actions/schedules';
 import { format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import { ko } from 'date-fns/locale/ko';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -37,6 +38,8 @@ export function CandidateScheduleClient({
   isConfirmed: initialIsConfirmed = false,
 }: CandidateScheduleClientProps) {
   const router = useRouter();
+  // KST 타임존 상수
+  const KST_TIMEZONE = 'Asia/Seoul';
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(initialIsConfirmed);
@@ -80,9 +83,10 @@ export function CandidateScheduleClient({
 
   // 일정 확정 완료 화면 (서버에서 이미 확정된 경우 또는 클라이언트에서 방금 확정한 경우)
   if (isConfirmed && confirmedOption) {
-    const date = new Date(confirmedOption.scheduled_at);
-    const endTime = new Date(date);
-    endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+    // KST 기준으로 시작/종료 시각을 계산합니다.
+    const dateKst = toZonedTime(new Date(confirmedOption.scheduled_at), KST_TIMEZONE);
+    const endTimeKst = new Date(dateKst);
+    endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
 
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -106,14 +110,14 @@ export function CandidateScheduleClient({
                   <Calendar className="w-5 h-5 text-blue-600" />
                   <span className="font-medium text-gray-900">날짜:</span>
                   <span className="text-gray-700">
-                    {format(date, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
+                    {format(dateKst, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-blue-600" />
                   <span className="font-medium text-gray-900">시간:</span>
                   <span className="text-gray-700">
-                    {format(date, 'HH:mm')} - {format(endTime, 'HH:mm')}
+                    {format(dateKst, 'HH:mm')} - {format(endTimeKst, 'HH:mm')} (KST)
                   </span>
                 </div>
                 <div className="text-sm text-gray-600 mt-2">
@@ -149,9 +153,10 @@ export function CandidateScheduleClient({
 
           <div className="space-y-4 mb-8">
             {options.map((option, index) => {
-              const date = new Date(option.scheduled_at);
-              const endTime = new Date(date);
-              endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
+              // KST 기준으로 옵션의 시작/종료 시각을 계산합니다.
+              const dateKst = toZonedTime(new Date(option.scheduled_at), KST_TIMEZONE);
+              const endTimeKst = new Date(dateKst);
+              endTimeKst.setMinutes(endTimeKst.getMinutes() + schedule.duration_minutes);
               const isSelected = selectedOptionId === option.id;
 
               return (
@@ -175,13 +180,13 @@ export function CandidateScheduleClient({
                         <p className="flex items-center gap-2">
                           <span className="font-medium">날짜:</span>
                           <span>
-                            {format(date, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
+                            {format(dateKst, 'yyyy년 MM월 dd일 (EEE)', { locale: ko })}
                           </span>
                         </p>
                         <p className="flex items-center gap-2">
                           <Clock className="w-4 h-4" />
                           <span>
-                            {format(date, 'HH:mm')} - {format(endTime, 'HH:mm')}
+                            {format(dateKst, 'HH:mm')} - {format(endTimeKst, 'HH:mm')} (KST)
                           </span>
                         </p>
                         <p className="text-sm text-gray-500">
@@ -216,7 +221,7 @@ export function CandidateScheduleClient({
 
           <div className="border-t pt-6">
             <p className="text-sm text-gray-500 text-center">
-              일정을 선택하시면 구글 캘린더에 자동으로 추가되며, 면접관들에게도 알림이 전송됩니다.
+              일정을 선택하시면 구글 캘린더에 자동으로 추가되며, 면접관들에게도 알림이 전송됩니다. (모든 시간은 KST 기준)
             </p>
           </div>
         </div>

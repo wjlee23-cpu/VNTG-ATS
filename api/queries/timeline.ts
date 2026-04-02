@@ -214,12 +214,40 @@ export async function getTimelineEvents(
       const dateB = new Date(b.created_at).getTime();
       return dateB - dateA; // 최신순
     });
+
+    // ✅ 이메일 이벤트 중복 정리
+    // - 실제로 동일한 이메일에 대해 "System(작성자 없음)" 이벤트와 "주체(작성자 있음)" 이벤트가
+    //   동시에 존재하는 경우가 있습니다.
+    // - 요구사항: System 기록은 숨기고, 수/발신 주체의 기록만 남깁니다.
+    // - 기준: 같은 email_id를 공유하는 이벤트가 2개 이상일 때,
+    //   created_by_user가 null인(=System) 이메일 이벤트는 제거합니다.
+    const actorEmailIds = new Set<string>();
+    for (const ev of allEvents as any[]) {
+      if ((ev.type === 'email' || ev.type === 'email_received') && ev?.content?.email_id) {
+        // created_by_user가 존재(=사람이 주체)하면 배우(Actor) 이메일로 간주
+        if (ev?.created_by_user) {
+          actorEmailIds.add(String(ev.content.email_id));
+        }
+      }
+    }
+
+    const dedupedEmailEvents = (allEvents as any[]).filter((ev) => {
+      if ((ev.type === 'email' || ev.type === 'email_received') && ev?.content?.email_id) {
+        const emailId = String(ev.content.email_id);
+        const isSystem = !ev?.created_by_user;
+        // 동일 email_id에 주체 이벤트가 존재한다면 System 이메일 이벤트는 숨김
+        if (isSystem && actorEmailIds.has(emailId)) {
+          return false;
+        }
+      }
+      return true;
+    });
     
     // 이메일 이벤트 개수 확인
-    const emailEventCount = allEvents.filter((e: any) => e.type === 'email' || e.type === 'email_received').length;
+    const emailEventCount = dedupedEmailEvents.filter((e: any) => e.type === 'email' || e.type === 'email_received').length;
     if (process.env.NODE_ENV === 'development') {
       console.log(
-        `[타임라인 조회] 최종 결과: 타임라인 이벤트 ${enrichedData.length}개, 누락된 이메일 ${missingEmailEvents.length}개, 총 ${allEvents.length}개 (이메일 이벤트: ${emailEventCount}개)`,
+        `[타임라인 조회] 최종 결과: 타임라인 이벤트 ${enrichedData.length}개, 누락된 이메일 ${missingEmailEvents.length}개, 총 ${dedupedEmailEvents.length}개 (이메일 이벤트: ${emailEventCount}개)`,
       );
     }
     
@@ -239,14 +267,14 @@ export async function getTimelineEvents(
     // - 이제는 schedule_id 기준으로 대표 카드(=schedule_created)를 업서트로 갱신하므로,
     //   대표 카드가 존재하는 schedule_id에 대해서는 레거시 이벤트를 숨겨 UI 노이즈를 줄입니다.
     const scheduleCreatedIds = new Set<string>();
-    for (const ev of allEvents as any[]) {
+    for (const ev of dedupedEmailEvents as any[]) {
       const sid = ev?.schedule_id || ev?.content?.schedule_id;
       if (ev?.type === 'schedule_created' && sid) {
         scheduleCreatedIds.add(String(sid));
       }
     }
 
-    const normalized = (allEvents as any[]).filter((ev) => {
+    const normalized = (dedupedEmailEvents as any[]).filter((ev) => {
       const sid = ev?.schedule_id || ev?.content?.schedule_id;
       if (!sid) return true;
       // schedule_created가 있으면 같은 schedule_id의 레거시 이벤트는 숨김

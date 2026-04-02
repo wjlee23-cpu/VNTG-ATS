@@ -212,13 +212,16 @@ function findAvailableSlotsOptimized(
           continue
         }
 
+        // 슬롯 종료 시각(로컬 KST) 계산
+        const slotStartMinutes = slotLocalHour * 60 + slotLocalMinute
+        const slotEndLocalMinutes = slotStartMinutes + durationMinutes
+
+        // 제외 구간과의 부분 겹침 포함 여부 판단
         const isExcluded = excludedTimeRanges.some(range => {
-          const slotTotalMinutes = slotLocalHour * 60 + slotLocalMinute
           const rangeStartMinutes = range.startHour * 60 + range.startMinute
           const rangeEndMinutes = range.endHour * 60 + range.endMinute
-
-          // 슬롯 시작 시각이 제외 구간 안에 있는지 체크 (경계 포함)
-          return slotTotalMinutes >= rangeStartMinutes && slotTotalMinutes < rangeEndMinutes
+          // [slotStart, slotEnd) 와 [rangeStart, rangeEnd) 교집합이 있으면 제외
+          return slotStartMinutes < rangeEndMinutes && slotEndLocalMinutes > rangeStartMinutes
         })
 
         if (isExcluded) {
