@@ -152,7 +152,7 @@ export function CandidateScheduleForm({
     // 하단 버튼이 화면 밖으로 밀려 가려지지 않도록 "가변 높이"로 구성합니다.
     // - 기본 디자인 높이: 820px
     // - 실제 화면에서는 100dvh(동적 viewport height)를 기준으로 줄어들 수 있음
-    <div className="flex h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1080px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
+    <div className="flex h-full min-h-[calc(100dvh-2rem)] w-full max-w-[1080px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
       {/* 좌측 사이드바 */}
       <CandidateSidebar
         candidate={candidate}
