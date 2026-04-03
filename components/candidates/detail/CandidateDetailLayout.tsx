@@ -40,8 +40,20 @@ interface CandidateDetailLayoutProps {
   onAddComment: () => void;
   onRefreshTimeline?: () => void | Promise<void>;
   onSwitchToTimeline?: () => void;
+  // 사이드바 컨트롤러로 이동한 스케줄 제어
+  currentActiveSchedule?: {
+    id: string;
+    workflow_status:
+      | 'pending_interviewers'
+      | 'pending_candidate'
+      | 'confirmed'
+      | 'cancelled'
+      | 'needs_rescheduling'
+      | null;
+  } | null;
   onDeleteSchedule?: (scheduleId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;
+  scheduleActionLoadingId?: string | null;
   resumeFiles: ResumeFile[];
   canViewCompensation: boolean;
   onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
@@ -79,6 +91,8 @@ export function CandidateDetailLayout({
   onSwitchToTimeline,
   onDeleteSchedule,
   onCheckSchedule,
+  currentActiveSchedule = null,
+  scheduleActionLoadingId = null,
   resumeFiles,
   canViewCompensation,
   onOpenProfileSectionEdit,
@@ -130,6 +144,10 @@ export function CandidateDetailLayout({
         onConfirmHire={onConfirmHire}
         onEmailClick={onEmailClick}
         onArchiveClick={onArchiveClick}
+        currentActiveSchedule={currentActiveSchedule}
+        onCheckSchedule={onCheckSchedule}
+        onDeleteSchedule={onDeleteSchedule}
+        scheduleActionLoadingId={scheduleActionLoadingId}
       />
 
       {/* min-w-0: 중첩 flex에서 탭 콘텐츠가 가로 0에 가깝게 줄어드는 것 방지 */}
@@ -168,8 +186,6 @@ export function CandidateDetailLayout({
             onAddComment={onAddComment}
             onRefreshTimeline={onRefreshTimeline}
             onSwitchToTimeline={handleSwitchToTimeline}
-            onDeleteSchedule={onDeleteSchedule}
-            onCheckSchedule={onCheckSchedule}
           />
         )}
       </div>

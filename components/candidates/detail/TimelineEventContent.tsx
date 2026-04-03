@@ -38,37 +38,6 @@ function getAutomationStatusLabel(status: string | undefined) {
   }
 }
 
-function getAutomationActionPolicy(status: string | undefined) {
-  // UX 정책:
-  // - deleted: 이미 삭제된 일정이므로 어떤 액션도 수행할 수 없음
-  // - cancelled: 취소된 일정이므로 "확인/재조율/취소"는 불필요(비활성), 완전 삭제만 허용
-  // - confirmed: 확정된 일정은 "확인"은 의미가 없고, 재조율/취소/삭제는 운영 정책에 따라 가능할 수 있음
-  //   (현재는 안전하게 '확인'만 비활성하고 나머지는 유지)
-  const isDeleted = status === 'deleted';
-  const isCancelled = status === 'cancelled';
-  const isConfirmed = status === 'confirmed';
-  const isNeedsRescheduling = status === 'needs_rescheduling';
-
-  return {
-    // 재조율 필요 상태에서는 "일정 확인"보다 "재조율"이 다음 액션이므로 확인은 비활성화합니다.
-    canCheck: !(isDeleted || isCancelled || isConfirmed || isNeedsRescheduling),
-    canReschedule: !(isDeleted || isCancelled),
-    canCancel: !(isDeleted || isCancelled),
-    canDelete: !isDeleted,
-    showActions: !isDeleted, // deleted면 버튼 영역 자체를 숨김
-    hint:
-      isDeleted
-        ? '이미 삭제된 일정입니다.'
-        : isCancelled
-          ? '취소된 일정입니다. 필요하면 “완전 삭제”만 할 수 있습니다.'
-          : isNeedsRescheduling
-            ? '현재 상태는 “재조율 필요”입니다. 아래 “재조율” 버튼으로 새 일정 옵션을 다시 생성하세요.'
-          : isConfirmed
-            ? '확정된 일정입니다.'
-            : null,
-  };
-}
-
 function renderStars(rating: number) {
   return (
     <div className="flex gap-1">
@@ -87,9 +56,6 @@ interface TimelineEventContentProps {
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
   candidateId: string;
-  // 일정 관련 액션 콜백 (타임라인 헤더에서 내려옴)
-  onDeleteSchedule?: (scheduleId: string) => void;
-  onCheckSchedule?: (scheduleId: string) => void;
 }
 
 /** 타임라인 이벤트 타입별 본문 렌더링 */
@@ -98,8 +64,6 @@ export function TimelineEventContent({
   expandedEmails,
   onToggleEmailExpand,
   candidateId,
-  onDeleteSchedule,
-  onCheckSchedule,
 }: TimelineEventContentProps) {
   const router = useRouter();
 
@@ -304,7 +268,6 @@ export function TimelineEventContent({
       const user = event.created_by_user as { name?: string; email?: string } | null;
       const authorName = user?.name || user?.email?.split('@')[0] || '';
       const statusMeta = getAutomationStatusLabel(automationStatus);
-      const actionPolicy = getAutomationActionPolicy(automationStatus);
 
       return (
         <div className="space-y-3">
@@ -321,13 +284,14 @@ export function TimelineEventContent({
                 </p>
               )}
             </div>
+            {/* Read-only 배지 스타일 유지 */}
             <Badge variant={statusMeta.variant} className="text-[11px] whitespace-nowrap">
               {statusMeta.label}
             </Badge>
           </div>
 
           {scheduleOptions && scheduleOptions.length > 0 && (
-            <div className="bg-[#FCFCFC] border border-neutral-200 rounded-lg p-3">
+            <div className="bg-[#FCFCFC] border border-neutral-200/70 rounded-lg p-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
               <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2.5">
                 생성된 일정 옵션 ({scheduleOptions.length}개)
               </p>
@@ -348,7 +312,7 @@ export function TimelineEventContent({
                   return (
                     <div
                       key={option.id || index}
-                      className="flex items-center gap-2.5 bg-white border border-neutral-100 p-2.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                      className="flex items-center gap-2.5 bg-white border border-neutral-100/80 p-2.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
                     >
                       <Calendar className="w-4 h-4 text-neutral-400" />
                       <span className="text-xs font-medium text-neutral-700">
@@ -361,7 +325,7 @@ export function TimelineEventContent({
             </div>
           )}
           {retryCount !== undefined && retryCount > 0 && (
-            <div className="mt-2 p-3 bg-yellow-50/50 rounded-lg border border-yellow-200/50">
+            <div className="mt-2 p-3 bg-yellow-50/40 rounded-lg border border-yellow-200/50">
               <p className="text-xs text-foreground">
                 <span className="font-medium">날짜 범위 확장:</span> 원본 날짜 범위에 일정이 없어{' '}
                 {retryCount}회 날짜 범위를 확장하여 검색했습니다.
@@ -376,16 +340,9 @@ export function TimelineEventContent({
             </div>
           )}
 
-          {/* 상태별 안내 문구 (버튼이 비활성화되는 이유를 사용자에게 알려줌) */}
-          {actionPolicy.hint && (
-            <div className="mt-2 p-3 bg-neutral-50 rounded-lg border border-neutral-200">
-              <p className="text-xs text-neutral-600">{actionPolicy.hint}</p>
-            </div>
-          )}
-
           {/* ✅ 같은 카드 안에서 변화 이력을 보여줍니다. (새 타임라인 줄을 쌓지 않기 위함) */}
           {history && history.length > 0 && (
-            <div className="mt-2 p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+            <div className="mt-2 p-3 bg-neutral-50 rounded-lg border border-neutral-200/70">
               <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2.5">
                 진행 이력
               </p>
@@ -399,51 +356,6 @@ export function TimelineEventContent({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {scheduleId &&
-            actionPolicy.showActions &&
-            (onDeleteSchedule || onCheckSchedule) && (
-            <div className="flex items-center gap-4 mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              {onCheckSchedule && (
-                <button
-                  onClick={() => {
-                    if (!actionPolicy.canCheck) return;
-                    onCheckSchedule(scheduleId);
-                  }}
-                  disabled={!actionPolicy.canCheck}
-                  title={!actionPolicy.canCheck ? '현재 상태에서는 일정 확인이 필요하지 않습니다.' : '면접관 수락/거절 상태를 확인합니다.'}
-                  className={[
-                    'flex items-center gap-1.5 text-xs font-medium transition-colors',
-                    actionPolicy.canCheck
-                      ? 'text-neutral-400 hover:text-neutral-900'
-                      : 'text-neutral-300 cursor-not-allowed',
-                  ].join(' ')}
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  일정 확인
-                </button>
-              )}
-              {onDeleteSchedule && (
-                <button
-                  onClick={() => {
-                    if (!actionPolicy.canDelete) return;
-                    onDeleteSchedule(scheduleId);
-                  }}
-                  disabled={!actionPolicy.canDelete}
-                  title={!actionPolicy.canDelete ? '이미 삭제된 일정입니다.' : 'DB에서 일정/옵션을 완전 삭제합니다. (되돌릴 수 없음)'}
-                  className={[
-                    'flex items-center gap-1.5 text-xs font-medium transition-colors ml-auto',
-                    actionPolicy.canDelete
-                      ? 'text-neutral-300 hover:text-red-600'
-                      : 'text-neutral-200 cursor-not-allowed',
-                  ].join(' ')}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  완전 삭제
-                </button>
-              )}
             </div>
           )}
         </div>

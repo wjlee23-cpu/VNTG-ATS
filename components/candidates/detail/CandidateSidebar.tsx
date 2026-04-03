@@ -9,6 +9,9 @@ import {
   Archive,
   CheckCircle2,
   Loader2,
+  RefreshCw,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -39,6 +42,19 @@ interface CandidateSidebarProps {
   onConfirmHire: () => void;
   onEmailClick: () => void;
   onArchiveClick: () => void;
+  currentActiveSchedule?: {
+    id: string;
+    workflow_status:
+      | 'pending_interviewers'
+      | 'pending_candidate'
+      | 'confirmed'
+      | 'cancelled'
+      | 'needs_rescheduling'
+      | null;
+  } | null;
+  onCheckSchedule?: (scheduleId: string) => void;
+  onDeleteSchedule?: (scheduleId: string) => void;
+  scheduleActionLoadingId?: string | null;
 }
 
 /** 후보자 상세 좌측 사이드바 - VNTG Design System 2.0 */
@@ -56,6 +72,10 @@ export function CandidateSidebar({
   onConfirmHire,
   onEmailClick,
   onArchiveClick,
+  currentActiveSchedule = null,
+  onCheckSchedule,
+  onDeleteSchedule,
+  scheduleActionLoadingId = null,
 }: CandidateSidebarProps) {
   // Offer 단계 여부 체크 (입사 확정 버튼 노출 여부 결정)
   const isOfferStage = currentStageName === 'Offer';
@@ -65,6 +85,12 @@ export function CandidateSidebar({
   
   // 직책 정보 (job_posts.title 또는 기본값)
   const jobTitle = candidate.job_posts?.title || '';
+
+  // 컨트롤러 버튼 활성/비활성
+  const hasActive = !!currentActiveSchedule;
+  const isActionLoading =
+    !!(scheduleActionLoadingId && currentActiveSchedule && scheduleActionLoadingId === currentActiveSchedule.id);
+  const canInteract = canManageCandidate && hasActive && !isActionLoading;
 
   return (
     <div className="w-[280px] bg-[#FCFCFC] border-r border-neutral-200 p-7 flex flex-col justify-between shrink-0">
@@ -190,6 +216,87 @@ export function CandidateSidebar({
             </button>
           </div>
         )}
+
+        {/* AI 스케줄링 코파일럿 컨트롤러 */}
+        <div className="pt-6 border-t border-neutral-200/60 flex-1 relative mt-6">
+          <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider mb-5 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            AI 스케줄링 코파일럿
+          </h3>
+
+          <div className="relative border-l border-neutral-200 ml-2.5 space-y-5">
+            <div className="relative pl-5">
+              <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full bg-neutral-900 ring-4 ring-[#FCFCFC]"></div>
+              <p className="text-xs font-medium text-neutral-500">
+                {hasActive ? '최적 일정 탐색 완료(또는 진행 중)' : '진행 중인 스케줄 없음'}
+              </p>
+            </div>
+
+            <div className="relative pl-5">
+              <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full bg-blue-500 ring-4 ring-blue-50 animate-pulse"></div>
+              <p className="text-xs font-bold text-blue-600">
+                {(() => {
+                  const s = currentActiveSchedule?.workflow_status;
+                  switch (s) {
+                    case 'pending_interviewers':
+                      return '면접관 수락 대기중';
+                    case 'pending_candidate':
+                      return '후보자 선택 대기중';
+                    case 'needs_rescheduling':
+                      return '재조율 필요';
+                    case 'confirmed':
+                      return '확정됨';
+                    case 'cancelled':
+                      return '취소됨';
+                    default:
+                      return hasActive ? '진행 중' : '대기 중';
+                  }
+                })()}
+              </p>
+              <p className="text-[10px] text-neutral-400 font-medium mt-1 tracking-wide">
+                {hasActive ? '상태를 확인하거나 수동 개입할 수 있습니다' : '새 일정을 생성하면 여기에 표시됩니다'}
+              </p>
+            </div>
+
+            <div className="relative pl-5">
+              <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full bg-neutral-200 ring-4 ring-[#FCFCFC]"></div>
+              <p className="text-xs font-medium text-neutral-400 hover:text-neutral-600 transition-colors cursor-default">
+                사이드바에서 모든 컨트롤을 수행하세요
+              </p>
+            </div>
+          </div>
+
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-white rounded-xl border border-neutral-100 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.03)] flex flex-col gap-2.5 z-10">
+            <button
+              className="w-full flex items-center justify-center gap-2 bg-neutral-900 text-white rounded-lg py-2 px-3 text-xs font-semibold hover:bg-neutral-800 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => hasActive && onCheckSchedule && onCheckSchedule(currentActiveSchedule!.id)}
+              disabled={!canInteract || !onCheckSchedule}
+              title={hasActive ? '면접관 응답 상태를 확인합니다.' : '진행 중인 스케줄이 없습니다.'}
+            >
+              {isActionLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-300" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 text-neutral-300" />
+              )}
+              일정 확인 / 수동 개입
+            </button>
+
+            <button
+              className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-medium text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => {
+                if (!hasActive || !onDeleteSchedule) return;
+                if (!confirm('이 면접 일정을 완전 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
+                if (!confirm('정말로 삭제하시겠습니까? 연관 일정 옵션/캘린더 블록도 함께 정리될 수 있습니다.')) return;
+                onDeleteSchedule(currentActiveSchedule!.id);
+              }}
+              disabled={!canManageCandidate || !hasActive || isActionLoading || !onDeleteSchedule}
+              title={hasActive ? '현재 스케줄링을 완전 삭제합니다.' : '진행 중인 스케줄이 없습니다.'}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              현재 스케줄링 완전 삭제
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* 현재 상태 표시 */}

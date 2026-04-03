@@ -23,6 +23,12 @@ export interface Schedule {
   status: 'pending' | 'confirmed' | 'rejected' | 'completed';
   candidate_response: 'accepted' | 'rejected' | 'pending' | null;
   beverage_preference: string | null;
+  // 진행 상태(자동화 워크플로우)
+  workflow_status: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | 'needs_rescheduling' | null;
+  // 선택: 자동화 힌트/메타
+  interviewer_responses?: Record<string, any> | null;
+  google_event_id?: string | null;
+  created_at?: string;
 }
 
 export interface TimelineEventContent {

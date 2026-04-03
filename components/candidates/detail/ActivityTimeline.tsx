@@ -22,9 +22,6 @@ interface ActivityTimelineProps {
   onSyncEmails: () => void;
   onAddComment: () => void;
   onAddEvaluation: () => void;
-  // 일정 관련 액션 콜백 (후보자 상세 컨테이너에서 주입)
-  onDeleteSchedule?: (scheduleId: string) => void;
-  onCheckSchedule?: (scheduleId: string) => void;
 }
 
 /** Activity Timeline 카드: 이벤트 목록 + 동기화/코멘트/평가 버튼 */
@@ -39,8 +36,6 @@ export function ActivityTimeline({
   onSyncEmails,
   onAddComment,
   onAddEvaluation,
-  onDeleteSchedule,
-  onCheckSchedule,
 }: ActivityTimelineProps) {
   const showUserAvatar = (event: TimelineEvent) => {
     // 이벤트 타입과 무관하게 작성자 정보가 있으면 실행 주체를 아바타로 표시합니다.
@@ -166,9 +161,6 @@ export function ActivityTimeline({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          // 일정 관리 액션들은 아직 UI 리디자인 단계에서 사용할 예정
-                          onDeleteSchedule={onDeleteSchedule}
-                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     </div>

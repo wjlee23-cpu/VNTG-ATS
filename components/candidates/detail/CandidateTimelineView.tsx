@@ -27,8 +27,6 @@ interface CandidateTimelineViewProps {
   onAddComment: () => void;
   onRefreshTimeline?: () => void | Promise<void>;
   onSwitchToTimeline?: () => void;
-  onDeleteSchedule?: (scheduleId: string) => void;
-  onCheckSchedule?: (scheduleId: string) => void;
 }
 
 /** 후보자 액티비티 타임라인 뷰 - VNTG Design System 2.0 */
@@ -45,8 +43,6 @@ export function CandidateTimelineView({
   onAddComment,
   onRefreshTimeline,
   onSwitchToTimeline,
-  onDeleteSchedule,
-  onCheckSchedule,
 }: CandidateTimelineViewProps) {
   const router = useRouter();
   const [commentText, setCommentText] = useState('');
@@ -301,8 +297,6 @@ export function CandidateTimelineView({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          onDeleteSchedule={onDeleteSchedule}
-                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     ) : event.type === 'comment' || event.type === 'comment_created' || event.type === 'comment_updated' ? (
@@ -312,8 +306,6 @@ export function CandidateTimelineView({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          onDeleteSchedule={onDeleteSchedule}
-                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     ) : event.type === 'email' || event.type === 'email_received' ? (
@@ -323,8 +315,6 @@ export function CandidateTimelineView({
                           expandedEmails={expandedEmails}
                           onToggleEmailExpand={onToggleEmailExpand}
                           candidateId={candidateId}
-                          onDeleteSchedule={onDeleteSchedule}
-                          onCheckSchedule={onCheckSchedule}
                         />
                       </div>
                     ) : (
@@ -333,8 +323,6 @@ export function CandidateTimelineView({
                         expandedEmails={expandedEmails}
                         onToggleEmailExpand={onToggleEmailExpand}
                         candidateId={candidateId}
-                        onDeleteSchedule={onDeleteSchedule}
-                        onCheckSchedule={onCheckSchedule}
                       />
                     )}
                   </div>

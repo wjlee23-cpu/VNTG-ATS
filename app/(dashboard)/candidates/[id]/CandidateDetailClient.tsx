@@ -112,6 +112,35 @@ export function CandidateDetailClient({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isMovingStage, setIsMovingStage] = useState(false);
   const [scheduleActionLoadingId, setScheduleActionLoadingId] = useState<string | null>(null);
+  // 사이드바 컨트롤러가 사용할 현재 진행 중 스케줄 계산
+  const currentActiveSchedule = (() => {
+    const list = Array.isArray(_schedules) ? _schedules : [];
+    const valid = list.filter((s: any) => s && s.id);
+    const nonTerminal = valid.filter((s: any) => {
+      const ws = s?.workflow_status as string | null | undefined;
+      return ws !== 'confirmed' && ws !== 'cancelled' && ws !== 'deleted';
+    });
+    const sorted = nonTerminal.sort((a: any, b: any) => {
+      const atA = new Date(a.created_at || a.scheduled_at || 0).getTime();
+      const atB = new Date(b.created_at || b.scheduled_at || 0).getTime();
+      return atB - atA;
+    });
+    const pick = sorted[0];
+    return pick
+      ? {
+          id: String(pick.id),
+          workflow_status: (pick.workflow_status ||
+            null) as
+            | 'pending_interviewers'
+            | 'pending_candidate'
+            | 'confirmed'
+            | 'cancelled'
+            | 'needs_rescheduling'
+            | null,
+        }
+      : null;
+  })();
+
   const [detailInitialTab, setDetailInitialTab] = useState<DetailTab>(() => {
     if (typeof window === 'undefined') return 'profile';
     const saved = window.sessionStorage.getItem(
@@ -681,8 +710,10 @@ export function CandidateDetailClient({
           onToggleEmailExpand={toggleEmailExpand}
           onAddComment={() => setIsCommentModalOpen(true)}
           onRefreshTimeline={refreshTimelineEvents}
-          onDeleteSchedule={handleDeleteScheduleFromTimeline}
-          onCheckSchedule={handleCheckScheduleFromTimeline}
+        onDeleteSchedule={handleDeleteScheduleFromTimeline}
+        onCheckSchedule={handleCheckScheduleFromTimeline}
+        currentActiveSchedule={currentActiveSchedule}
+        scheduleActionLoadingId={scheduleActionLoadingId}
           resumeFiles={resumeFiles}
           canViewCompensation={canViewCompensation}
           onOpenProfileSectionEdit={openProfileSectionEdit}
