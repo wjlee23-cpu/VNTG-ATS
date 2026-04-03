@@ -114,7 +114,7 @@ export function CandidateDetailClient({
   const [scheduleActionLoadingId, setScheduleActionLoadingId] = useState<string | null>(null);
   // 사이드바 컨트롤러가 사용할 현재 진행 중 스케줄 계산
   const currentActiveSchedule = (() => {
-    const list = Array.isArray(_schedules) ? _schedules : [];
+    const list = (Array.isArray(_schedules) ? _schedules : []) as any[];
     const valid = list.filter((s: any) => s && s.id);
     const nonTerminal = valid.filter((s: any) => {
       const ws = s?.workflow_status as string | null | undefined;
@@ -125,7 +125,7 @@ export function CandidateDetailClient({
       const atB = new Date(b.created_at || b.scheduled_at || 0).getTime();
       return atB - atA;
     });
-    const pick = sorted[0];
+    const pick: any = sorted[0] as any;
     return pick
       ? {
           id: String(pick.id),
