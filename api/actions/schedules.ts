@@ -636,10 +636,32 @@ export async function deleteSchedule(id: string) {
         createdBy: user.userId,
         latestMessage: '면접 일정이 삭제되었습니다.',
         automationStatus: 'deleted',
-        appendHistory: [{ at: new Date().toISOString(), message: '채용담당자가 면접 일정을 삭제했습니다.' }],
       });
     } catch (e) {
       console.error('[타임라인] 일정 삭제 카드 업데이트 실패(계속 진행):', e);
+    }
+
+    // ✅ 삭제는 타임라인에 별도 "새 줄"로 남겨 사용자가 혼동하지 않게 합니다.
+    try {
+      const { error: timelineError } = await serviceSupabase.from('timeline_events').insert({
+        candidate_id: schedule.candidate_id,
+        schedule_id: id,
+        type: 'schedule_deleted',
+        content: {
+          message: '면접 일정이 삭제되었습니다.',
+          schedule_id: id,
+        },
+        created_by: user.userId,
+      });
+
+      if (timelineError) {
+        console.error('[타임라인] 이벤트 생성 실패 (일정 삭제):', timelineError);
+        if ((timelineError as any).code === '23514') {
+          console.error('[타임라인] DB 스키마 제약 조건 위반 - schedule_deleted 타입이 허용되지 않음.');
+        }
+      }
+    } catch (e) {
+      console.error('[타임라인] 삭제 이벤트 생성 실패(계속 진행):', e);
     }
 
     // 면접 일정 삭제 (CASCADE로 schedule_options도 자동 삭제됨)
@@ -752,7 +774,6 @@ export async function cancelSchedule(id: string) {
         createdBy: user.userId,
         latestMessage: '면접 일정이 취소되었습니다.',
         automationStatus: 'cancelled',
-        appendHistory: [{ at: new Date().toISOString(), message: '채용담당자가 면접 일정을 취소했습니다.' }],
       });
     } catch (e) {
       console.error('[타임라인] 일정 취소 카드 업데이트 실패(계속 진행):', e);
@@ -1664,12 +1685,6 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           id: opt.id,
           scheduled_at: opt.scheduled_at,
         })),
-        appendHistory: [
-          {
-            at: new Date().toISOString(),
-            message: '면접 일정 자동화가 시작되었습니다. 면접관들의 수락/거절 응답을 기다리는 중입니다.',
-          },
-        ],
         extraContent: {
           interviewers: interviewerIds,
           external_interviewers: externalInterviewerEmails,
@@ -2139,12 +2154,6 @@ async function regenerateScheduleOptions(
         id: opt.id,
         scheduled_at: opt.scheduled_at,
       })),
-      appendHistory: [
-        {
-          at: new Date().toISOString(),
-          message: '이전 일정 옵션이 모두 거절되어 새 일정 옵션을 자동으로 재생성했습니다.',
-        },
-      ],
       extraContent: {
         interviewers: schedule.interviewer_ids,
         retry_count: retryCount,
@@ -2577,15 +2586,6 @@ export async function checkInterviewerResponses(
             automationStatus: 'pending_candidate',
             scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
             interviewerSummary,
-            appendHistory: [
-              ...timelineHistory,
-              {
-                at: nowIso,
-                message: '후보자에게 일정 선택 링크를 발송했습니다.',
-                // ✅ 중복 호출에도 같은 로그는 1번만 남기기 위한 멱등 키
-                key: `candidate_link_sent::${scheduleId}`,
-              },
-            ],
             extraContent: { all_accepted: true, accepted_option_id: allAcceptedOption.id },
           });
         } catch (e) {
@@ -2631,7 +2631,6 @@ export async function checkInterviewerResponses(
           automationStatus: 'pending_interviewers',
           scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
           interviewerSummary,
-          appendHistory: timelineHistory.length > 0 ? timelineHistory : undefined,
         });
       } catch (e) {
         console.error('[타임라인] 대기 상태 카드 업데이트 실패(계속 진행):', e);
@@ -2683,15 +2682,6 @@ export async function checkInterviewerResponses(
             automationStatus: 'pending_interviewers',
             scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
             interviewerSummary,
-            appendHistory: [
-              ...timelineHistory,
-              {
-                at: nowIso,
-                message: allOptionsDeclined
-                  ? '모든 일정 옵션이 전원 거절되어 재생성을 시작합니다.'
-                  : '일정 옵션에 거절이 포함되어(한 명이라도 거절) 재생성을 시작합니다.',
-              },
-            ],
           });
         } catch (e) {
           console.error('[타임라인] 전원 거절 감지 카드 업데이트 실패(계속 진행):', e);
@@ -2799,14 +2789,6 @@ export async function checkInterviewerResponses(
         automationStatus: 'needs_rescheduling',
         scheduleOptions: options.map((opt) => ({ id: opt.id, scheduled_at: opt.scheduled_at })),
         interviewerSummary,
-        appendHistory: [
-          ...timelineHistory,
-          {
-            at: nowIso,
-            message:
-              '면접관 응답이 혼합되어 전원 수락 옵션이 없어서 재조율이 필요합니다. (needs_rescheduling)',
-          },
-        ],
       });
     } catch (e) {
       console.error('[타임라인] 혼합 응답 카드 업데이트 실패(계속 진행):', e);

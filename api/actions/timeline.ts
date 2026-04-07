@@ -47,46 +47,10 @@ export type UpsertScheduleAutomationTimelineInput = {
     total: number;
   };
   /**
-   * 카드 내부 히스토리(감사 추적용)
-   * - 새 이벤트를 위에 쌓지 않고, 같은 카드 안에서 변화 이력을 누적합니다.
-   */
-  appendHistory?: Array<{ at: string; message: string; key?: string }>;
-  /**
    * 기존 content에 합쳐 넣을 추가 데이터(확장용)
    */
   extraContent?: JsonObject;
 };
-
-function mergeHistory(
-  existing: any,
-  append?: Array<{ at: string; message: string; key?: string }>,
-): Array<{ at: string; message: string; key?: string }> {
-  const prev = Array.isArray(existing) ? existing : [];
-  const next = Array.isArray(append) ? append : [];
-  const merged = [...prev, ...next];
-
-  // ✅ 중복 제거 정책
-  // - 멱등 키(key)가 있으면 key로 dedupe (웹훅 중복 호출에도 같은 변화는 1번만 남김)
-  // - key가 없으면 at+message로 dedupe (기존 호환)
-  const seen = new Set<string>();
-  const deduped: Array<{ at: string; message: string; key?: string }> = [];
-  for (const item of merged) {
-    const dedupeKey =
-      (typeof item?.key === 'string' && item.key.trim().length > 0)
-        ? `key::${item.key.trim()}`
-        : `atmsg::${item?.at ?? ''}::${item?.message ?? ''}`;
-
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-
-    if (item?.at && item?.message) {
-      const cleaned: { at: string; message: string; key?: string } = { at: item.at, message: item.message };
-      if (typeof item?.key === 'string' && item.key.trim().length > 0) cleaned.key = item.key.trim();
-      deduped.push(cleaned);
-    }
-  }
-  return deduped;
-}
 
 /**
  * "면접 일정 자동화 카드"를 schedule_id 기준으로 업서트(갱신)합니다.
@@ -127,7 +91,6 @@ export async function upsertScheduleAutomationTimeline(input: UpsertScheduleAuto
       schedule_options: input.scheduleOptions ?? existingContent?.schedule_options,
       interviewer_summary: input.interviewerSummary ?? existingContent?.interviewer_summary,
       updated_at: nowIso,
-      history: mergeHistory(existingContent?.history, input.appendHistory),
     };
 
     // created_at은 “처음 카드가 만들어진 시각”을 유지해야 타임라인이 계속 위로 솟지 않습니다.

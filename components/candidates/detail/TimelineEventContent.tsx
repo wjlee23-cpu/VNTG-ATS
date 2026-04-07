@@ -262,7 +262,6 @@ export function TimelineEventContent({
       const interviewerSummary = event.content?.interviewer_summary as
         | { accepted: number; declined: number; pending: number; total: number }
         | undefined;
-      const history = event.content?.history as Array<{ at: string; message: string }> | undefined;
 
       // 작성자 정보 추출 (HTML 샘플 형식: · wjlee23)
       const user = event.created_by_user as { name?: string; email?: string } | null;
@@ -337,25 +336,6 @@ export function TimelineEventContent({
                   {new Date(originalDateRange.end).toLocaleDateString('ko-KR')}
                 </p>
               )}
-            </div>
-          )}
-
-          {/* ✅ 같은 카드 안에서 변화 이력을 보여줍니다. (새 타임라인 줄을 쌓지 않기 위함) */}
-          {history && history.length > 0 && (
-            <div className="mt-2 p-3 bg-neutral-50 rounded-lg border border-neutral-200/70">
-              <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2.5">
-                진행 이력
-              </p>
-              <div className="space-y-2">
-                {history.slice(-5).map((h, idx) => (
-                  <div key={`${h.at}-${idx}`} className="text-xs text-neutral-700">
-                    <span className="text-neutral-400 mr-2">
-                      {new Date(h.at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span>{h.message}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </div>

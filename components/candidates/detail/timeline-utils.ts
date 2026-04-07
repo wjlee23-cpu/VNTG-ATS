@@ -23,6 +23,8 @@ export function getTimelineEventTitle(event: TimelineEvent): string {
       return '면접 일정 생성';
     case 'schedule_confirmed':
       return '면접 일정 확정';
+    case 'schedule_deleted':
+      return '면접 일정 삭제';
     case 'schedule_regenerated':
       return '면접 일정 재생성';
     case 'interviewer_response':
@@ -63,6 +65,7 @@ export function getTimelineEventColor(type: string): string {
       return 'text-purple-600';
     case 'schedule_created':
     case 'schedule_confirmed':
+    case 'schedule_deleted':
     case 'schedule_regenerated':
       return 'text-green-600';
     case 'interviewer_response':

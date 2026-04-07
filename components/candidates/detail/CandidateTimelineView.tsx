@@ -74,6 +74,7 @@ export function CandidateTimelineView({
         return 'px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-600';
       case 'schedule_created':
       case 'schedule_confirmed':
+      case 'schedule_deleted':
       case 'schedule_regenerated':
         return 'px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200/60 text-[10px] font-bold text-neutral-500 tracking-wider uppercase';
       case 'email':
@@ -95,6 +96,7 @@ export function CandidateTimelineView({
         return '메모';
       case 'schedule_created':
       case 'schedule_confirmed':
+      case 'schedule_deleted':
       case 'schedule_regenerated':
         return '일정';
       case 'email':

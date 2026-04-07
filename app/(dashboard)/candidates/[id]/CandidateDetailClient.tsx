@@ -122,11 +122,38 @@ export function CandidateDetailClient({
   const currentActiveSchedule = (() => {
     const list = (Array.isArray(schedulesState) ? schedulesState : []) as any[];
     const valid = list.filter((s: any) => s && s.id);
+
+    // ✅ 우선순위: 실제 UI에서 "지금 상태"로 보고 싶은 스케줄을 먼저 고릅니다.
+    // - 예: confirmed가 존재하는데도 created_at 정렬 때문에 pending을 잡으면 코파일럿이 "대기"로 보여 혼동됩니다.
+    const priority = (status: string | null | undefined) => {
+      switch (status) {
+        case 'confirmed':
+          return 5;
+        case 'pending_candidate':
+          return 4;
+        case 'pending_interviewers':
+          return 3;
+        case 'needs_rescheduling':
+          return 2;
+        case 'regenerating':
+          return 1;
+        case 'cancelled':
+          return 0;
+        default:
+          return 0;
+      }
+    };
+
     const sorted = valid.sort((a: any, b: any) => {
-      const atA = new Date(a.created_at || a.scheduled_at || 0).getTime();
-      const atB = new Date(b.created_at || b.scheduled_at || 0).getTime();
+      const prA = priority(a.workflow_status);
+      const prB = priority(b.workflow_status);
+      if (prA !== prB) return prB - prA;
+
+      const atA = new Date(a.updated_at || a.created_at || a.scheduled_at || 0).getTime();
+      const atB = new Date(b.updated_at || b.created_at || b.scheduled_at || 0).getTime();
       return atB - atA;
     });
+
     const pick: any = sorted[0] as any;
     return pick
       ? {
