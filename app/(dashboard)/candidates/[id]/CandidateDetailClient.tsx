@@ -18,6 +18,7 @@ import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
 import { scheduleInterviewAutomated, deleteSchedule, checkInterviewerResponses } from '@/api/actions/schedules';
 import { getExternalInterviewers, getUsers } from '@/api/queries/users';
+import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { EmailModal } from '@/components/candidates/EmailModal';
@@ -112,9 +113,13 @@ export function CandidateDetailClient({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isMovingStage, setIsMovingStage] = useState(false);
   const [scheduleActionLoadingId, setScheduleActionLoadingId] = useState<string | null>(null);
+  // 스케줄 목록을 로컬 상태로 승격하여 삭제/확정 등 액션 직후에도 UI가 즉시 반영되게 합니다.
+  const [schedulesState, setSchedulesState] = useState<Array<any>>(
+    Array.isArray(_schedules) ? (_schedules as any[]) : [],
+  );
   // 사이드바 컨트롤러가 사용할 현재 진행 중 스케줄 계산
   const currentActiveSchedule = (() => {
-    const list = (Array.isArray(_schedules) ? _schedules : []) as any[];
+    const list = (Array.isArray(schedulesState) ? schedulesState : []) as any[];
     const valid = list.filter((s: any) => s && s.id);
     const nonTerminal = valid.filter((s: any) => {
       const ws = s?.workflow_status as string | null | undefined;
@@ -606,18 +611,45 @@ export function CandidateDetailClient({
     setScheduleActionLoadingId(scheduleId);
     try {
       const result = await deleteSchedule(scheduleId);
-      if ((result as { error?: string }).error) {
-        toast.error((result as { error: string }).error);
+      // 서버 액션의 에러 메시지를 점검하여 사용자 친화적으로 처리
+      const possibleError = (result as { error?: string }).error;
+      if (possibleError && possibleError.length > 0) {
+        if (possibleError.includes('면접 일정을 찾을 수 없습니다')) {
+          // 이미 삭제되었거나 존재하지 않는 경우: 정보성 안내 후 목록 동기화
+          toast.info('이미 삭제된 일정이어서 목록을 최신화했습니다.');
+        } else {
+          toast.error(possibleError);
+        }
       } else {
         toast.success('면접 일정이 삭제되었습니다.');
-        refreshCandidateData().catch(() => {});
-        refreshTimelineEvents().catch(() => {});
       }
+      // 최신 스케줄 목록 재조회하여 사이드바 상태를 즉시 반영
+      try {
+        const refreshed = await getSchedulesByCandidate(candidate.id);
+        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+        setSchedulesState(Array.isArray(nextList) ? nextList : []);
+      } catch {
+        // 네트워크 오류 등은 무시하고 기본 데이터만 새로고침
+      }
+      // 기존 후보자 데이터와 타임라인도 동기화
+      refreshCandidateData().catch(() => {});
+      refreshTimelineEvents().catch(() => {});
     } catch (error) {
       console.error('[CandidateDetailClient] 면접 일정 삭제 실패:', error);
       // 서버 액션이 500 등으로 실패하면 throw로 떨어질 수 있어, 가능하면 메시지를 그대로 보여줍니다.
       const msg = error instanceof Error ? error.message : '면접 일정 삭제 중 오류가 발생했습니다.';
-      toast.error(msg);
+      if (typeof msg === 'string' && msg.includes('면접 일정을 찾을 수 없습니다')) {
+        toast.info('이미 삭제된 일정이어서 목록을 최신화했습니다.');
+        try {
+          const refreshed = await getSchedulesByCandidate(candidate.id);
+          const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+          setSchedulesState(Array.isArray(nextList) ? nextList : []);
+        } catch {
+          // 무시
+        }
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setScheduleActionLoadingId(null);
     }

@@ -218,7 +218,8 @@ export function CandidateSidebar({
         )}
 
         {/* AI 스케줄링 코파일럿 컨트롤러 */}
-        <div className="pt-6 border-t border-neutral-200/60 flex-1 relative mt-6">
+        {/* 하단 버튼 영역과 겹치지 않도록 충분한 패딩을 부여합니다. */}
+        <div className="pt-6 border-t border-neutral-200/60 flex-1 relative mt-6 pb-28">
           <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider mb-5 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
             AI 스케줄링 코파일럿
@@ -266,7 +267,8 @@ export function CandidateSidebar({
             </div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-white rounded-xl border border-neutral-100 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.03)] flex flex-col gap-2.5 z-10">
+          {/* 하단 컨트롤 바: 스크롤 시에도 사이드바 내부 하단에 고정되도록 sticky 사용 */}
+          <div className="sticky bottom-0 left-0 right-0 p-4 bg-white rounded-xl border border-neutral-100 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.03)] flex flex-col gap-2.5 z-10">
             <button
               className="w-full flex items-center justify-center gap-2 bg-neutral-900 text-white rounded-lg py-2 px-3 text-xs font-semibold hover:bg-neutral-800 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => hasActive && onCheckSchedule && onCheckSchedule(currentActiveSchedule!.id)}
