@@ -121,7 +121,11 @@ export function CandidateDetailClient({
   // - 확정된 일정도 코파일럿에 반드시 반영되어야 합니다.
   const currentActiveSchedule = (() => {
     const list = (Array.isArray(schedulesState) ? schedulesState : []) as any[];
-    const valid = list.filter((s: any) => s && s.id);
+    // ✅ 코파일럿은 "AI 일정 조율 자동화"의 진행 상태만 표시합니다.
+    // - 수동으로 만든 일정(또는 레거시 데이터)은 workflow_status가 비어있을 수 있는데,
+    //   이를 코파일럿이 잡으면 기본값으로 '면접관 진행중'처럼 보여 혼동이 생깁니다.
+    // - 따라서 workflow_status가 존재하는 스케줄만 코파일럿 상태 계산에 포함합니다.
+    const valid = list.filter((s: any) => s && s.id && s.workflow_status);
 
     // ✅ 우선순위: 실제 UI에서 "지금 상태"로 보고 싶은 스케줄을 먼저 고릅니다.
     // - 예: confirmed가 존재하는데도 created_at 정렬 때문에 pending을 잡으면 코파일럿이 "대기"로 보여 혼동됩니다.
