@@ -46,6 +46,7 @@ interface CandidateDetailLayoutProps {
     workflow_status:
       | 'pending_interviewers'
       | 'pending_candidate'
+      | 'regenerating'
       | 'confirmed'
       | 'cancelled'
       | 'needs_rescheduling'

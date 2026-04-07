@@ -47,6 +47,7 @@ interface CandidateSidebarProps {
     workflow_status:
       | 'pending_interviewers'
       | 'pending_candidate'
+      | 'regenerating'
       | 'confirmed'
       | 'cancelled'
       | 'needs_rescheduling'
@@ -240,9 +241,11 @@ export function CandidateSidebar({
                   const s = currentActiveSchedule?.workflow_status;
                   switch (s) {
                     case 'pending_interviewers':
-                      return '면접관 수락 대기중';
+                      return '면접관 응답 대기';
                     case 'pending_candidate':
-                      return '후보자 선택 대기중';
+                      return '후보자 일정 선택 대기';
+                    case 'regenerating':
+                      return '일정 옵션 재생성 중';
                     case 'needs_rescheduling':
                       return '재조율 필요';
                     case 'confirmed':
@@ -255,7 +258,9 @@ export function CandidateSidebar({
                 })()}
               </p>
               <p className="text-[10px] text-neutral-400 font-medium mt-1 tracking-wide">
-                {hasActive ? '상태를 확인하거나 수동 개입할 수 있습니다' : '새 일정을 생성하면 여기에 표시됩니다'}
+                {hasActive
+                  ? '아래 버튼으로 서버·캘린더 기준 최신 조율 단계를 가져옵니다'
+                  : '새 일정을 생성하면 여기에 표시됩니다'}
               </p>
             </div>
           </div>
@@ -266,14 +271,18 @@ export function CandidateSidebar({
               className="w-full flex items-center justify-center gap-2 bg-neutral-900 text-white rounded-lg py-2 px-3 text-xs font-semibold hover:bg-neutral-800 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => hasActive && onCheckSchedule && onCheckSchedule(currentActiveSchedule!.id)}
               disabled={!canInteract || !onCheckSchedule}
-              title={hasActive ? '면접관 응답 상태를 확인합니다.' : '진행 중인 스케줄이 없습니다.'}
+              title={
+                hasActive
+                  ? '캘린더·DB 기준으로 조율 진행 단계를 동기화합니다. (면접관 수락 폴링 포함)'
+                  : '진행 중인 스케줄이 없습니다.'
+              }
             >
               {isActionLoading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-300" />
               ) : (
                 <RefreshCw className="w-3.5 h-3.5 text-neutral-300" />
               )}
-              일정 확인 / 수동 개입
+              조율 진행 동기화
             </button>
 
             <button

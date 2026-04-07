@@ -2158,7 +2158,7 @@ export async function checkInterviewerResponses(
     const supabase = createServiceClient();
 
     // 스케줄 및 옵션 조회
-    const { data: schedule, error: scheduleError } = await supabase
+    const { data: scheduleFetched, error: scheduleError } = await supabase
       .from('schedules')
       .select(`
         *,
@@ -2176,17 +2176,40 @@ export async function checkInterviewerResponses(
       .eq('id', scheduleId)
       .single();
 
-    if (scheduleError || !schedule) {
+    if (scheduleError || !scheduleFetched) {
       throw new Error('면접 일정을 찾을 수 없습니다.');
     }
+
+    let schedule = scheduleFetched;
 
     if (!opts?.bypassAuth) {
       await verifyCandidateAccess(schedule.candidate_id);
     }
 
-    // workflow_status가 pending_interviewers가 아니면 확인 불필요
+    // 일정 행(status)은 확정인데 자동화 workflow만 과거 단계에 남은 경우 복구 (코파일럿/타임라인 불일치 방지)
+    const ws = schedule.workflow_status as string | null | undefined;
+    const st = schedule.status as string | undefined;
+    if (st === 'confirmed' && ws && ws !== 'confirmed' && ws !== 'cancelled') {
+      const { error: repairErr } = await supabase
+        .from('schedules')
+        .update({ workflow_status: 'confirmed' as const })
+        .eq('id', scheduleId);
+      if (!repairErr) {
+        schedule = { ...schedule, workflow_status: 'confirmed' as const };
+        revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+        revalidatePath('/dashboard/schedules');
+      }
+    }
+
+    // workflow_status가 pending_interviewers가 아니면 캘린더 폴링 로직은 생략 (이미 후속 단계 또는 종료)
     if (schedule.workflow_status !== 'pending_interviewers') {
-      return { message: '이미 처리된 일정입니다.', alreadyProcessed: true };
+      return {
+        message:
+          st === 'confirmed'
+            ? '일정이 확정된 상태입니다. 진행 현황을 최신으로 맞췄습니다.'
+            : '이미 처리된 일정입니다. 진행 현황을 최신으로 맞췄습니다.',
+        alreadyProcessed: true,
+      };
     }
 
     // ✅ 타임라인은 "새 이벤트 추가"가 아니라 "자동화 카드 1개 업데이트"가 목표입니다.

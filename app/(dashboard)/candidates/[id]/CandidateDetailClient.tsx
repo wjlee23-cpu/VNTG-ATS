@@ -189,6 +189,24 @@ export function CandidateDetailClient({
     }
   }, [candidate.id]);
 
+  // 페이지 진입 시 스케줄 목록을 한 번 더 받아 코파일럿이 서버와 어긋나지 않게 합니다.
+  useEffect(() => {
+    if (!candidate.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const refreshed = await getSchedulesByCandidate(candidate.id);
+        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+        if (!cancelled) setSchedulesState(Array.isArray(nextList) ? nextList : []);
+      } catch {
+        /* 무시 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [candidate.id]);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !candidate.id) return;
     window.sessionStorage.setItem(getDetailTabStorageKey(), detailInitialTab);
@@ -655,28 +673,53 @@ export function CandidateDetailClient({
     }
   };
 
-  // 타임라인에서 일정 확인 (면접관 수락 여부 확인)
+  /** 코파일럿: 서버·캘린더 기준으로 조율 진행 상태를 맞추고, 로컬 스케줄 목록을 항상 최신화합니다. */
   const handleCheckScheduleFromTimeline = async (scheduleId: string) => {
     setScheduleActionLoadingId(scheduleId);
+    const applySchedulesFromServer = async () => {
+      try {
+        const refreshed = await getSchedulesByCandidate(candidate.id);
+        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+        setSchedulesState(Array.isArray(nextList) ? nextList : []);
+      } catch {
+        /* 무시 */
+      }
+    };
     try {
       const result = await checkInterviewerResponses(scheduleId);
       if ((result as { error?: string }).error) {
         toast.error((result as { error: string }).error);
-      } else if ((result as { data?: any }).data) {
-        const data = (result as { data: { allAccepted?: boolean; message?: string } }).data;
+        await applySchedulesFromServer();
+        refreshTimelineEvents().catch(() => {});
+        return;
+      }
+      if ((result as { data?: any }).data) {
+        const data = (result as {
+          data: {
+            allAccepted?: boolean;
+            alreadyProcessed?: boolean;
+            message?: string;
+          };
+        }).data;
         if (data.allAccepted) {
           toast.success(data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.');
+        } else if (data.alreadyProcessed) {
+          toast.success(data.message || '진행 현황을 최신으로 맞췄습니다.');
         } else {
-          toast.info(data.message || '아직 모든 면접관이 수락하지 않았습니다.');
+          toast.info(data.message || '조율 상태를 확인했습니다.');
         }
+        await applySchedulesFromServer();
         refreshCandidateData().catch(() => {});
         refreshTimelineEvents().catch(() => {});
       } else {
         toast.info('확인 결과가 없습니다.');
+        await applySchedulesFromServer();
+        refreshTimelineEvents().catch(() => {});
       }
     } catch (error) {
-      console.error('[CandidateDetailClient] 일정 확인 실패:', error);
-      toast.error('일정 확인 중 오류가 발생했습니다.');
+      console.error('[CandidateDetailClient] 일정 동기화 실패:', error);
+      toast.error('일정 동기화 중 오류가 발생했습니다.');
+      await applySchedulesFromServer();
     } finally {
       setScheduleActionLoadingId(null);
     }
