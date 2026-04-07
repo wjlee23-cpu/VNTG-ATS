@@ -88,10 +88,44 @@ export function CandidateSidebar({
   const jobTitle = candidate.job_posts?.title || '';
 
   // 컨트롤러 버튼 활성/비활성
-  const hasActive = !!currentActiveSchedule;
+  const hasSchedule = !!currentActiveSchedule;
   const isActionLoading =
     !!(scheduleActionLoadingId && currentActiveSchedule && scheduleActionLoadingId === currentActiveSchedule.id);
-  const canInteract = canManageCandidate && hasActive && !isActionLoading;
+  const canInteract = canManageCandidate && hasSchedule && !isActionLoading;
+
+  const workflowStatus = currentActiveSchedule?.workflow_status;
+  const isConfirmed = workflowStatus === 'confirmed';
+  const isCancelled = workflowStatus === 'cancelled';
+  const isNeedsRescheduling = workflowStatus === 'needs_rescheduling';
+  const isRegenerating = workflowStatus === 'regenerating';
+  const isPendingCandidate = workflowStatus === 'pending_candidate';
+  const isPendingInterviewers = workflowStatus === 'pending_interviewers';
+
+  const getStepState = (step: 'interviewers' | 'candidate' | 'confirmed') => {
+    // ✅ 직관적인 3단계: 면접관 → 후보자 → 확정
+    // - 확정되면 모두 완료
+    // - 후보자 선택 대기면 면접관은 완료, 후보자 진행, 확정 대기
+    // - 면접관 대기면 면접관 진행, 나머지 대기
+    if (!hasSchedule) return 'pending' as const;
+    if (isCancelled) return 'pending' as const;
+    if (isConfirmed) return 'done' as const;
+    if (isPendingCandidate) {
+      if (step === 'interviewers') return 'done' as const;
+      if (step === 'candidate') return 'doing' as const;
+      return 'pending' as const;
+    }
+    if (isPendingInterviewers || isRegenerating) {
+      if (step === 'interviewers') return 'doing' as const;
+      return 'pending' as const;
+    }
+    if (isNeedsRescheduling) {
+      if (step === 'interviewers') return 'done' as const;
+      if (step === 'candidate') return 'doing' as const;
+      return 'pending' as const;
+    }
+    if (step === 'interviewers') return 'doing' as const;
+    return 'pending' as const;
+  };
 
   return (
     <div className="w-[280px] bg-[#FCFCFC] border-r border-neutral-200 p-7 flex flex-col justify-between shrink-0">
@@ -226,42 +260,86 @@ export function CandidateSidebar({
             AI 스케줄링 코파일럿
           </h3>
 
-          <div className="relative border-l border-neutral-200 ml-2.5 space-y-5">
-            <div className="relative pl-5">
-              <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full bg-neutral-900 ring-4 ring-[#FCFCFC]"></div>
-              <p className="text-xs font-medium text-neutral-500">
-                {hasActive ? '최적 일정 탐색 완료(또는 진행 중)' : '진행 중인 스케줄 없음'}
+          <div className="space-y-3">
+            <div className="rounded-xl border border-neutral-200/60 bg-white p-4 shadow-[0_6px_18px_-10px_rgba(0,0,0,0.15)]">
+              <p className="text-xs font-semibold text-neutral-900">
+                {!hasSchedule
+                  ? '아직 생성된 면접 일정이 없습니다'
+                  : isConfirmed
+                    ? '면접 일정이 확정되었습니다'
+                    : isCancelled
+                      ? '면접 일정이 취소되었습니다'
+                      : '면접 일정 조율 진행 중'}
+              </p>
+              <p className="text-[10px] text-neutral-500 mt-1">
+                {!hasSchedule
+                  ? '상단의 “일정 등록”으로 새 조율을 시작할 수 있습니다.'
+                  : isRegenerating
+                    ? '면접관 응답 결과에 따라 일정 옵션을 다시 만들고 있습니다.'
+                    : isNeedsRescheduling
+                      ? '전원 수락 옵션이 없어 재조율이 필요합니다.'
+                      : isPendingCandidate
+                        ? '면접관 수락 완료 → 후보자 선택을 기다리는 중입니다.'
+                        : isPendingInterviewers
+                          ? '면접관들의 수락/거절 응답을 기다리는 중입니다.'
+                          : '현재 상태를 확인하는 중입니다.'}
               </p>
             </div>
 
-            <div className="relative pl-5">
-              <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full bg-blue-500 ring-4 ring-blue-50 animate-pulse"></div>
-              <p className="text-xs font-bold text-blue-600">
-                {(() => {
-                  const s = currentActiveSchedule?.workflow_status;
-                  switch (s) {
-                    case 'pending_interviewers':
-                      return '면접관 응답 대기';
-                    case 'pending_candidate':
-                      return '후보자 일정 선택 대기';
-                    case 'regenerating':
-                      return '일정 옵션 재생성 중';
-                    case 'needs_rescheduling':
-                      return '재조율 필요';
-                    case 'confirmed':
-                      return '확정됨';
-                    case 'cancelled':
-                      return '취소됨';
-                    default:
-                      return hasActive ? '진행 중' : '대기 중';
-                  }
-                })()}
-              </p>
-              <p className="text-[10px] text-neutral-400 font-medium mt-1 tracking-wide">
-                {hasActive
-                  ? '아래 버튼으로 서버·캘린더 기준 최신 조율 단계를 가져옵니다'
-                  : '새 일정을 생성하면 여기에 표시됩니다'}
-              </p>
+            <div className="rounded-xl border border-neutral-200/60 bg-[#FCFCFC] p-4">
+              <div className="space-y-3">
+                {(
+                  [
+                    { key: 'interviewers', label: '면접관', hint: isRegenerating ? '옵션 재생성 중' : '일정 수락/거절' },
+                    { key: 'candidate', label: '후보자', hint: isNeedsRescheduling ? '재조율 필요' : '일정 선택' },
+                    { key: 'confirmed', label: '확정', hint: '최종 확정' },
+                  ] as const
+                ).map((step) => {
+                  const state = getStepState(step.key);
+                  return (
+                    <div key={step.key} className="flex items-center gap-3">
+                      <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                        {state === 'done' ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        ) : state === 'doing' ? (
+                          <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+                        ) : (
+                          <div className="w-2.5 h-2.5 rounded-full bg-neutral-300" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p
+                            className={[
+                              'text-sm font-semibold',
+                              state === 'done'
+                                ? 'text-neutral-900'
+                                : state === 'doing'
+                                  ? 'text-indigo-700'
+                                  : 'text-neutral-500',
+                            ].join(' ')}
+                          >
+                            {step.label}
+                          </p>
+                          <span
+                            className={[
+                              'text-[10px] font-medium',
+                              state === 'done'
+                                ? 'text-emerald-700'
+                                : state === 'doing'
+                                  ? 'text-indigo-600'
+                                  : 'text-neutral-400',
+                            ].join(' ')}
+                          >
+                            {state === 'done' ? '완료' : state === 'doing' ? '진행중' : '대기'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-500 mt-0.5">{step.hint}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -269,10 +347,10 @@ export function CandidateSidebar({
           <div className="sticky bottom-0 left-0 right-0 p-4 bg-white rounded-xl border border-neutral-100 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.03)] flex flex-col gap-2.5 z-10">
             <button
               className="w-full flex items-center justify-center gap-2 bg-neutral-900 text-white rounded-lg py-2 px-3 text-xs font-semibold hover:bg-neutral-800 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => hasActive && onCheckSchedule && onCheckSchedule(currentActiveSchedule!.id)}
+              onClick={() => hasSchedule && onCheckSchedule && onCheckSchedule(currentActiveSchedule!.id)}
               disabled={!canInteract || !onCheckSchedule}
               title={
-                hasActive
+                hasSchedule
                   ? '캘린더·DB 기준으로 조율 진행 단계를 동기화합니다. (면접관 수락 폴링 포함)'
                   : '진행 중인 스케줄이 없습니다.'
               }
@@ -288,13 +366,13 @@ export function CandidateSidebar({
             <button
               className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-medium text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
-                if (!hasActive || !onDeleteSchedule) return;
+                if (!hasSchedule || !onDeleteSchedule) return;
                 if (!confirm('이 면접 일정을 완전 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
                 if (!confirm('정말로 삭제하시겠습니까? 연관 일정 옵션/캘린더 블록도 함께 정리될 수 있습니다.')) return;
                 onDeleteSchedule(currentActiveSchedule!.id);
               }}
-              disabled={!canManageCandidate || !hasActive || isActionLoading || !onDeleteSchedule}
-              title={hasActive ? '현재 스케줄링을 완전 삭제합니다.' : '진행 중인 스케줄이 없습니다.'}
+              disabled={!canManageCandidate || !hasSchedule || isActionLoading || !onDeleteSchedule}
+              title={hasSchedule ? '현재 스케줄링을 완전 삭제합니다.' : '진행 중인 스케줄이 없습니다.'}
             >
               <Trash2 className="w-3.5 h-3.5" />
               현재 스케줄링 완전 삭제

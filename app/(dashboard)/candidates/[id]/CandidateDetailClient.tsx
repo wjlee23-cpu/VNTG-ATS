@@ -117,15 +117,12 @@ export function CandidateDetailClient({
   const [schedulesState, setSchedulesState] = useState<Array<any>>(
     Array.isArray(_schedules) ? (_schedules as any[]) : [],
   );
-  // 사이드바 컨트롤러가 사용할 현재 진행 중 스케줄 계산
+  // 사이드바 코파일럿이 사용할 "가장 최근 스케줄" 계산
+  // - 확정된 일정도 코파일럿에 반드시 반영되어야 합니다.
   const currentActiveSchedule = (() => {
     const list = (Array.isArray(schedulesState) ? schedulesState : []) as any[];
     const valid = list.filter((s: any) => s && s.id);
-    const nonTerminal = valid.filter((s: any) => {
-      const ws = s?.workflow_status as string | null | undefined;
-      return ws !== 'confirmed' && ws !== 'cancelled' && ws !== 'deleted';
-    });
-    const sorted = nonTerminal.sort((a: any, b: any) => {
+    const sorted = valid.sort((a: any, b: any) => {
       const atA = new Date(a.created_at || a.scheduled_at || 0).getTime();
       const atB = new Date(b.created_at || b.scheduled_at || 0).getTime();
       return atB - atA;
@@ -138,6 +135,7 @@ export function CandidateDetailClient({
             null) as
             | 'pending_interviewers'
             | 'pending_candidate'
+            | 'regenerating'
             | 'confirmed'
             | 'cancelled'
             | 'needs_rescheduling'
