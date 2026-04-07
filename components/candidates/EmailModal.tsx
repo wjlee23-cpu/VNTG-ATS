@@ -7,6 +7,10 @@ import { sendEmailToCandidate } from '@/api/actions/emails';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { getEmailTemplates, type EmailTemplateItem } from '@/api/queries/email-templates';
+import { getCandidateById } from '@/api/queries/candidates';
+import { getMyOrganization } from '@/api/queries/organizations';
+import { getStageNameByStageId } from '@/constants/stages';
+import { applyEmailTemplate, type EmailTemplateContext } from '@/lib/email/template';
 
 interface EmailModalProps {
   candidateId: string;
@@ -28,6 +32,9 @@ export function EmailModal({
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [templates, setTemplates] = useState<EmailTemplateItem[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [templateContext, setTemplateContext] = useState<EmailTemplateContext>({
+    candidate: { name: candidateName, email: candidateEmail },
+  });
   const [formData, setFormData] = useState({
     subject: '',
     body: '',
@@ -53,12 +60,46 @@ export function EmailModal({
       }
     };
 
+    const loadContext = async () => {
+      try {
+        // 템플릿 치환에 필요한 후보자/포지션/전형 정보를 조회합니다.
+        const candidateResult = await getCandidateById(candidateId);
+        const candidateRow = candidateResult.data as any;
+        const jobTitle = candidateRow?.job_posts?.title || '';
+        const stageId = candidateRow?.current_stage_id || '';
+        const stageName = stageId ? getStageNameByStageId(stageId) || stageId : '';
+
+        // 조직명은 현재 사용자 기준으로 조회합니다.
+        const orgResult = await getMyOrganization();
+        const orgName = orgResult.data?.name || '';
+
+        setTemplateContext({
+          candidate: {
+            name: candidateRow?.name ?? candidateName,
+            email: candidateRow?.email ?? candidateEmail,
+            phone: candidateRow?.phone ?? '',
+            status: candidateRow?.status ?? '',
+          },
+          job: { title: jobTitle },
+          stage: { id: stageId, name: stageName },
+          organization: { name: orgName },
+        });
+      } catch {
+        // 컨텍스트 조회에 실패해도 메일 발송은 가능해야 합니다.
+        // - 대신 치환 토큰은 빈 문자열로 처리됩니다.
+        setTemplateContext({
+          candidate: { name: candidateName, email: candidateEmail },
+        });
+      }
+    };
+
     if (isOpen) {
       loadTemplates().catch(() => {});
+      loadContext().catch(() => {});
     } else {
       setSelectedTemplateId('');
     }
-  }, [isOpen]);
+  }, [isOpen, candidateId, candidateEmail, candidateName]);
 
   // 선택한 템플릿의 제목/본문을 폼에 즉시 적용합니다.
   const handleTemplateChange = (templateId: string) => {
@@ -69,8 +110,8 @@ export function EmailModal({
     if (!selectedTemplate) return;
 
     setFormData({
-      subject: selectedTemplate.subject,
-      body: selectedTemplate.body,
+      subject: applyEmailTemplate(selectedTemplate.subject, templateContext),
+      body: applyEmailTemplate(selectedTemplate.body, templateContext),
     });
     toast.success(`"${selectedTemplate.name}" 템플릿이 적용되었습니다.`);
   };
@@ -80,11 +121,16 @@ export function EmailModal({
     setIsLoading(true);
 
     try {
+      // 사용자가 템플릿 적용 후 직접 토큰을 추가/수정했을 수 있으므로,
+      // 발송 직전에 한 번 더 치환을 적용합니다.
+      const finalSubject = applyEmailTemplate(formData.subject, templateContext);
+      const finalBody = applyEmailTemplate(formData.body, templateContext);
+
       const formDataToSend = new FormData();
       formDataToSend.append('candidate_id', candidateId);
       formDataToSend.append('to_email', candidateEmail);
-      formDataToSend.append('subject', formData.subject);
-      formDataToSend.append('body', formData.body);
+      formDataToSend.append('subject', finalSubject);
+      formDataToSend.append('body', finalBody);
 
       const result = await sendEmailToCandidate(formDataToSend);
 

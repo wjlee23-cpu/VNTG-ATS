@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold,
   Briefcase,
@@ -19,6 +19,11 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { getEmailTemplates, type EmailTemplateItem } from '@/api/queries/email-templates';
 import { createEmailTemplate } from '@/api/actions/email-templates';
 import { toast } from 'sonner';
+import {
+  EMAIL_TEMPLATE_VARIABLES,
+  EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL,
+  type EmailTemplateVariableGroupId,
+} from '@/constants/email-template-variables';
 
 export function TemplatesClient() {
   const [isLoading, setIsLoading] = useState(true);
@@ -30,6 +35,7 @@ export function TemplatesClient() {
     subject: '',
     body: '',
   });
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // 템플릿 목록을 서버에서 가져옵니다.
   const loadTemplates = async () => {
@@ -78,6 +84,46 @@ export function TemplatesClient() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const variablesByGroup = useMemo(() => {
+    const map: Record<EmailTemplateVariableGroupId, typeof EMAIL_TEMPLATE_VARIABLES> = {
+      candidate: [],
+      job: [],
+      stage: [],
+      organization: [],
+    } as any;
+    for (const item of EMAIL_TEMPLATE_VARIABLES) {
+      (map[item.groupId] as any).push(item);
+    }
+    return map;
+  }, []);
+
+  const insertTokenToBody = (token: string) => {
+    // 사용자가 템플릿을 빠르게 작성할 수 있도록, 현재 커서 위치에 토큰을 삽입합니다.
+    const el = bodyTextareaRef.current;
+    const current = form.body || '';
+
+    if (!el) {
+      setForm((prev) => ({ ...prev, body: `${current}${token}` }));
+      return;
+    }
+
+    const start = el.selectionStart ?? current.length;
+    const end = el.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    setForm((prev) => ({ ...prev, body: next }));
+
+    // React state 업데이트 후 커서를 토큰 뒤로 이동
+    requestAnimationFrame(() => {
+      try {
+        el.focus();
+        const cursor = start + token.length;
+        el.setSelectionRange(cursor, cursor);
+      } catch {
+        /* ignore */
+      }
+    });
   };
 
   return (
@@ -226,23 +272,39 @@ export function TemplatesClient() {
                     </label>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-medium text-neutral-400">Insert:</span>
-                      <div className="flex gap-1.5">
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100"
-                          disabled={isSubmitting}
-                        >
-                          <User className="h-3 w-3" />
-                          후보자 이름
-                        </button>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100"
-                          disabled={isSubmitting}
-                        >
-                          <Briefcase className="h-3 w-3" />
-                          지원 포지션
-                        </button>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
+                          <div key={groupId} className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-neutral-300">
+                              {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {variablesByGroup[groupId].map((v) => {
+                                const icon =
+                                  v.groupId === 'candidate' ? (
+                                    <User className="h-3 w-3" />
+                                  ) : v.groupId === 'job' ? (
+                                    <Briefcase className="h-3 w-3" />
+                                  ) : (
+                                    <FileText className="h-3 w-3" />
+                                  );
+                                return (
+                                  <button
+                                    key={v.key}
+                                    type="button"
+                                    onClick={() => insertTokenToBody(v.token)}
+                                    className="flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
+                                    disabled={isSubmitting}
+                                    title={v.token}
+                                  >
+                                    {icon}
+                                    {v.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -254,6 +316,7 @@ export function TemplatesClient() {
                       rows={11}
                       value={form.body}
                       onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
+                      ref={bodyTextareaRef}
                       className="w-full resize-none bg-transparent border-0 p-5 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
                       placeholder="여기에 이메일 내용을 작성하세요..."
                       disabled={isSubmitting}
