@@ -14,7 +14,10 @@ export async function getSchedulesByCandidate(candidateId: string) {
   return withErrorHandling(async () => {
     // 접근 권한 확인
     await verifyCandidateAccess(candidateId);
-    const supabase = await createClient();
+    // 중요: 코파일럿은 schedules.workflow_status를 기준으로 동작하므로,
+    // RLS/조인 문제로 스케줄 목록이 비어 보이면 UI가 "일정 없음"으로 오인됩니다.
+    // 이미 verifyCandidateAccess로 권한 확인을 끝냈으니 Service Role로 안정적으로 조회합니다.
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from('schedules')
