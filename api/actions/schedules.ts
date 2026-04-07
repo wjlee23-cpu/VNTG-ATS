@@ -454,6 +454,14 @@ export async function updateSchedule(id: string, formData: FormData) {
       updateData.beverage_preference = formData.get('beverage_preference') as string;
     }
 
+    // 수동으로 일정을 확정한 경우 자동화 워크플로 상태도 맞춤 (코파일럿/배지와 타임라인 불일치 방지)
+    if (updateData.status === 'confirmed') {
+      updateData.workflow_status = 'confirmed';
+      if (updateData.candidate_response === undefined) {
+        updateData.candidate_response = 'accepted';
+      }
+    }
+
     const { data, error } = await supabase
       .from('schedules')
       .update(updateData)
@@ -3043,17 +3051,23 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       // 이메일 발송 실패해도 DB에는 기록하고 계속 진행
     }
 
-    // 이메일 기록 저장
-    const { error: emailInsertError } = await supabase.from('emails').insert({
-      candidate_id: candidate.id,
-      message_id: emailResult.messageId || `email-${Date.now()}`,
-      subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
-      body: emailHtml,
-      from_email: organizer.email,
-      to_email: candidate.email,
-      direction: 'outbound',
-      sent_at: new Date().toISOString(),
-    });
+    // 이메일 기록 저장 (id 반환 → 타임라인과 동기화해 System 중복 가상 이벤트 방지)
+    const emailSubject = `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`;
+    const sentAtIso = new Date().toISOString();
+    const { data: insertedEmail, error: emailInsertError } = await supabase
+      .from('emails')
+      .insert({
+        candidate_id: candidate.id,
+        message_id: emailResult.messageId || `email-${Date.now()}`,
+        subject: emailSubject,
+        body: emailHtml,
+        from_email: organizer.email,
+        to_email: candidate.email,
+        direction: 'outbound',
+        sent_at: sentAtIso,
+      })
+      .select('id')
+      .single();
 
     if (emailInsertError) {
       console.error('이메일 기록 저장 실패:', emailInsertError);
@@ -3071,7 +3085,13 @@ export async function sendScheduleOptionsToCandidate(scheduleId: string) {
       type: 'email',
       content: {
         message: '면접 일정 옵션이 후보자에게 전송되었습니다.',
-        subject: `[면접 일정] ${candidate.name}님, 면접 일정을 선택해주세요`,
+        subject: emailSubject,
+        body: emailHtml,
+        from_email: organizer.email,
+        to_email: candidate.email,
+        direction: 'outbound' as const,
+        sent_at: sentAtIso,
+        email_id: insertedEmail?.id,
         schedule_id: scheduleId,
         options_count: acceptedOptions.length,
       },

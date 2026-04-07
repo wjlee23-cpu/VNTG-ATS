@@ -8,9 +8,10 @@ export function getTimelineEventTitle(event: TimelineEvent): string {
     case 'scorecard_created':
       return '면접 평가표 작성';
     case 'email':
-      return (event.content?.subject as string) || '이메일 발송';
+      // 제목은 본문 카드에만 표시해 헤더 중복을 줄입니다.
+      return '이메일 발송';
     case 'email_received':
-      return (event.content?.subject as string) || '이메일 수신';
+      return '이메일 수신';
     case 'comment':
     case 'comment_created':
       return '코멘트 작성';

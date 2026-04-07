@@ -258,13 +258,6 @@ export function CandidateSidebar({
                 {hasActive ? '상태를 확인하거나 수동 개입할 수 있습니다' : '새 일정을 생성하면 여기에 표시됩니다'}
               </p>
             </div>
-
-            <div className="relative pl-5">
-              <div className="absolute -left-[5px] top-1 w-[9px] h-[9px] rounded-full bg-neutral-200 ring-4 ring-[#FCFCFC]"></div>
-              <p className="text-xs font-medium text-neutral-400 hover:text-neutral-600 transition-colors cursor-default">
-                사이드바에서 모든 컨트롤을 수행하세요
-              </p>
-            </div>
           </div>
 
           {/* 하단 컨트롤 바: 스크롤 시에도 사이드바 내부 하단에 고정되도록 sticky 사용 */}

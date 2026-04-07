@@ -117,13 +117,17 @@ export function CandidateTimelineView({
       minute: '2-digit',
       hour12: true,
     });
-    
+    const trimmedTime = timeStr.replace(/\s*(AM|PM)\s*/i, '').trim();
+    const hasKoreanPeriod = /(오전|오후)/.test(trimmedTime);
+
     if (diffDays === 0) {
+      if (hasKoreanPeriod) return `오늘, ${trimmedTime}`;
       const period = date.getHours() < 12 ? '오전' : '오후';
-      return `오늘, ${period} ${timeStr.replace(/AM|PM/, '').trim()}`;
+      return `오늘, ${period} ${trimmedTime}`;
     } else if (diffDays === 1) {
+      if (hasKoreanPeriod) return `어제, ${trimmedTime}`;
       const period = date.getHours() < 12 ? '오전' : '오후';
-      return `어제, ${period} ${timeStr.replace(/AM|PM/, '').trim()}`;
+      return `어제, ${period} ${trimmedTime}`;
     } else {
       return date.toLocaleDateString('ko-KR', {
         year: 'numeric',

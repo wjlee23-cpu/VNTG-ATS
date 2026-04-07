@@ -56,7 +56,10 @@ export function formatFileSize(bytes?: number): string {
 /** HTML 태그 제거 및 엔티티 디코딩 */
 export function stripHtml(html: string | undefined | null): string {
   if (!html) return '';
-  const text = html.replace(/<[^>]*>/g, '');
+  const text = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]*>/g, '');
   return text
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -71,7 +74,10 @@ export function stripHtml(html: string | undefined | null): string {
 /** 이메일 본문 표시용 포맷 (HTML 제거, 줄바꿈 유지) */
 export function formatEmailBodyForDisplay(body: string | undefined | null): string {
   if (!body) return '';
-  let text = body.replace(/<[^>]*>/g, '');
+  let text = body
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]*>/g, '');
   text = text
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
