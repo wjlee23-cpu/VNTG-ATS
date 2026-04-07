@@ -513,11 +513,13 @@ export async function deleteSchedule(id: string) {
     //    이 때 일반 클라이언트(RLS 적용)로 삭제하면 연쇄 삭제가 RLS에 막혀 500 에러가 날 수 있어,
     //    접근 권한은 RLS로 검증하되 실제 삭제는 Service Role로 수행합니다.
     //    (사용자 권한 검증은 아래 verifyCandidateAccess로 보장)
-    const authSupabase = await createClient();
     const serviceSupabase = createServiceClient();
 
     // 면접 일정 조회 및 권한 확인
-    const { data: schedule, error: scheduleError } = await authSupabase
+    // - 스케줄 목록/타임라인은 Service Role로도 노출될 수 있어, RLS 때문에 "없는 일정"으로 오인하면
+    //   UI가 '이미 삭제됨'만 띄우고 실제 삭제가 진행되지 않는 문제가 생길 수 있습니다.
+    // - 따라서 "존재 여부" 조회도 Service Role로 안정적으로 수행하고, 권한은 verifyCandidateAccess로 보장합니다.
+    const { data: schedule, error: scheduleError } = await serviceSupabase
       .from('schedules')
       .select('id, candidate_id, interviewer_ids')
       .eq('id', id)
@@ -540,18 +542,39 @@ export async function deleteSchedule(id: string) {
       console.error('schedule_options 조회 실패:', optionsError);
     }
 
-    // 면접관 정보 조회 (구글 캘린더 이벤트 삭제용)
+    // 구글 캘린더 이벤트 삭제용 Organizer(주최자) 토큰 조회
+    // - 정책: 면접 일정은 "인터뷰룸 전용 캘린더"에 생성하며 Organizer는 채용담당자 계정을 사용합니다.
+    // - 따라서 면접관(interviewer) 토큰이 아니라 "현재 사용자(채용담당자)" 토큰을 우선 사용합니다.
+    const { data: organizerUser, error: organizerError } = await serviceSupabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .eq('id', user.userId)
+      .maybeSingle();
+
+    if (organizerError) {
+      console.error('Organizer 사용자 조회 실패:', organizerError);
+    }
+
+    // (호환) 과거 데이터/권한 구조 때문에 Organizer 토큰이 없는 경우, 면접관 중 토큰이 있는 사용자를 폴백으로 찾습니다.
     const { data: interviewers } = await serviceSupabase
       .from('users')
       .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
       .in('id', schedule.interviewer_ids || []);
 
     // 구글 캘린더 이벤트 삭제
-    if (scheduleOptions && scheduleOptions.length > 0 && interviewers && interviewers.length > 0) {
-      // 구글 캘린더에 연동된 면접관 찾기
-      const organizer = interviewers.find(
-        inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
-      );
+    if (scheduleOptions && scheduleOptions.length > 0) {
+      const organizer =
+        organizerUser &&
+        organizerUser.calendar_provider === 'google' &&
+        organizerUser.calendar_access_token &&
+        organizerUser.calendar_refresh_token
+          ? organizerUser
+          : (interviewers || []).find(
+              (inv) =>
+                inv.calendar_provider === 'google' &&
+                inv.calendar_access_token &&
+                inv.calendar_refresh_token,
+            );
       
       if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
         for (const option of scheduleOptions) {
@@ -599,7 +622,9 @@ export async function deleteSchedule(id: string) {
           }
         }
       } else {
-        console.warn('구글 캘린더에 연동된 면접관을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.');
+        console.warn(
+          '구글 캘린더 연동(Organizer 토큰)을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.',
+        );
       }
     }
 
@@ -694,7 +719,8 @@ export async function cancelSchedule(id: string) {
               await deleteCalendarEvent(
                 organizer.calendar_access_token,
                 organizer.calendar_refresh_token,
-                option.google_event_id
+                option.google_event_id,
+                getRoomCalendarId(),
               );
               console.log(`구글 캘린더 이벤트 삭제 완료: ${option.google_event_id}`);
             } catch (error) {
