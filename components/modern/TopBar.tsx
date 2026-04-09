@@ -89,22 +89,24 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
   };
 
   return (
-    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-10">
-      {/* Left: Search */}
+    <header className="sticky top-0 z-10 flex h-16 min-w-0 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-xl sm:gap-4 sm:px-6">
+      {/* Left: Search — w-full만 주면 우측(알림·프로필) 폭이 0에 가까워져 텍스트가 세로로 깨질 수 있음 */}
       <button
         onClick={onCommandOpen}
-        className="flex items-center gap-3 px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 transition-all w-full md:w-96 group"
+        className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl bg-muted px-3 py-2 transition-all hover:bg-muted/80 sm:px-4 md:w-96 md:flex-none"
       >
-        <Search size={16} className="text-muted-foreground" />
-        <span className="text-sm text-muted-foreground flex-1 text-left">Search candidates, jobs...</span>
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-background border border-border text-xs text-muted-foreground">
+        <Search size={16} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-left text-sm text-muted-foreground">
+          Search candidates, jobs...
+        </span>
+        <div className="hidden shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground sm:flex">
           <Command size={10} />
           <span>K</span>
         </div>
       </button>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {/* Notifications */}
         <button className="relative w-10 h-10 rounded-xl hover:bg-muted flex items-center justify-center transition-all">
           <Bell size={18} className="text-foreground" />
@@ -115,18 +117,25 @@ export function TopBar({ onCommandOpen }: TopBarProps) {
         {!loading && userProfile ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-muted transition-all">
-                <Avatar className="w-8 h-8">
+              <button
+                type="button"
+                className="flex max-w-full shrink-0 items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-muted sm:gap-3 sm:px-3"
+              >
+                <Avatar className="h-8 w-8 shrink-0">
                   <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.displayName} />
-                  <AvatarFallback className="bg-gradient-to-br from-brand-dark to-brand-main text-white text-sm font-semibold">
+                  <AvatarFallback className="bg-gradient-to-br from-brand-dark to-brand-main text-sm font-semibold text-white">
                     {getInitials(userProfile.email)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col items-start">
-                  <span className="text-sm font-medium text-foreground">{userProfile.displayName}</span>
-                  <span className="text-xs text-muted-foreground">{getRoleText(userProfile.role)}</span>
+                <div className="hidden min-w-0 text-left sm:block">
+                  <span className="block max-w-[10rem] truncate text-sm font-medium text-foreground md:max-w-[12rem]">
+                    {userProfile.displayName}
+                  </span>
+                  <span className="block whitespace-nowrap text-xs text-muted-foreground">
+                    {getRoleText(userProfile.role)}
+                  </span>
                 </div>
-                <ChevronDown size={14} className="text-muted-foreground" />
+                <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">

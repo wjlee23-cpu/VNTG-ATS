@@ -1,5 +1,3 @@
-import type { EmailTemplateVariableKey } from '@/constants/email-template-variables';
-
 export type EmailTemplateContext = {
   candidate?: {
     name?: string | null;
@@ -17,34 +15,44 @@ export type EmailTemplateContext = {
   organization?: {
     name?: string | null;
   };
+  /** 면접 일정 메일 등 — 일정 확정 시 스케줄/수동 입력으로 채웁니다. */
+  interview?: {
+    location?: string | null;
+    dateTimeText?: string | null;
+    beverageType?: string | null;
+    beverageTemperature?: string | null;
+  };
+};
+
+/** 레거시 워드형 플레이스홀더 → context 경로 (기존 양식 호환) */
+const LEGACY_PLACEHOLDER_TO_PATH: Record<string, string> = {
+  ApplicantName: 'candidate.name',
+  PositionName: 'job.title',
+  Location: 'interview.location',
+  InterviewDateTimeText: 'interview.dateTimeText',
+  BeverageType: 'interview.beverageType',
+  BeverageTemperature: 'interview.beverageTemperature',
 };
 
 /**
- * {{candidate.name}} 같은 토큰을 context 값으로 치환합니다.
- * - 토큰 값이 없으면 빈 문자열로 치환합니다. (메일 문장이 어색하지 않게 하기 위함)
- * - 지원 path는 EmailTemplateVariableKey로 제한합니다.
+ * {{candidate.name}} 또는 레거시 {{ApplicantName}} 등을 context 값으로 치환합니다.
+ * - 값이 없으면 빈 문자열로 치환합니다.
  */
 export function applyEmailTemplate(text: string, context: EmailTemplateContext): string {
   if (!text) return '';
 
-  // 토큰 형식: {{ a.b.c }} (공백 허용)
+  // 토큰 형식: {{ a.b.c }} 또는 {{ PascalCase }} (공백 허용)
   const tokenRegex = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
 
   return text.replace(tokenRegex, (_full, rawKey: string) => {
-    const key = rawKey as EmailTemplateVariableKey;
-    const value = getValueByKey(context, key);
+    const path = LEGACY_PLACEHOLDER_TO_PATH[rawKey] ?? rawKey;
+    const value = getValueByPath(context, path);
     return value ?? '';
   });
 }
 
-function getValueByKey(
-  context: EmailTemplateContext,
-  key: EmailTemplateVariableKey
-): string | null {
-  // 안전하게 dot-path를 따라가며 값을 꺼냅니다.
-  // - UI에서 제공하는 key 목록만 들어오도록 타입을 제한했지만,
-  //   런타임에서도 방어적으로 처리합니다.
-  const parts = key.split('.');
+function getValueByPath(context: EmailTemplateContext, path: string): string | null {
+  const parts = path.split('.');
   let cur: any = context as any;
   for (const part of parts) {
     if (!cur || typeof cur !== 'object') return null;

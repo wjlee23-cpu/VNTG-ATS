@@ -1,4 +1,4 @@
-export type EmailTemplateVariableGroupId = 'candidate' | 'job' | 'stage' | 'organization';
+export type EmailTemplateVariableGroupId = 'candidate' | 'job' | 'stage' | 'organization' | 'interview';
 
 export type EmailTemplateVariableKey =
   | 'candidate.name'
@@ -8,7 +8,11 @@ export type EmailTemplateVariableKey =
   | 'job.title'
   | 'stage.id'
   | 'stage.name'
-  | 'organization.name';
+  | 'organization.name'
+  | 'interview.location'
+  | 'interview.dateTimeText'
+  | 'interview.beverageType'
+  | 'interview.beverageTemperature';
 
 export type EmailTemplateVariableItem = {
   groupId: EmailTemplateVariableGroupId;
@@ -34,6 +38,11 @@ export const EMAIL_TEMPLATE_VARIABLES: EmailTemplateVariableItem[] = [
   { groupId: 'stage', label: '전형명', key: 'stage.name', token: '{{stage.name}}' },
 
   { groupId: 'organization', label: '회사명', key: 'organization.name', token: '{{organization.name}}' },
+
+  { groupId: 'interview', label: '면접장소', key: 'interview.location', token: '{{interview.location}}' },
+  { groupId: 'interview', label: '면접일시(문구)', key: 'interview.dateTimeText', token: '{{interview.dateTimeText}}' },
+  { groupId: 'interview', label: '음료 종류', key: 'interview.beverageType', token: '{{interview.beverageType}}' },
+  { groupId: 'interview', label: '음료 온도', key: 'interview.beverageTemperature', token: '{{interview.beverageTemperature}}' },
 ];
 
 export const EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL: Record<EmailTemplateVariableGroupId, string> = {
@@ -41,5 +50,6 @@ export const EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL: Record<EmailTemplateVariableGr
   job: '포지션',
   stage: '전형',
   organization: '회사/조직',
+  interview: '면접·일정',
 };
 

@@ -39,3 +39,8 @@
 - 사용 캘린더 ID는 환경변수 `INTERVIEW_ROOM_CALENDAR_ID`로 주입되며, 미설정 시 `primary`로 폴백합니다.
 - 생성/수정/삭제 등 모든 Calendar API 호출은 동일한 캘린더 ID로 수행됩니다.
 - 운영 추적을 위해 `schedule_options.interviewer_responses._metadata.googleCalendarIdUsed`에 사용한 캘린더 ID를 기록합니다.
+
+## 이메일 템플릿
+- 표준 치환 키는 `{{candidate.name}}`, `{{job.title}}`, `{{interview.location}}` 등 `lib/email/template.ts`의 `EmailTemplateContext`와 동일한 dot 경로를 사용합니다.
+- 과거 워드 문서형 `{{ApplicantName}}`, `{{PositionName}}`, `{{InterviewDateTimeText}}` 등은 동일 로직에서 자동으로 위 경로에 매핑됩니다.
+- VNTG 기본 안내 10종은 마이그레이션 `20260409120000_seed_vntg_default_email_templates.sql`로 **각 조직**에 삽입됩니다. 해당 조직에 `admin`/`recruiter` 사용자가 없으면 그 조직에는 행이 생기지 않으며, **이미 동일 `name`의 템플릿이 있으면 건너뜁니다.** 원문은 `constants/vntg-builtin-email-templates.ts`에서 유지·수정 후 `scripts/generate-vntg-email-templates-migration.ts`로 SQL을 다시 생성할 수 있습니다.

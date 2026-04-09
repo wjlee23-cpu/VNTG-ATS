@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold,
   Briefcase,
+  Calendar,
   FileText,
   Italic,
   LayoutTemplate,
   Link2,
   List,
   Loader2,
-  Plus,
   Underline,
   User,
   X,
@@ -92,6 +92,7 @@ export function TemplatesClient() {
       job: [],
       stage: [],
       organization: [],
+      interview: [],
     } as any;
     for (const item of EMAIL_TEMPLATE_VARIABLES) {
       (map[item.groupId] as any).push(item);
@@ -127,23 +128,26 @@ export function TemplatesClient() {
   };
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="px-4 py-5 md:px-8 md:py-6">
-        {/* Header */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-neutral-900 mb-2">
-              Templates
-            </h1>
-            <p className="text-sm md:text-base text-neutral-600">이메일 템플릿을 생성하고 재사용하세요.</p>
+    <div className="h-full min-w-0 overflow-auto">
+      <div className="min-w-0 max-w-full px-4 py-5 md:px-8 md:py-6">
+        {/* 헤더: flex 자식이 shrink 되면 설명/버튼 글자가 세로로 쌓이므로 버튼은 shrink-0, 문단은 최소 너비를 둡니다. */}
+        <div className="mb-6 space-y-3">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl">
+            Templates
+          </h1>
+          {/* flex 한 줄 경쟁 대신 grid: 버튼 열은 항상 콘텐츠 너비(auto), 설명은 minmax(0,1fr)로만 줄어듦 */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+            <p className="min-w-0 text-sm text-neutral-600 md:text-base">
+              이메일 템플릿을 생성하고 재사용하세요.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsCreateOpen(true)}
+              className="inline-flex w-full shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:bg-neutral-800 active:scale-[0.98] sm:w-auto"
+            >
+              새 템플릿
+            </button>
           </div>
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="px-5 py-2.5 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-          >
-            <Plus size={18} />
-            새 템플릿
-          </button>
         </div>
 
         {isLoading ? (
@@ -158,8 +162,9 @@ export function TemplatesClient() {
             <h2 className="text-xl font-semibold text-neutral-900 mb-2">템플릿이 없습니다</h2>
             <p className="text-neutral-600 mb-6">첫 이메일 템플릿을 생성해 빠르게 메일을 보내보세요.</p>
             <button
+              type="button"
               onClick={() => setIsCreateOpen(true)}
-              className="px-5 py-2.5 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 active:scale-[0.98] transition-all duration-200"
+              className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:bg-neutral-800 active:scale-[0.98]"
             >
               첫 템플릿 만들기
             </button>
@@ -195,7 +200,7 @@ export function TemplatesClient() {
       </div>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-[640px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
+        <DialogContent className="flex max-w-[640px] flex-col gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
           <div className="relative flex flex-col bg-white">
             <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
 
@@ -262,35 +267,30 @@ export function TemplatesClient() {
                   </div>
                 </div>
 
-                <div className="group">
-                  <label
-                    htmlFor="template_body"
-                    className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                  >
-                    이메일 본문
-                  </label>
-
-                  {/* Insert: 한 줄에 몰아 넣지 않고 그룹별 행으로 나눠 정렬합니다. */}
-                  <div className="mb-3 rounded-xl border border-indigo-100/40 bg-indigo-50/30 px-3 py-2.5">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
-                      Insert
-                    </p>
+                {/* 에디터 박스와 분리된 구역 — flex-1+min-w-0 조합으로 너비가 0으로 줄면 칩 글자가 세로로 쌓이는 문제가 납니다. */}
+                <div className="min-w-0">
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                    변수 삽입 (Insert)
+                  </p>
+                  <div className="rounded-xl border border-indigo-100/40 bg-indigo-50/30 px-3 py-2.5">
                     <div className="space-y-2.5">
                       {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
                         <div
                           key={groupId}
-                          className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3"
+                          className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
                         >
-                          <span className="shrink-0 pt-0.5 text-[10px] font-bold text-neutral-500 sm:w-[4.5rem]">
+                          <span className="shrink-0 text-[10px] font-bold text-neutral-500 sm:w-[5rem] sm:pt-0">
                             {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
                           </span>
-                          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                          <div className="flex w-full min-w-[10rem] flex-1 flex-wrap gap-1.5 sm:min-w-[12rem]">
                             {variablesByGroup[groupId].map((v) => {
                               const icon =
                                 v.groupId === 'candidate' ? (
                                   <User className="h-3 w-3 shrink-0" />
                                 ) : v.groupId === 'job' ? (
                                   <Briefcase className="h-3 w-3 shrink-0" />
+                                ) : v.groupId === 'interview' ? (
+                                  <Calendar className="h-3 w-3 shrink-0" />
                                 ) : (
                                   <FileText className="h-3 w-3 shrink-0" />
                                 );
@@ -299,7 +299,7 @@ export function TemplatesClient() {
                                   key={v.key}
                                   type="button"
                                   onClick={() => insertTokenToBody(v.token)}
-                                  className="flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
+                                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
                                   disabled={isSubmitting}
                                   title={v.token}
                                 >
@@ -313,6 +313,15 @@ export function TemplatesClient() {
                       ))}
                     </div>
                   </div>
+                </div>
+
+                <div className="group min-w-0">
+                  <label
+                    htmlFor="template_body"
+                    className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                  >
+                    이메일 본문
+                  </label>
 
                   <div className="relative overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all group-focus-within:border-neutral-900 group-focus-within:bg-white group-focus-within:ring-1 group-focus-within:ring-neutral-900 group-focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
                     <textarea
