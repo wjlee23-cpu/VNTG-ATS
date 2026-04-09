@@ -11,6 +11,8 @@ import { getCandidateById } from '@/api/queries/candidates';
 import { getMyOrganization } from '@/api/queries/organizations';
 import { getStageNameByStageId } from '@/constants/stages';
 import { applyEmailTemplate, type EmailTemplateContext } from '@/lib/email/template';
+import { normalizeEmailBodyToHtml, renderThemedEmailHtmlFromHtml } from '@/lib/email/render-themed-email';
+import { sanitizeEmailHtml } from '@/lib/email/sanitize';
 
 interface EmailModalProps {
   candidateId: string;
@@ -32,6 +34,7 @@ export function EmailModal({
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [templates, setTemplates] = useState<EmailTemplateItem[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [templateContext, setTemplateContext] = useState<EmailTemplateContext>({
     candidate: { name: candidateName, email: candidateEmail },
   });
@@ -116,6 +119,19 @@ export function EmailModal({
     toast.success(`"${selectedTemplate.name}" 템플릿이 적용되었습니다.`);
   };
 
+  const finalSubject = applyEmailTemplate(formData.subject, templateContext);
+  const finalBodyRaw = applyEmailTemplate(formData.body, templateContext);
+  const orgNameForPreview = templateContext.organization?.name || 'VNTG ATS';
+  const normalizedBodyHtmlForPreview = normalizeEmailBodyToHtml(finalBodyRaw);
+  const sanitizedBodyHtmlForPreview = sanitizeEmailHtml(normalizedBodyHtmlForPreview);
+  const finalBodyHtmlForPreview = sanitizeEmailHtml(
+    renderThemedEmailHtmlFromHtml({
+      subject: finalSubject,
+      bodyHtml: sanitizedBodyHtmlForPreview,
+      organizationName: orgNameForPreview,
+    })
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -123,8 +139,7 @@ export function EmailModal({
     try {
       // 사용자가 템플릿 적용 후 직접 토큰을 추가/수정했을 수 있으므로,
       // 발송 직전에 한 번 더 치환을 적용합니다.
-      const finalSubject = applyEmailTemplate(formData.subject, templateContext);
-      const finalBody = applyEmailTemplate(formData.body, templateContext);
+      const finalBody = finalBodyRaw;
 
       const formDataToSend = new FormData();
       formDataToSend.append('candidate_id', candidateId);
@@ -308,6 +323,8 @@ export function EmailModal({
                 type="button"
                 className="group flex items-center gap-2 rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
                 title="미리보기"
+                onClick={() => setIsPreviewOpen(true)}
+                disabled={isLoading}
               >
                 <Eye className="h-4 w-4 transition-transform group-hover:scale-110" />
                 <span className="text-xs font-semibold">미리보기</span>
@@ -342,6 +359,69 @@ export function EmailModal({
               </div>
             </div>
           </form>
+        </div>
+      </DialogContent>
+
+      <EmailPreviewDialog
+        open={isPreviewOpen}
+        onOpenChange={setIsPreviewOpen}
+        subject={finalSubject}
+        html={finalBodyHtmlForPreview}
+      />
+    </Dialog>
+  );
+}
+
+export function EmailPreviewDialog({
+  open,
+  onOpenChange,
+  subject,
+  html,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subject: string;
+  html: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[820px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
+        <div className="relative flex flex-col bg-white">
+          <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
+
+          <div className="z-10 flex items-center justify-between bg-white px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/50 bg-neutral-100/80 shadow-sm">
+                <Eye className="h-4 w-4 text-neutral-700" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold tracking-tight text-neutral-900">미리보기</h2>
+                <p className="mt-0.5 truncate text-[11px] font-medium text-neutral-400">
+                  제목: {subject || '(제목 없음)'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              onClick={() => onOpenChange(false)}
+              aria-label="모달 닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="max-h-[75vh] overflow-y-auto p-6 pt-2">
+            <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
+              <div className="border-b border-neutral-100 bg-neutral-50/50 px-5 py-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Body</p>
+              </div>
+              <div
+                className="prose prose-sm max-w-none p-5 text-neutral-800"
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

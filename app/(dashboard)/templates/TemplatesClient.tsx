@@ -11,13 +11,15 @@ import {
   Link2,
   List,
   Loader2,
+  Pencil,
+  Trash2,
   Underline,
   User,
   X,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { getEmailTemplates, type EmailTemplateItem } from '@/api/queries/email-templates';
-import { createEmailTemplate } from '@/api/actions/email-templates';
+import { createEmailTemplate, deleteEmailTemplate, updateEmailTemplate } from '@/api/actions/email-templates';
 import { toast } from 'sonner';
 import {
   EMAIL_TEMPLATE_VARIABLES,
@@ -29,7 +31,12 @@ export function TemplatesClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [templates, setTemplates] = useState<EmailTemplateItem[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState<EmailTemplateItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [form, setForm] = useState({
     name: '',
     subject: '',
@@ -84,6 +91,78 @@ export function TemplatesClient() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // 템플릿 수정 후 목록을 즉시 갱신합니다.
+  const handleUpdateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTemplateId) {
+      toast.error('수정할 템플릿을 찾지 못했습니다.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await updateEmailTemplate({
+        id: editingTemplateId,
+        name: form.name,
+        subject: form.subject,
+        body: form.body,
+      });
+
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('이메일 템플릿이 수정되었습니다.');
+        setForm({ name: '', subject: '', body: '' });
+        setEditingTemplateId(null);
+        setIsEditOpen(false);
+        await loadTemplates();
+      }
+    } catch {
+      toast.error('템플릿 수정 중 오류가 발생했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 템플릿 삭제 후 목록을 즉시 갱신합니다.
+  const handleDeleteTemplate = async () => {
+    if (!deletingTemplate) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteEmailTemplate(deletingTemplate.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success('이메일 템플릿이 삭제되었습니다.');
+      setIsDeleteConfirmOpen(false);
+      setDeletingTemplate(null);
+      await loadTemplates();
+    } catch {
+      toast.error('템플릿 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const openEdit = (template: EmailTemplateItem) => {
+    setIsCreateOpen(false);
+    setEditingTemplateId(template.id);
+    setForm({
+      name: template.name,
+      subject: template.subject,
+      body: template.body,
+    });
+    setIsEditOpen(true);
+  };
+
+  const openDeleteConfirm = (template: EmailTemplateItem) => {
+    setDeletingTemplate(template);
+    setIsDeleteConfirmOpen(true);
   };
 
   const variablesByGroup = useMemo(() => {
@@ -190,6 +269,26 @@ export function TemplatesClient() {
                       <p className="mt-2 text-xs text-neutral-400">
                         수정일: {new Date(template.updated_at).toLocaleString('ko-KR')}
                       </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(template)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                        aria-label="템플릿 수정"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        수정
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openDeleteConfirm(template)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
+                        aria-label="템플릿 삭제"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        삭제
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -403,6 +502,257 @@ export function TemplatesClient() {
                 </button>
               </div>
             </form>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open);
+          if (!open) {
+            setEditingTemplateId(null);
+            setForm({ name: '', subject: '', body: '' });
+          }
+        }}
+      >
+        <DialogContent className="flex max-w-[640px] flex-col gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
+          <div className="relative flex flex-col bg-white">
+            <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
+
+            <div className="z-10 flex items-center justify-between bg-white px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/50 bg-neutral-100/80 shadow-sm">
+                  <Pencil className="h-4 w-4 text-neutral-700" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold tracking-tight text-neutral-900">템플릿 수정</h2>
+                  <p className="text-[11px] font-medium text-neutral-400">저장된 이메일 형식을 업데이트합니다.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                onClick={() => setIsEditOpen(false)}
+                aria-label="모달 닫기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateTemplate}>
+              <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6 pt-2">
+                <div className="space-y-4">
+                  <div className="group">
+                    <label
+                      htmlFor="edit_template_name"
+                      className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      템플릿 이름
+                    </label>
+                    <input
+                      id="edit_template_name"
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={form.name}
+                      onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                      className="pro-input w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-medium text-neutral-900 placeholder:text-neutral-400"
+                      placeholder="예: 1차 면접 안내"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <div className="group">
+                    <label
+                      htmlFor="edit_template_subject"
+                      className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      이메일 제목
+                    </label>
+                    <input
+                      id="edit_template_subject"
+                      type="text"
+                      required
+                      value={form.subject}
+                      onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
+                      className="pro-input w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-medium text-neutral-900 placeholder:text-neutral-400"
+                      placeholder="예: [VNTG] 1차 면접 안내"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                    변수 삽입 (Insert)
+                  </p>
+                  <div className="rounded-xl border border-indigo-100/40 bg-indigo-50/30 px-3 py-2.5">
+                    <div className="space-y-2.5">
+                      {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
+                        <div
+                          key={groupId}
+                          className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
+                        >
+                          <span className="shrink-0 text-[10px] font-bold text-neutral-500 sm:w-[5rem] sm:pt-0">
+                            {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
+                          </span>
+                          <div className="flex w-full min-w-[10rem] flex-1 flex-wrap gap-1.5 sm:min-w-[12rem]">
+                            {variablesByGroup[groupId].map((v) => {
+                              const icon =
+                                v.groupId === 'candidate' ? (
+                                  <User className="h-3 w-3 shrink-0" />
+                                ) : v.groupId === 'job' ? (
+                                  <Briefcase className="h-3 w-3 shrink-0" />
+                                ) : v.groupId === 'interview' ? (
+                                  <Calendar className="h-3 w-3 shrink-0" />
+                                ) : (
+                                  <FileText className="h-3 w-3 shrink-0" />
+                                );
+                              return (
+                                <button
+                                  key={v.key}
+                                  type="button"
+                                  onClick={() => insertTokenToBody(v.token)}
+                                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
+                                  disabled={isSubmitting}
+                                  title={v.token}
+                                >
+                                  {icon}
+                                  {v.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="group min-w-0">
+                  <label
+                    htmlFor="edit_template_body"
+                    className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                  >
+                    이메일 본문
+                  </label>
+
+                  <div className="relative overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all group-focus-within:border-neutral-900 group-focus-within:bg-white group-focus-within:ring-1 group-focus-within:ring-neutral-900 group-focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
+                    <textarea
+                      id="edit_template_body"
+                      required
+                      rows={11}
+                      value={form.body}
+                      onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
+                      ref={bodyTextareaRef}
+                      className="w-full resize-none bg-transparent border-0 p-5 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
+                      placeholder="여기에 이메일 내용을 작성하세요..."
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="z-10 flex justify-end gap-3 border-t border-neutral-100 bg-white px-6 py-5">
+                <button
+                  type="button"
+                  className="rounded-xl px-5 py-2.5 text-sm font-semibold text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+                  onClick={() => setIsEditOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      저장 중...
+                    </>
+                  ) : (
+                    '저장'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isDeleteConfirmOpen}
+        onOpenChange={(open) => {
+          setIsDeleteConfirmOpen(open);
+          if (!open) setDeletingTemplate(null);
+        }}
+      >
+        <DialogContent className="max-w-[520px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
+          <div className="relative flex flex-col bg-white">
+            <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
+
+            <div className="z-10 flex items-center justify-between bg-white px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200/60 bg-red-50 shadow-sm">
+                  <Trash2 className="h-4 w-4 text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold tracking-tight text-neutral-900">템플릿 삭제</h2>
+                  <p className="text-[11px] font-medium text-neutral-400">삭제하면 복구할 수 없습니다.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                aria-label="모달 닫기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 px-6 pb-2">
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
+                <p className="text-sm font-semibold text-neutral-900 break-words">
+                  {deletingTemplate?.name ?? '선택된 템플릿'}
+                </p>
+                <p className="mt-1 text-xs font-medium text-neutral-500 break-words">
+                  제목: {deletingTemplate?.subject ?? ''}
+                </p>
+              </div>
+              <p className="text-sm text-neutral-600">
+                정말로 이 템플릿을 삭제할까요?
+              </p>
+            </div>
+
+            <div className="z-10 flex justify-end gap-3 border-t border-neutral-100 bg-white px-6 py-5">
+              <button
+                type="button"
+                className="rounded-xl px-5 py-2.5 text-sm font-semibold text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                disabled={isDeleting}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTemplate}
+                disabled={isDeleting}
+                className="flex items-center gap-2 rounded-xl bg-red-600 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(239,68,68,0.22)] transition-all hover:bg-red-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    삭제 중...
+                  </>
+                ) : (
+                  '삭제'
+                )}
+              </button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

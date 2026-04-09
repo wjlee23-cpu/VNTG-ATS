@@ -5,8 +5,9 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateRequired, validateEmail, validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
-import { sendEmail } from '@/lib/email/resend';
 import { sendEmailViaGmail, listMessages, getMessage } from '@/lib/email/gmail';
+import { normalizeEmailBodyToHtml, renderThemedEmailHtmlFromHtml } from '@/lib/email/render-themed-email';
+import { sanitizeEmailHtml } from '@/lib/email/sanitize';
 
 /**
  * 후보자에게 이메일 발송
@@ -60,6 +61,14 @@ export async function sendEmailToCandidate(formData: FormData) {
       throw new Error('수신자 이메일이 후보자 이메일과 일치하지 않습니다.');
     }
 
+    // 조직명 조회 (이메일 헤더에 표시)
+    const { data: orgRow } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', user.organizationId)
+      .maybeSingle();
+    const organizationName = orgRow?.name || 'VNTG ATS';
+
     // 이메일 테이블에 저장 (Phase 2)
     const { data: emailRecord, error: emailError } = await supabase
       .from('emails')
@@ -81,6 +90,19 @@ export async function sendEmailToCandidate(formData: FormData) {
     }
 
     // Gmail API를 사용하여 이메일 발송 (userId 전달하여 토큰 갱신 시 DB 저장)
+    // 사용자가 입력한 본문을 HTML로 정규화한 뒤 sanitize를 적용합니다.
+    const normalizedBodyHtml = normalizeEmailBodyToHtml(body);
+    const sanitizedBodyHtml = sanitizeEmailHtml(normalizedBodyHtml);
+
+    // 공통 레이아웃도 최종적으로 sanitize를 한 번 더 적용합니다. (방어적으로)
+    const themedHtml = sanitizeEmailHtml(
+      renderThemedEmailHtmlFromHtml({
+        subject,
+        bodyHtml: sanitizedBodyHtml,
+        organizationName,
+      })
+    );
+
     const emailResult = await sendEmailViaGmail(
       currentUserData.calendar_access_token,
       currentUserData.calendar_refresh_token,
@@ -88,7 +110,7 @@ export async function sendEmailToCandidate(formData: FormData) {
         to: toEmail,
         from: currentUserData.email || user.email,
         subject,
-        html: body.replace(/\n/g, '<br>'), // 줄바꿈을 HTML로 변환
+        html: themedHtml,
         replyTo: currentUserData.email || user.email,
       },
       user.userId
