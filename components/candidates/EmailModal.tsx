@@ -13,6 +13,7 @@ import { getStageNameByStageId } from '@/constants/stages';
 import { applyEmailTemplate, type EmailTemplateContext } from '@/lib/email/template';
 import { normalizeEmailBodyToHtml, renderThemedEmailHtmlFromHtml } from '@/lib/email/render-themed-email';
 import { sanitizeEmailHtml } from '@/lib/email/sanitize';
+import { EmailHtmlEditor } from '@/components/email/EmailHtmlEditor';
 
 interface EmailModalProps {
   candidateId: string;
@@ -282,24 +283,21 @@ export function EmailModal({
                   >
                     내용
                   </label>
-                  <div className="relative overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all group-focus-within:border-neutral-900 group-focus-within:bg-white group-focus-within:ring-1 group-focus-within:ring-neutral-900 group-focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
-                    <textarea
-                      id="body"
-                      required
+                  <div className="rounded-xl border border-neutral-200 bg-[#FCFCFC] p-4 shadow-sm">
+                    <EmailHtmlEditor
                       value={formData.body}
-                      onChange={(e) => setFormData({ ...formData, body: e.target.value })}
-                      rows={8}
-                      className="w-full resize-none bg-transparent border-0 p-4 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
-                      placeholder="이메일 내용을 입력하세요"
+                      onChange={(next) => setFormData((prev) => ({ ...prev, body: next }))}
                       disabled={isLoading}
+                      placeholder="이메일 내용을 입력하세요"
+                      minEditorHeightPx={240}
                     />
-
-                    <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50/50 px-3 py-2">
+                    <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-900"
                           aria-label="첨부파일"
+                          disabled
                         >
                           <Paperclip className="h-4 w-4" />
                         </button>
@@ -307,11 +305,14 @@ export function EmailModal({
                           type="button"
                           className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-900"
                           aria-label="이미지 첨부"
+                          disabled
                         >
                           <Image className="h-4 w-4" />
                         </button>
                       </div>
-                      <span className="text-[10px] font-medium text-neutral-400">마크다운 지원됨</span>
+                      <span className="text-[10px] font-medium text-neutral-400">
+                        Editor/HTML 탭으로 편집할 수 있어요
+                      </span>
                     </div>
                   </div>
                 </div>

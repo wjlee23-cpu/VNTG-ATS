@@ -2,18 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bold,
   Briefcase,
   Calendar,
   FileText,
-  Italic,
   LayoutTemplate,
-  Link2,
-  List,
   Loader2,
   Pencil,
   Trash2,
-  Underline,
   User,
   X,
 } from 'lucide-react';
@@ -21,6 +16,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { getEmailTemplates, type EmailTemplateItem } from '@/api/queries/email-templates';
 import { createEmailTemplate, deleteEmailTemplate, updateEmailTemplate } from '@/api/actions/email-templates';
 import { toast } from 'sonner';
+import { EmailHtmlEditor, type EmailHtmlEditorHandle } from '@/components/email/EmailHtmlEditor';
 import {
   EMAIL_TEMPLATE_VARIABLES,
   EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL,
@@ -43,6 +39,8 @@ export function TemplatesClient() {
     body: '',
   });
   const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const createBodyEditorRef = useRef<EmailHtmlEditorHandle | null>(null);
+  const editBodyEditorRef = useRef<EmailHtmlEditorHandle | null>(null);
 
   // 템플릿 목록을 서버에서 가져옵니다.
   const loadTemplates = async () => {
@@ -204,6 +202,15 @@ export function TemplatesClient() {
         /* ignore */
       }
     });
+  };
+
+  const insertTokenToActiveEditor = (token: string) => {
+    // 생성/수정 모달 중 열려있는 에디터에 토큰을 "현재 커서 위치"로 삽입합니다.
+    if (isEditOpen) {
+      editBodyEditorRef.current?.insertTokenAtCursor(token);
+      return;
+    }
+    createBodyEditorRef.current?.insertTokenAtCursor(token);
   };
 
   return (
@@ -397,7 +404,7 @@ export function TemplatesClient() {
                                 <button
                                   key={v.key}
                                   type="button"
-                                  onClick={() => insertTokenToBody(v.token)}
+                                  onClick={() => insertTokenToActiveEditor(v.token)}
                                   className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
                                   disabled={isSubmitting}
                                   title={v.token}
@@ -422,58 +429,15 @@ export function TemplatesClient() {
                     이메일 본문
                   </label>
 
-                  <div className="relative overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all group-focus-within:border-neutral-900 group-focus-within:bg-white group-focus-within:ring-1 group-focus-within:ring-neutral-900 group-focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
-                    <textarea
-                      id="template_body"
-                      required
-                      rows={11}
-                      value={form.body}
-                      onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
-                      ref={bodyTextareaRef}
-                      className="w-full resize-none bg-transparent border-0 p-5 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
-                      placeholder="여기에 이메일 내용을 작성하세요..."
-                      disabled={isSubmitting}
-                    />
-
-                    <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-neutral-200/60 bg-white/80 p-1 shadow-[0_8px_16px_rgba(0,0,0,0.06)] backdrop-blur-xl">
-                      <button
-                        type="button"
-                        className="rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                        aria-label="굵게"
-                      >
-                        <Bold className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                        aria-label="기울임"
-                      >
-                        <Italic className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                        aria-label="밑줄"
-                      >
-                        <Underline className="h-4 w-4" />
-                      </button>
-                      <div className="mx-1 h-4 w-px bg-neutral-200" />
-                      <button
-                        type="button"
-                        className="rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                        aria-label="링크"
-                      >
-                        <Link2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                        aria-label="리스트"
-                      >
-                        <List className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
+                  <EmailHtmlEditor
+                    ref={createBodyEditorRef}
+                    value={form.body}
+                    onChange={(next) => setForm((prev) => ({ ...prev, body: next }))}
+                    disabled={isSubmitting}
+                    placeholder="여기에 이메일 내용을 작성하세요..."
+                    minEditorHeightPx={260}
+                    className="rounded-xl border border-neutral-200 bg-[#FCFCFC] p-4 shadow-sm"
+                  />
                 </div>
               </div>
 
@@ -613,7 +577,7 @@ export function TemplatesClient() {
                                 <button
                                   key={v.key}
                                   type="button"
-                                  onClick={() => insertTokenToBody(v.token)}
+                                  onClick={() => insertTokenToActiveEditor(v.token)}
                                   className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
                                   disabled={isSubmitting}
                                   title={v.token}
@@ -638,19 +602,15 @@ export function TemplatesClient() {
                     이메일 본문
                   </label>
 
-                  <div className="relative overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all group-focus-within:border-neutral-900 group-focus-within:bg-white group-focus-within:ring-1 group-focus-within:ring-neutral-900 group-focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
-                    <textarea
-                      id="edit_template_body"
-                      required
-                      rows={11}
-                      value={form.body}
-                      onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
-                      ref={bodyTextareaRef}
-                      className="w-full resize-none bg-transparent border-0 p-5 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
-                      placeholder="여기에 이메일 내용을 작성하세요..."
-                      disabled={isSubmitting}
-                    />
-                  </div>
+                  <EmailHtmlEditor
+                    ref={editBodyEditorRef}
+                    value={form.body}
+                    onChange={(next) => setForm((prev) => ({ ...prev, body: next }))}
+                    disabled={isSubmitting}
+                    placeholder="여기에 이메일 내용을 작성하세요..."
+                    minEditorHeightPx={260}
+                    className="rounded-xl border border-neutral-200 bg-[#FCFCFC] p-4 shadow-sm"
+                  />
                 </div>
               </div>
 
