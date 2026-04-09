@@ -263,49 +263,54 @@ export function TemplatesClient() {
                 </div>
 
                 <div className="group">
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <label
-                      htmlFor="template_body"
-                      className="block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                    >
-                      이메일 본문
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-medium text-neutral-400">Insert:</span>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
-                          <div key={groupId} className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-neutral-300">
-                              {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {variablesByGroup[groupId].map((v) => {
-                                const icon =
-                                  v.groupId === 'candidate' ? (
-                                    <User className="h-3 w-3" />
-                                  ) : v.groupId === 'job' ? (
-                                    <Briefcase className="h-3 w-3" />
-                                  ) : (
-                                    <FileText className="h-3 w-3" />
-                                  );
-                                return (
-                                  <button
-                                    key={v.key}
-                                    type="button"
-                                    onClick={() => insertTokenToBody(v.token)}
-                                    className="flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
-                                    disabled={isSubmitting}
-                                    title={v.token}
-                                  >
-                                    {icon}
-                                    {v.label}
-                                  </button>
+                  <label
+                    htmlFor="template_body"
+                    className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                  >
+                    이메일 본문
+                  </label>
+
+                  {/* Insert: 한 줄에 몰아 넣지 않고 그룹별 행으로 나눠 정렬합니다. */}
+                  <div className="mb-3 rounded-xl border border-indigo-100/40 bg-indigo-50/30 px-3 py-2.5">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                      Insert
+                    </p>
+                    <div className="space-y-2.5">
+                      {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
+                        <div
+                          key={groupId}
+                          className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3"
+                        >
+                          <span className="shrink-0 pt-0.5 text-[10px] font-bold text-neutral-500 sm:w-[4.5rem]">
+                            {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
+                          </span>
+                          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                            {variablesByGroup[groupId].map((v) => {
+                              const icon =
+                                v.groupId === 'candidate' ? (
+                                  <User className="h-3 w-3 shrink-0" />
+                                ) : v.groupId === 'job' ? (
+                                  <Briefcase className="h-3 w-3 shrink-0" />
+                                ) : (
+                                  <FileText className="h-3 w-3 shrink-0" />
                                 );
-                              })}
-                            </div>
+                              return (
+                                <button
+                                  key={v.key}
+                                  type="button"
+                                  onClick={() => insertTokenToBody(v.token)}
+                                  className="flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 shadow-sm transition-colors hover:bg-indigo-100 active:scale-[0.98]"
+                                  disabled={isSubmitting}
+                                  title={v.token}
+                                >
+                                  {icon}
+                                  {v.label}
+                                </button>
+                              );
+                            })}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
