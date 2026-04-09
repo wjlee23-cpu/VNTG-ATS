@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getStageNameByStageId, getStageNameById } from "@/constants/stages";
 import { CANDIDATE_STATUS_CONFIG } from "@/constants/candidates";
@@ -46,6 +46,7 @@ export function CandidatesClient({
 }: CandidatesClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const openedFromListRef = useRef(false);
 
   // 목록/필터 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -289,11 +290,22 @@ export function CandidatesClient({
         : initialCandidates.length;
 
   const handleCandidateClick = (candidateId: string) => {
+    // 사용자가 리스트에서 상세를 연 경우, 닫을 때 back()으로 즉시 복귀할 수 있게 플래그를 기록합니다.
+    openedFromListRef.current = true;
     router.push(`/candidates?selected=${candidateId}`);
   };
 
   const handleCloseDetail = () => {
-    router.push("/candidates");
+    // 상세를 닫을 때는 히스토리를 불필요하게 쌓지 않고, 전환 비용을 줄이기 위해 replace를 사용합니다.
+    // - 리스트에서 클릭해서 들어온 경우: back()이 캐시를 더 잘 활용해 체감이 빠른 편입니다.
+    // - 링크로 직접 진입한 경우(예: 공유 링크): back()이 다른 페이지로 나갈 수 있어 replace로 안전하게 복귀합니다.
+    if (openedFromListRef.current) {
+      openedFromListRef.current = false;
+      router.back();
+      return;
+    }
+
+    router.replace("/candidates");
   };
 
   const toggleSelect = useCallback(

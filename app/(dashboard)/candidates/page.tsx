@@ -1,6 +1,7 @@
 import { getCandidates, getCandidatesByStage } from '@/api/queries/candidates';
 import { CandidatesClient } from './CandidatesClient';
 import { Suspense } from 'react';
+import { CandidatesPageSkeleton } from '@/components/candidates/CandidatesPageSkeleton';
 
 export default async function CandidatesPage() {
   const candidatesResult = await getCandidates();
@@ -13,7 +14,7 @@ export default async function CandidatesPage() {
 
   return (
     // CandidatesClient 내부에서 useSearchParams()를 사용하므로, 빌드(프리렌더) 에러 방지를 위해 Suspense로 감쌉니다.
-    <Suspense fallback={<div className="p-6" />}>
+    <Suspense fallback={<CandidatesPageSkeleton />}>
       <CandidatesClient 
         initialCandidates={candidates}
         stageCounts={stageCounts}
