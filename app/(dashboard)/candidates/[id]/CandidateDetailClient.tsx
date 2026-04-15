@@ -133,6 +133,17 @@ export function CandidateDetailClient({
     }
   };
 
+  /** 삭제·동기화 등 사용자 액션 직후: 세대 검사 없이 서버 목록을 그대로 반영합니다. */
+  const applySchedulesFromServer = async (candidateId: string) => {
+    try {
+      const refreshed = await getSchedulesByCandidate(candidateId);
+      const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+      setSchedulesState(Array.isArray(nextList) ? nextList : []);
+    } catch {
+      /* network: 무시 */
+    }
+  };
+
   // 사이드바 코파일럿이 사용할 "가장 최근 스케줄" 계산
   // - 확정된 일정도 코파일럿에 반드시 반영되어야 합니다.
   const currentActiveSchedule = (() => {
@@ -673,38 +684,42 @@ export function CandidateDetailClient({
     }
   };
 
-  // 타임라인에서 일정 삭제
-  const handleDeleteScheduleFromTimeline = async (scheduleId: string) => {
-    if (!confirm('정말로 이 면접 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
-    const generation = ++schedulesFetchGenRef.current;
+  // 타임라인·사이드바에서 일정 삭제 (사이드바는 이미 confirm을 거쳐 서로 skipConfirm 가능)
+  const handleDeleteScheduleFromTimeline = async (
+    scheduleId: string,
+    options?: { skipConfirm?: boolean },
+  ) => {
+    if (!options?.skipConfirm) {
+      if (!confirm('정말로 이 면접 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+    }
     setScheduleActionLoadingId(scheduleId);
+    const syncAfterDelete = async () => {
+      setSchedulesState((prev) => prev.filter((s) => String(s?.id) !== String(scheduleId)));
+      await applySchedulesFromServer(candidate.id);
+      router.refresh();
+      refreshCandidateData().catch(() => {});
+      refreshTimelineEvents().catch(() => {});
+    };
     try {
       const result = await deleteSchedule(scheduleId);
-      // 서버 액션의 에러 메시지를 점검하여 사용자 친화적으로 처리
       const possibleError = (result as { error?: string }).error;
       if (possibleError && possibleError.length > 0) {
         if (possibleError.includes('면접 일정을 찾을 수 없습니다')) {
-          // 이미 삭제되었거나 존재하지 않는 경우: 정보성 안내 후 목록 동기화
           toast.info('이미 삭제된 일정이어서 목록을 최신화했습니다.');
+          await syncAfterDelete();
         } else {
           toast.error(possibleError);
         }
       } else {
         toast.success('면접 일정이 삭제되었습니다.');
+        await syncAfterDelete();
       }
-      // 최신 스케줄 목록 재조회하여 사이드바 상태를 즉시 반영
-
-      await fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
-      // 기존 후보자 데이터와 타임라인도 동기화
-      refreshCandidateData().catch(() => {});
-      refreshTimelineEvents().catch(() => {});
     } catch (error) {
       console.error('[CandidateDetailClient] 면접 일정 삭제 실패:', error);
-      // 서버 액션이 500 등으로 실패하면 throw로 떨어질 수 있어, 가능하면 메시지를 그대로 보여줍니다.
       const msg = error instanceof Error ? error.message : '면접 일정 삭제 중 오류가 발생했습니다.';
       if (typeof msg === 'string' && msg.includes('면접 일정을 찾을 수 없습니다')) {
         toast.info('이미 삭제된 일정이어서 목록을 최신화했습니다.');
-        await fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
+        await syncAfterDelete();
       } else {
         toast.error(msg);
       }
@@ -715,16 +730,16 @@ export function CandidateDetailClient({
 
   /** 코파일럿: 서버·캘린더 기준으로 조율 진행 상태를 맞추고, 로컬 스케줄 목록을 항상 최신화합니다. */
   const handleCheckScheduleFromTimeline = async (scheduleId: string) => {
-    const generation = ++schedulesFetchGenRef.current;
     setScheduleActionLoadingId(scheduleId);
-    const applySchedulesFromServer = async () => {
-      await fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
+    const refreshSchedulesAndRouter = async () => {
+      await applySchedulesFromServer(candidate.id);
+      router.refresh();
     };
     try {
       const result = await checkInterviewerResponses(scheduleId);
       if ((result as { error?: string }).error) {
         toast.error((result as { error: string }).error);
-        await applySchedulesFromServer();
+        await refreshSchedulesAndRouter();
         refreshTimelineEvents().catch(() => {});
         return;
       }
@@ -739,22 +754,22 @@ export function CandidateDetailClient({
         if (data.allAccepted) {
           toast.success(data.message || '모든 면접관이 수락한 일정이 있습니다. 후보자에게 전송되었습니다.');
         } else if (data.alreadyProcessed) {
-          toast.success(data.message || '진행 현황을 최신으로 맞췄습니다.');
+          toast.success(data.message || '진행 현황을 최신으로 맞추었습니다.');
         } else {
           toast.info(data.message || '조율 상태를 확인했습니다.');
         }
-        await applySchedulesFromServer();
+        await refreshSchedulesAndRouter();
         refreshCandidateData().catch(() => {});
         refreshTimelineEvents().catch(() => {});
       } else {
         toast.info('확인 결과가 없습니다.');
-        await applySchedulesFromServer();
+        await refreshSchedulesAndRouter();
         refreshTimelineEvents().catch(() => {});
       }
     } catch (error) {
       console.error('[CandidateDetailClient] 일정 동기화 실패:', error);
       toast.error('일정 동기화 중 오류가 발생했습니다.');
-      await applySchedulesFromServer();
+      await refreshSchedulesAndRouter();
     } finally {
       setScheduleActionLoadingId(null);
     }
