@@ -123,7 +123,7 @@ export function CandidateSidebar({
       if (step === 'candidate') return 'doing' as const;
       return 'pending' as const;
     }
-    if (step === 'interviewers') return 'doing' as const;
+    // 처리하지 않은 workflow_status는 면접관 단계를 진행 중으로 표시하지 않습니다.
     return 'pending' as const;
   };
 

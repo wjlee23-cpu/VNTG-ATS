@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import type { Candidate } from '@/types/candidates';
@@ -202,6 +202,15 @@ export function CandidateDetailClient({
 
   const getDetailTabStorageKey = () => `candidate-detail-active-tab:${candidate.id}`;
 
+  // 서버에서 내려준 schedules가 갱신되면(router.refresh 등) 로컬 목록 시그니처를 맞춥니다.
+  const schedulesPropKey = useMemo(() => {
+    if (!Array.isArray(_schedules)) return '';
+    return (_schedules as any[])
+      .map((s) => `${String(s?.id ?? '')}:${String(s?.workflow_status ?? '')}`)
+      .sort()
+      .join('|');
+  }, [_schedules]);
+
   const refreshCandidateData = async () => {
     try {
       const result = await getCandidateById(candidate.id);
@@ -237,12 +246,16 @@ export function CandidateDetailClient({
   // 페이지 진입 시 스케줄 목록을 한 번 더 받아 코파일럿이 서버와 어긋나지 않게 합니다.
   useEffect(() => {
     if (!candidate.id) return;
-    const generation = ++schedulesFetchGenRef.current;
+    schedulesFetchGenRef.current += 1;
+    const generation = schedulesFetchGenRef.current;
+    if (Array.isArray(_schedules)) {
+      setSchedulesState([...(_schedules as any[])]);
+    }
     void fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
     return () => {
       schedulesFetchGenRef.current += 1;
     };
-  }, [candidate.id]);
+  }, [candidate.id, schedulesPropKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !candidate.id) return;

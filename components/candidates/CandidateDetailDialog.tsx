@@ -63,7 +63,7 @@ export function CandidateDetailDialog({
                 </button>
               </div>
             </div>
-          ) : candidate ? (
+          ) : candidate && open ? (
             <CandidateDetailClient
               candidate={candidate}
               schedules={schedules}
