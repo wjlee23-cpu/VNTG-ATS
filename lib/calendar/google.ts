@@ -142,6 +142,62 @@ export async function getBusyTimes(
         })
       }
     }
+
+    // ✅ 안전장치: 일부 캘린더(특히 리소스/공유 캘린더)에서 FreeBusy가 비어있는 케이스가 있어,
+    // events.list 기반 파싱을 한 번 더 수행하여 종일 일정(start.date)까지 누락 없이 포함합니다.
+    // - FreeBusy와 중복될 수 있으므로 (start,end) 기준으로 dedupe 합니다.
+    for (const calendarId of calendarIds) {
+      const events = await calendar.events.list({
+        calendarId,
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+      })
+
+      for (const event of events.data.items || []) {
+        // 취소/삭제/투명(Free) 이벤트는 바쁨에서 제외합니다.
+        if (event.status === 'cancelled') continue
+        if (event.transparency === 'transparent') continue
+
+        const timeZone = event.start?.timeZone || event.end?.timeZone || 'Asia/Seoul'
+
+        // 1) 일반 일정 (dateTime)
+        if (event.start?.dateTime && event.end?.dateTime) {
+          const s = event.start.dateTime
+          const e = event.end.dateTime
+          const exists = busyTimes.some(
+            (b) => b.start.dateTime === s && b.end.dateTime === e,
+          )
+          if (!exists) {
+            busyTimes.push({
+              id: event.id || '',
+              summary: event.summary || '',
+              start: { dateTime: s, timeZone },
+              end: { dateTime: e, timeZone },
+            })
+          }
+          continue
+        }
+
+        // 2) 종일 일정 (date) - start.date/end.date(exclusive)를 DateTime으로 변환
+        if (event.start?.date && event.end?.date) {
+          const s = allDayDateToDateTimeIso(event.start.date, timeZone)
+          const e = allDayDateToDateTimeIso(event.end.date, timeZone)
+          const exists = busyTimes.some(
+            (b) => b.start.dateTime === s && b.end.dateTime === e,
+          )
+          if (!exists) {
+            busyTimes.push({
+              id: event.id || '',
+              summary: event.summary || '',
+              start: { dateTime: s, timeZone },
+              end: { dateTime: e, timeZone },
+            })
+          }
+        }
+      }
+    }
   } catch (error: any) {
     console.error(`Error fetching freebusy:`, error)
 
