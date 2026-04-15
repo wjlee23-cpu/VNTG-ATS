@@ -1,11 +1,19 @@
 import { google } from 'googleapis'
 import { createServiceClient } from '@/lib/supabase/server'
+import { fromZonedTime } from 'date-fns-tz'
 
 export interface CalendarEvent {
   id: string
   summary: string
   start: { dateTime: string; timeZone: string }
   end: { dateTime: string; timeZone: string }
+}
+
+// 종일 일정(YYYY-MM-DD)을 타임존 기준 00:00 DateTime(UTC)로 변환합니다.
+function allDayDateToDateTimeIso(date: string, timeZone: string): string {
+  // Google Calendar all-day는 start.date/end.date 형태(종료일은 exclusive)로 전달됩니다.
+  // 여기서는 "해당 날짜 00:00 (timeZone)"을 UTC로 변환해 ISO로 반환합니다.
+  return fromZonedTime(`${date}T00:00:00`, timeZone).toISOString()
 }
 
 /**
@@ -117,17 +125,41 @@ export async function getBusyTimes(
 
       if (response.data.items) {
         for (const event of response.data.items) {
+          // 취소/삭제/투명(Free) 이벤트는 바쁨에서 제외합니다.
+          if (event.status === 'cancelled') continue
+          if (event.transparency === 'transparent') continue
+
+          const timeZone = event.start?.timeZone || event.end?.timeZone || 'Asia/Seoul'
+
+          // 1) 일반 일정 (dateTime)
           if (event.start?.dateTime && event.end?.dateTime) {
             busyTimes.push({
               id: event.id || '',
               summary: event.summary || '',
               start: {
                 dateTime: event.start.dateTime,
-                timeZone: event.start.timeZone || 'Asia/Seoul',
+                timeZone,
               },
               end: {
                 dateTime: event.end.dateTime,
-                timeZone: event.end.timeZone || 'Asia/Seoul',
+                timeZone,
+              },
+            })
+            continue
+          }
+
+          // 2) 종일 일정 (date) - start.date/end.date(exclusive)를 DateTime으로 변환
+          if (event.start?.date && event.end?.date) {
+            busyTimes.push({
+              id: event.id || '',
+              summary: event.summary || '',
+              start: {
+                dateTime: allDayDateToDateTimeIso(event.start.date, timeZone),
+                timeZone,
+              },
+              end: {
+                dateTime: allDayDateToDateTimeIso(event.end.date, timeZone),
+                timeZone,
               },
             })
           }

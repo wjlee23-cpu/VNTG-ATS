@@ -56,6 +56,13 @@ type AllowedTimeRange = ExcludedTimeRange;
 // KST 타임존 상수 (타임라인/이력/메일 표기 통일용)
 const KST_TIMEZONE = 'Asia/Seoul';
 
+// 캘린더 충돌 조회 디버그 로그 토글
+// - 운영에서 원인 추적이 필요할 때만 켜기 위해 ENV로 제어합니다.
+function isCalendarAvailabilityDebugEnabled(): boolean {
+  const raw = process.env.CALENDAR_AVAILABILITY_DEBUG;
+  return raw === '1' || raw === 'true';
+}
+
 // 인터뷰룸 전용 캘린더 ID를 "호출 시점"에 읽어옵니다.
 // Cloud Run 등 배포 환경에서 리비전/런타임 재시작 후 값을 안정적으로 반영하기 위함.
 function getRoomCalendarId(): string {
@@ -67,6 +74,17 @@ function getRoomCalendarId(): string {
   // 운영 로그로 어떤 값이 사용되는지 남깁니다. (민감정보 아님)
   console.log('[ScheduleActions] Using INTERVIEW_ROOM_CALENDAR_ID =', value);
   return value;
+}
+
+function formatBusySampleForLog(
+  blocks: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }>,
+  limit = 3,
+): Array<{ startKst: string; endKst: string }> {
+  return blocks.slice(0, limit).map((b) => ({
+    // 사용자가 이해하기 쉬운 KST로 로그를 남깁니다.
+    startKst: formatInKst(b.start.dateTime, 'yyyy-MM-dd HH:mm'),
+    endKst: formatInKst(b.end.dateTime, 'yyyy-MM-dd HH:mm'),
+  }));
 }
 
 /**
@@ -1153,6 +1171,10 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     const availabilityInterviewerIds =
       interviewerIds.length > 0 ? interviewerIds : [organizer.id];
 
+    // 인터뷰룸(회의실) 캘린더도 충돌 계산에 포함합니다.
+    // - 정책: 인터뷰룸 또는 면접관 중 하나라도 바쁘면 일정 제안/초대 생성 금지
+    const roomCalendarId = getRoomCalendarId();
+
     // 원본 날짜 범위 저장 (재시도 시 기준점)
     const originalStartDate = new Date(startDate);
     const originalEndDate = new Date(endDate);
@@ -1174,6 +1196,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     while (retryCount <= 5) {
       // 면접관들의 바쁜 시간 조회
       const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+      const interviewerBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
       
       for (const interviewer of availabilityParticipants) {
         try {
@@ -1195,6 +1218,13 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             start: bt.start,
             end: bt.end,
           })));
+
+          if (isCalendarAvailabilityDebugEnabled()) {
+            interviewerBusyTimesForDebug.push(...busyTimes.map(bt => ({
+              start: bt.start,
+              end: bt.end,
+            })));
+          }
         } catch (error) {
           console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
           const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -1204,6 +1234,58 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             `면접관이 구글 캘린더를 재연동해야 할 수 있습니다. (/dashboard/connect-calendar)`
           );
         }
+      }
+
+      // 인터뷰룸(회의실) 캘린더의 바쁜 시간도 함께 조회합니다.
+      // - 종일 일정(start.date)도 busy로 처리되어야 하므로 getBusyTimes()에서 변환 처리합니다.
+      const roomBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+      try {
+        const organizerToken = await refreshAccessTokenIfNeeded(
+          organizer.calendar_access_token!,
+          organizer.calendar_refresh_token!,
+          organizer.id
+        );
+
+        const roomBusyTimes = await getBusyTimes(
+          organizerToken,
+          [roomCalendarId],
+          currentStartDate,
+          currentEndDate
+        );
+
+        allBusyTimes.push(...roomBusyTimes.map(bt => ({
+          start: bt.start,
+          end: bt.end,
+        })));
+
+        if (isCalendarAvailabilityDebugEnabled()) {
+          roomBusyTimesForDebug.push(...roomBusyTimes.map(bt => ({
+            start: bt.start,
+            end: bt.end,
+          })));
+        }
+      } catch (error) {
+        console.error(`인터뷰룸 캘린더(${roomCalendarId}) 조회 실패:`, error);
+        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+        throw new Error(
+          `인터뷰룸(회의실) 캘린더를 조회할 수 없습니다. ${errorMessage} ` +
+          `인터뷰룸 캘린더 접근 권한/공유 설정을 확인하거나, 구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)`
+        );
+      }
+
+      if (isCalendarAvailabilityDebugEnabled()) {
+        console.log('[CalendarAvailabilityDebug] 바쁨 조회 요약(KST)=', {
+          range: {
+            startKst: formatInKst(currentStartDate, 'yyyy-MM-dd HH:mm'),
+            endKst: formatInKst(currentEndDate, 'yyyy-MM-dd HH:mm'),
+          },
+          roomCalendarId,
+          interviewerBusyCount: interviewerBusyTimesForDebug.length,
+          roomBusyCount: roomBusyTimesForDebug.length,
+          totalBusyCount: allBusyTimes.length,
+          interviewerBusySample: formatBusySampleForLog(interviewerBusyTimesForDebug),
+          roomBusySample: formatBusySampleForLog(roomBusyTimesForDebug),
+        });
       }
 
       // 공통 가능 일정 찾기

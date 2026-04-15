@@ -40,6 +40,16 @@
 - 생성/수정/삭제 등 모든 Calendar API 호출은 동일한 캘린더 ID로 수행됩니다.
 - 운영 추적을 위해 `schedule_options.interviewer_responses._metadata.googleCalendarIdUsed`에 사용한 캘린더 ID를 기록합니다.
 
+## 캘린더 충돌(바쁨) 계산 규칙
+- 자동화 제안 슬롯은 “면접관(들) + 인터뷰룸(회의실) 캘린더”의 바쁨(busy)과 **하나라도 겹치면 생성되지 않습니다.**
+- Google Calendar에서 바쁨은 다음 이벤트를 포함합니다.
+  - 일반 일정: `start.dateTime` / `end.dateTime`
+  - 종일 일정: `start.date` / `end.date` (**종료일은 exclusive**)
+- 종일 일정은 KST(`Asia/Seoul`) 기준으로 다음처럼 변환하여 비교합니다.
+  - 시작: `start.date`의 00:00 KST
+  - 종료: `end.date`의 00:00 KST (exclusive 그대로)
+- `transparency=transparent`(사용 가능) 또는 `status=cancelled`인 이벤트는 바쁨에서 제외합니다.
+
 ## 이메일 템플릿
 - 표준 치환 키는 `{{candidate.name}}`, `{{job.title}}`, `{{interview.location}}` 등 `lib/email/template.ts`의 `EmailTemplateContext`와 동일한 dot 경로를 사용합니다.
 - 과거 워드 문서형 `{{ApplicantName}}`, `{{PositionName}}`, `{{InterviewDateTimeText}}` 등은 동일 로직에서 자동으로 위 경로에 매핑됩니다.
