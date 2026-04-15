@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Candidate } from '@/types/candidates';
+import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 
 interface StageOption {
   id: string;
@@ -44,6 +45,7 @@ interface CandidateSidebarProps {
   onArchiveClick: () => void;
   currentActiveSchedule?: {
     id: string;
+    stage_id?: string | null;
     workflow_status:
       | 'pending_interviewers'
       | 'pending_candidate'
@@ -100,6 +102,19 @@ export function CandidateSidebar({
   const isRegenerating = workflowStatus === 'regenerating';
   const isPendingCandidate = workflowStatus === 'pending_candidate';
   const isPendingInterviewers = workflowStatus === 'pending_interviewers';
+
+  const activeScheduleStageName = (() => {
+    const stageId = currentActiveSchedule?.stage_id;
+    if (!stageId) return null;
+
+    const jobStages = candidate.job_posts?.processes?.stages;
+    const customStageName = jobStages?.find((s) => s.id === stageId)?.name;
+    if (customStageName && customStageName.trim() !== '') return customStageName;
+
+    if (STAGE_ID_TO_NAME_MAP[stageId]) return STAGE_ID_TO_NAME_MAP[stageId];
+
+    return stageId;
+  })();
 
   const getStepState = (step: 'interviewers' | 'candidate' | 'confirmed') => {
     // ✅ 직관적인 3단계: 면접관 → 후보자 → 확정
@@ -264,25 +279,30 @@ export function CandidateSidebar({
             <div className="rounded-xl border border-neutral-200/60 bg-white p-4 shadow-[0_6px_18px_-10px_rgba(0,0,0,0.15)]">
               <p className="text-xs font-semibold text-neutral-900">
                 {!hasSchedule
-                  ? '아직 생성된 면접 일정이 없습니다'
+                  ? '등록된 일정이 없습니다'
                   : isConfirmed
-                    ? '면접 일정이 확정되었습니다'
+                    ? '일정이 확정되었습니다'
                     : isCancelled
-                      ? '면접 일정이 취소되었습니다'
-                      : '면접 일정 조율 진행 중'}
+                      ? '일정이 취소되었습니다'
+                      : '일정 조율 중'}
               </p>
+              {hasSchedule && activeScheduleStageName && (
+                <p className="text-[10px] text-neutral-600 mt-1">
+                  단계: <span className="font-medium text-neutral-800">{activeScheduleStageName}</span>
+                </p>
+              )}
               <p className="text-[10px] text-neutral-500 mt-1">
                 {!hasSchedule
-                  ? '상단의 “일정 등록”으로 새 조율을 시작할 수 있습니다.'
+                  ? '상단의 “일정 등록”에서 시작할 수 있어요.'
                   : isRegenerating
-                    ? '면접관 응답 결과에 따라 일정 옵션을 다시 만들고 있습니다.'
+                    ? '면접관 응답을 반영해 옵션을 다시 만들고 있어요.'
                     : isNeedsRescheduling
-                      ? '전원 수락 옵션이 없어 재조율이 필요합니다.'
+                      ? '전원 수락 옵션이 없어 다시 조율이 필요해요.'
                       : isPendingCandidate
-                        ? '면접관 수락 완료 → 후보자 선택을 기다리는 중입니다.'
+                        ? '면접관 응답이 완료되어, 후보자 선택을 기다리고 있어요.'
                         : isPendingInterviewers
-                          ? '면접관들의 수락/거절 응답을 기다리는 중입니다.'
-                          : '현재 상태를 확인하는 중입니다.'}
+                          ? '면접관 응답을 기다리고 있어요.'
+                          : '상태를 확인하는 중이에요.'}
               </p>
             </div>
 
@@ -351,7 +371,7 @@ export function CandidateSidebar({
               disabled={!canInteract || !onCheckSchedule}
               title={
                 hasSchedule
-                  ? '캘린더·DB 기준으로 조율 진행 단계를 동기화합니다. (면접관 수락 폴링 포함)'
+                  ? '진행 상태를 최신으로 맞춥니다.'
                   : '진행 중인 스케줄이 없습니다.'
               }
             >
@@ -360,22 +380,22 @@ export function CandidateSidebar({
               ) : (
                 <RefreshCw className="w-3.5 h-3.5 text-neutral-300" />
               )}
-              조율 진행 동기화
+              진행 상태 새로고침
             </button>
 
             <button
               className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-medium text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 if (!hasSchedule || !onDeleteSchedule) return;
-                if (!confirm('이 면접 일정을 완전 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
-                if (!confirm('정말로 삭제하시겠습니까? 연관 일정 옵션/캘린더 블록도 함께 정리될 수 있습니다.')) return;
+                if (!confirm('이 일정을 삭제할까요? 되돌릴 수 없습니다.')) return;
+                if (!confirm('정말 삭제할까요? 관련 옵션/캘린더 일정도 함께 정리될 수 있어요.')) return;
                 onDeleteSchedule(currentActiveSchedule!.id);
               }}
               disabled={!canManageCandidate || !hasSchedule || isActionLoading || !onDeleteSchedule}
-              title={hasSchedule ? '현재 스케줄링을 완전 삭제합니다.' : '진행 중인 스케줄이 없습니다.'}
+              title={hasSchedule ? '현재 일정을 삭제합니다.' : '진행 중인 스케줄이 없습니다.'}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              현재 스케줄링 완전 삭제
+              일정 삭제
             </button>
           </div>
         </div>

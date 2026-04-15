@@ -74,10 +74,14 @@ export function CandidateDetailClient({
   const [externalInterviewerPool, setExternalInterviewerPool] = useState<
     Array<{ id: string; email: string; display_name: string | null }>
   >([]);
+  const initialScheduleStageId =
+    initialCandidate.current_stage_id && initialCandidate.current_stage_id.trim() !== ''
+      ? initialCandidate.current_stage_id
+      : 'stage-1';
   const [scheduleFormData, setScheduleFormData] = useState({
     dateRange: { from: undefined, to: undefined } as { from: Date | undefined; to: Date | undefined },
     duration_minutes: '60',
-    stage_id: 'stage-6',
+    stage_id: initialScheduleStageId,
     interviewer_ids: [] as string[],
     external_interviewer_emails: [] as string[],
     num_options: '2',
@@ -189,6 +193,7 @@ export function CandidateDetailClient({
     return pick
       ? {
           id: String(pick.id),
+          stage_id: (pick.stage_id ?? null) as string | null,
           workflow_status: (pick.workflow_status ||
             null) as
             | 'pending_interviewers'
