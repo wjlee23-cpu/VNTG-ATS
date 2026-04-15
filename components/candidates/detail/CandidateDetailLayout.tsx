@@ -53,7 +53,6 @@ interface CandidateDetailLayoutProps {
       | null;
   } | null;
   onDeleteSchedule?: (scheduleId: string) => void;
-  onDeleteCandidateScheduling?: (candidateId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;
   scheduleActionLoadingId?: string | null;
   resumeFiles: ResumeFile[];
@@ -92,7 +91,6 @@ export function CandidateDetailLayout({
   onRefreshTimeline,
   onSwitchToTimeline,
   onDeleteSchedule,
-  onDeleteCandidateScheduling,
   onCheckSchedule,
   currentActiveSchedule = null,
   scheduleActionLoadingId = null,
@@ -150,7 +148,6 @@ export function CandidateDetailLayout({
         currentActiveSchedule={currentActiveSchedule}
         onCheckSchedule={onCheckSchedule}
         onDeleteSchedule={onDeleteSchedule}
-        onDeleteCandidateScheduling={onDeleteCandidateScheduling}
         scheduleActionLoadingId={scheduleActionLoadingId}
       />
 
