@@ -107,20 +107,11 @@ export async function getBusyTimes(
   accessToken: string,
   calendarIds: string[],
   timeMin: Date,
-  timeMax: Date,
-  opts?: {
-    /**
-     * `transparency=transparent`(한가함/Free) 이벤트를 busy로 포함할지 여부
-     * - 인터뷰룸(회의실) 캘린더는 "일정이 있으면 무조건 막기"가 일반적이라 true로 사용합니다.
-     * - 면접관 개인 캘린더는 Free를 존중하므로 기본 false입니다.
-     */
-    includeTransparentEvents?: boolean
-  }
+  timeMax: Date
 ): Promise<CalendarEvent[]> {
   const calendar = await getCalendarClient(accessToken)
 
   const busyTimes: CalendarEvent[] = []
-  const includeTransparentEvents = !!opts?.includeTransparentEvents
 
   try {
     // ✅ Busy/Free 판단은 events.list 파싱보다 FreeBusy API가 더 정확하고 안정적입니다.
@@ -167,7 +158,7 @@ export async function getBusyTimes(
       for (const event of events.data.items || []) {
         // 취소/삭제/투명(Free) 이벤트는 바쁨에서 제외합니다.
         if (event.status === 'cancelled') continue
-        if (!includeTransparentEvents && event.transparency === 'transparent') continue
+        if (event.transparency === 'transparent') continue
 
         const timeZone = event.start?.timeZone || event.end?.timeZone || 'Asia/Seoul'
 

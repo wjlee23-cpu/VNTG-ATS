@@ -1250,8 +1250,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           organizerToken,
           [roomCalendarId],
           currentStartDate,
-            currentEndDate,
-            { includeTransparentEvents: true }
+          currentEndDate
         );
 
         allBusyTimes.push(...roomBusyTimes.map(bt => ({
@@ -1983,8 +1982,7 @@ async function regenerateScheduleOptions(
         organizerToken,
         [roomCalendarId],
         currentStartDate,
-        currentEndDate,
-        { includeTransparentEvents: true }
+        currentEndDate
       );
 
       allBusyTimes.push(...roomBusyTimes.map(bt => ({
@@ -4055,8 +4053,7 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
         organizerToken,
         [roomCalendarId],
         newStartDate,
-        newEndDate,
-        { includeTransparentEvents: true }
+        newEndDate
       );
 
       allBusyTimes.push(...roomBusyTimes.map(bt => ({
