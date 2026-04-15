@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import type { Candidate } from '@/types/candidates';
@@ -117,6 +117,22 @@ export function CandidateDetailClient({
   const [schedulesState, setSchedulesState] = useState<Array<any>>(
     Array.isArray(_schedules) ? (_schedules as any[]) : [],
   );
+  const schedulesFetchGenRef = useRef(0);
+
+  const fetchSchedulesAndApplyIfGenerationCurrent = async (
+    generation: number,
+    candidateId: string,
+  ) => {
+    try {
+      const refreshed = await getSchedulesByCandidate(candidateId);
+      const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+      if (generation !== schedulesFetchGenRef.current) return;
+      setSchedulesState(Array.isArray(nextList) ? nextList : []);
+    } catch {
+      /* stale or network: 무시 */
+    }
+  };
+
   // 사이드바 코파일럿이 사용할 "가장 최근 스케줄" 계산
   // - 확정된 일정도 코파일럿에 반드시 반영되어야 합니다.
   const currentActiveSchedule = (() => {
@@ -221,18 +237,10 @@ export function CandidateDetailClient({
   // 페이지 진입 시 스케줄 목록을 한 번 더 받아 코파일럿이 서버와 어긋나지 않게 합니다.
   useEffect(() => {
     if (!candidate.id) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const refreshed = await getSchedulesByCandidate(candidate.id);
-        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
-        if (!cancelled) setSchedulesState(Array.isArray(nextList) ? nextList : []);
-      } catch {
-        /* 무시 */
-      }
-    })();
+    const generation = ++schedulesFetchGenRef.current;
+    void fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
     return () => {
-      cancelled = true;
+      schedulesFetchGenRef.current += 1;
     };
   }, [candidate.id]);
 
@@ -655,6 +663,7 @@ export function CandidateDetailClient({
   // 타임라인에서 일정 삭제
   const handleDeleteScheduleFromTimeline = async (scheduleId: string) => {
     if (!confirm('정말로 이 면접 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+    const generation = ++schedulesFetchGenRef.current;
     setScheduleActionLoadingId(scheduleId);
     try {
       const result = await deleteSchedule(scheduleId);
@@ -671,13 +680,8 @@ export function CandidateDetailClient({
         toast.success('면접 일정이 삭제되었습니다.');
       }
       // 최신 스케줄 목록 재조회하여 사이드바 상태를 즉시 반영
-      try {
-        const refreshed = await getSchedulesByCandidate(candidate.id);
-        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
-        setSchedulesState(Array.isArray(nextList) ? nextList : []);
-      } catch {
-        // 네트워크 오류 등은 무시하고 기본 데이터만 새로고침
-      }
+
+      await fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
       // 기존 후보자 데이터와 타임라인도 동기화
       refreshCandidateData().catch(() => {});
       refreshTimelineEvents().catch(() => {});
@@ -687,13 +691,7 @@ export function CandidateDetailClient({
       const msg = error instanceof Error ? error.message : '면접 일정 삭제 중 오류가 발생했습니다.';
       if (typeof msg === 'string' && msg.includes('면접 일정을 찾을 수 없습니다')) {
         toast.info('이미 삭제된 일정이어서 목록을 최신화했습니다.');
-        try {
-          const refreshed = await getSchedulesByCandidate(candidate.id);
-          const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
-          setSchedulesState(Array.isArray(nextList) ? nextList : []);
-        } catch {
-          // 무시
-        }
+        await fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
       } else {
         toast.error(msg);
       }
@@ -704,15 +702,10 @@ export function CandidateDetailClient({
 
   /** 코파일럿: 서버·캘린더 기준으로 조율 진행 상태를 맞추고, 로컬 스케줄 목록을 항상 최신화합니다. */
   const handleCheckScheduleFromTimeline = async (scheduleId: string) => {
+    const generation = ++schedulesFetchGenRef.current;
     setScheduleActionLoadingId(scheduleId);
     const applySchedulesFromServer = async () => {
-      try {
-        const refreshed = await getSchedulesByCandidate(candidate.id);
-        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
-        setSchedulesState(Array.isArray(nextList) ? nextList : []);
-      } catch {
-        /* 무시 */
-      }
+      await fetchSchedulesAndApplyIfGenerationCurrent(generation, candidate.id);
     };
     try {
       const result = await checkInterviewerResponses(scheduleId);
