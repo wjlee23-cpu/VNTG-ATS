@@ -113,78 +113,56 @@ export async function getBusyTimes(
 
   const busyTimes: CalendarEvent[] = []
 
-  for (const calendarId of calendarIds) {
-    try {
-      const response = await calendar.events.list({
-        calendarId,
+  try {
+    // ✅ Busy/Free 판단은 events.list 파싱보다 FreeBusy API가 더 정확하고 안정적입니다.
+    // - 종일 일정(start.date)도 busy 구간으로 포함됩니다.
+    // - transparency=transparent(Free) 이벤트는 busy에 포함되지 않습니다.
+    const response = await calendar.freebusy.query({
+      requestBody: {
         timeMin: timeMin.toISOString(),
         timeMax: timeMax.toISOString(),
-        singleEvents: true,
-        orderBy: 'startTime',
-      })
+        timeZone: 'Asia/Seoul',
+        items: calendarIds.map((id) => ({ id })),
+      },
+    })
 
-      if (response.data.items) {
-        for (const event of response.data.items) {
-          // 취소/삭제/투명(Free) 이벤트는 바쁨에서 제외합니다.
-          if (event.status === 'cancelled') continue
-          if (event.transparency === 'transparent') continue
+    const calendars = (response.data as any)?.calendars as
+      | Record<string, { busy?: Array<{ start?: string; end?: string }> }>
+      | undefined
 
-          const timeZone = event.start?.timeZone || event.end?.timeZone || 'Asia/Seoul'
-
-          // 1) 일반 일정 (dateTime)
-          if (event.start?.dateTime && event.end?.dateTime) {
-            busyTimes.push({
-              id: event.id || '',
-              summary: event.summary || '',
-              start: {
-                dateTime: event.start.dateTime,
-                timeZone,
-              },
-              end: {
-                dateTime: event.end.dateTime,
-                timeZone,
-              },
-            })
-            continue
-          }
-
-          // 2) 종일 일정 (date) - start.date/end.date(exclusive)를 DateTime으로 변환
-          if (event.start?.date && event.end?.date) {
-            busyTimes.push({
-              id: event.id || '',
-              summary: event.summary || '',
-              start: {
-                dateTime: allDayDateToDateTimeIso(event.start.date, timeZone),
-                timeZone,
-              },
-              end: {
-                dateTime: allDayDateToDateTimeIso(event.end.date, timeZone),
-                timeZone,
-              },
-            })
-          }
-        }
+    for (const calendarId of calendarIds) {
+      const blocks = calendars?.[calendarId]?.busy || []
+      for (const block of blocks) {
+        if (!block?.start || !block?.end) continue
+        busyTimes.push({
+          id: '',
+          summary: '',
+          start: { dateTime: block.start, timeZone: 'Asia/Seoul' },
+          end: { dateTime: block.end, timeZone: 'Asia/Seoul' },
+        })
       }
-    } catch (error: any) {
-      console.error(`Error fetching calendar ${calendarId}:`, error)
-      
-      // 인증 관련 에러인지 확인
-      if (error?.code === 401 || 
-          error?.message?.includes('invalid authentication credentials') ||
-          error?.message?.includes('invalid_grant') ||
-          error?.response?.status === 401) {
-        throw new Error(
-          '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
-          '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
-        )
-      }
-      
-      // 다른 에러도 명확하게 전달
+    }
+  } catch (error: any) {
+    console.error(`Error fetching freebusy:`, error)
+
+    // 인증 관련 에러인지 확인
+    if (
+      error?.code === 401 ||
+      error?.message?.includes('invalid authentication credentials') ||
+      error?.message?.includes('invalid_grant') ||
+      error?.response?.status === 401
+    ) {
       throw new Error(
-        `구글 캘린더 조회 실패: ${error?.message || '알 수 없는 오류'}. ` +
-        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)'
+        '구글 캘린더 인증이 만료되었거나 유효하지 않습니다. ' +
+          '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)',
       )
     }
+
+    // 다른 에러도 명확하게 전달
+    throw new Error(
+      `구글 캘린더 조회 실패: ${error?.message || '알 수 없는 오류'}. ` +
+        '구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)',
+    )
   }
 
   return busyTimes
