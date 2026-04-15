@@ -22,6 +22,7 @@ export default async function AnalyticsPage() {
     avgTimeToHire: { value: 0, change: 0, isPositive: true },
     offerAcceptRate: { value: 0, change: 0, isPositive: true },
     costPerHire: { value: 0, change: 0, isPositive: true },
+    confirmedHiresCount: 0,
   };
   
   const trends = trendsResult.data || [];

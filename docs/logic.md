@@ -24,6 +24,9 @@
 1. UI(`components/candidates/ScheduleInterviewAutomatedModal.tsx`)에서 기간, 면접관, (선택)가능시간, (선택)제외시간, 면접관 선호를 입력합니다.
 2. 서버 액션(`api/actions/schedules.ts`)이 파라미터를 수신합니다.
    - 제외시간이 비어있으면 기본값 11:30~12:30을 자동 적용합니다.
+   - **중복 방지 정책**: 자동화 시작 시 후보자에게 이미 존재하는 “진행 중 스케줄(workflow)”이 있으면 해당 스케줄을 **자동으로 완전 삭제(정리)** 한 뒤 새 스케줄을 생성합니다.
+     - 정리 대상: `pending_interviewers`, `pending_candidate`, `regenerating`, `needs_rescheduling`
+     - 제외 대상: `confirmed`, `cancelled` (확정/이력 데이터는 자동 정리하지 않음)
 3. 슬롯 생성기(`lib/ai/schedule.ts`)가
    - KST 경계로 날짜를 순회
    - allowed/excluded/prefs을 반영하여 후보 슬롯을 생성

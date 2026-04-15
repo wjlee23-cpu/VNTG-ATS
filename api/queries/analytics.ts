@@ -40,6 +40,7 @@ export async function getAnalyticsStats() {
     // Avg. Time to Hire (평균 채용 소요 시간)
     // candidates의 created_at과 status가 'confirmed'로 변경된 시점의 차이 계산
     let avgTimeToHire = 21; // 기본값 (days)
+    let confirmedHiresCount = 0;
     if (jobPostIds.length > 0) {
       const { data: confirmedCandidates } = await supabase
         .from('candidates')
@@ -47,6 +48,7 @@ export async function getAnalyticsStats() {
         .in('job_post_id', jobPostIds)
         .eq('status', 'confirmed');
 
+      confirmedHiresCount = confirmedCandidates?.length ?? 0;
       if (confirmedCandidates && confirmedCandidates.length > 0) {
         const totalDays = confirmedCandidates.reduce((sum, candidate) => {
           const created = new Date(candidate.created_at);
@@ -89,7 +91,7 @@ export async function getAnalyticsStats() {
       costPerHire: { value: costPerHire, change: -12, isPositive: true },
     };
 
-    return trends;
+    return { ...trends, confirmedHiresCount };
   });
 }
 

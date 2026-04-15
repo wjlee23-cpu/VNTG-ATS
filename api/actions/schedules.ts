@@ -677,7 +677,74 @@ export async function deleteSchedule(id: string) {
     // 캐시 무효화
     revalidatePath('/dashboard/calendar');
     revalidatePath('/dashboard/schedules');
+    // ✅ (그룹 라우팅) 실제 URL은 /candidates/[id] 이므로 이 경로를 무효화해야 합니다.
+    revalidatePath(`/candidates/${schedule.candidate_id}`);
+    // (호환) 과거 경로를 쓰는 페이지가 있을 수 있어 같이 무효화합니다.
     revalidatePath(`/dashboard/candidates/${schedule.candidate_id}`);
+  });
+}
+
+/**
+ * 후보자 단위 "현재 스케줄링(조율 진행중) 완전 삭제"
+ * - 동일 후보자에게 pending 스케줄이 여러 개 생성되는 경우가 있어,
+ *   코파일럿 상태가 계속 "조율 진행 중"으로 남는 문제를 방지하기 위해 후보자 단위로 정리합니다.
+ * - 정책: workflow_status가 존재하고, 아직 확정(confirmed)이 아닌 스케줄을 대상으로 합니다.
+ */
+export async function deleteCandidateScheduling(candidateId: string) {
+  return withErrorHandling(async () => {
+    // 입력 검증 (잘못된 값으로 대량 삭제 쿼리 방지)
+    validateUUID(candidateId, 'candidateId');
+
+    // 접근 권한 확인 (RLS 기반)
+    await verifyCandidateAccess(candidateId);
+
+    const serviceSupabase = createServiceClient();
+
+    // 후보자의 "자동화 워크플로우" 스케줄만 정리합니다.
+    // - workflow_status가 없는 스케줄(수동/레거시)은 코파일럿 대상이 아니므로 건드리지 않습니다.
+    // - confirmed는 면접이 확정된 데이터일 수 있어 기본값으로 제외합니다.
+    const { data: schedules, error } = await serviceSupabase
+      .from('schedules')
+      .select('id, workflow_status')
+      .eq('candidate_id', candidateId)
+      .not('workflow_status', 'is', null)
+      .neq('workflow_status', 'confirmed');
+
+    if (error) {
+      throw new Error(`면접 일정 조회 실패: ${error.message}`);
+    }
+
+    const ids = (schedules || []).map((s) => s.id).filter(Boolean) as string[];
+
+    // 진행 중 스케줄이 없으면 그대로 종료 (UX: "이미 정리됨" 케이스)
+    if (ids.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    // 개별 deleteSchedule 로직(캘린더 이벤트 삭제, 타임라인 기록 등)을 그대로 재사용합니다.
+    // - 실패가 섞여도 가능한 만큼 진행하고, 마지막에 에러를 반환해 사용자에게 알립니다.
+    const failures: Array<{ id: string; error: string }> = [];
+    for (const id of ids) {
+      const result = await deleteSchedule(id);
+      if (result.error) {
+        failures.push({ id, error: result.error });
+      }
+    }
+
+    // 캐시 무효화 (후보자 상세 화면 및 캘린더)
+    revalidatePath('/dashboard/calendar');
+    revalidatePath('/dashboard/schedules');
+    revalidatePath(`/candidates/${candidateId}`);
+    revalidatePath(`/dashboard/candidates/${candidateId}`);
+
+    if (failures.length > 0) {
+      // 일부만 실패한 경우: 사용자에게 원인을 보이되, 성공한 삭제는 유지합니다.
+      throw new Error(
+        `일부 일정 삭제에 실패했습니다. (${failures.length}/${ids.length})`,
+      );
+    }
+
+    return { deletedCount: ids.length };
   });
 }
 
@@ -970,6 +1037,49 @@ export async function scheduleInterviewAutomated(formData: FormData) {
     // 입력값 검증
     const candidateId = validateUUID(validateRequired(formData.get('candidate_id'), '후보자 ID'), '후보자 ID');
     const stageId = validateRequired(formData.get('stage_id'), '단계 ID');
+
+    // ✅ 중복 스케줄링 방지(핵심)
+    // - 동일 후보자에게 "진행 중" workflow 스케줄이 여러 개 남아 있으면,
+    //   삭제 후에도 코파일럿이 계속 "조율 진행 중"으로 보이거나, 자동화가 꼬일 수 있습니다.
+    // - 따라서 자동화 시작 시점에 기존 진행 중 스케줄을 자동 정리하고(완전 삭제),
+    //   그 다음 새 스케줄을 생성합니다.
+    // - 정책: confirmed/cancelled 는 과거 이력 또는 확정 데이터일 수 있어 자동 정리 대상에서 제외합니다.
+    {
+      // 권한은 RLS 또는 verifyCandidateAccess로 보장해야 합니다.
+      // - supabase가 Service Role일 수 있으므로, 후보자 접근 권한을 명시적으로 한 번 더 확인합니다.
+      await verifyCandidateAccess(candidateId);
+
+      const serviceSupabase = createServiceClient();
+      const { data: existingInProgress, error: existingError } = await serviceSupabase
+        .from('schedules')
+        .select('id, workflow_status')
+        .eq('candidate_id', candidateId)
+        .in('workflow_status', [
+          'pending_interviewers',
+          'pending_candidate',
+          'regenerating',
+          'needs_rescheduling',
+        ]);
+
+      if (existingError) {
+        throw new Error(`기존 스케줄 조회 실패: ${existingError.message}`);
+      }
+
+      const existingIds = (existingInProgress || []).map((s) => s.id).filter(Boolean) as string[];
+      if (existingIds.length > 0) {
+        const failures: Array<{ id: string; error: string }> = [];
+        for (const sid of existingIds) {
+          const del = await deleteSchedule(sid);
+          if (del.error) failures.push({ id: sid, error: del.error });
+        }
+        if (failures.length > 0) {
+          throw new Error(
+            `기존 진행 중 일정 정리에 실패했습니다. (실패 ${failures.length}건) 잠시 후 다시 시도해주세요.`,
+          );
+        }
+      }
+    }
+
     const interviewerIdsRaw = formData.get('interviewer_ids');
     const interviewerIdsParsed = interviewerIdsRaw ? JSON.parse(String(interviewerIdsRaw)) : [];
     if (!Array.isArray(interviewerIdsParsed)) {

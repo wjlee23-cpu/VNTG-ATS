@@ -16,7 +16,12 @@ import { confirmHire } from '@/api/actions/offers';
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
-import { scheduleInterviewAutomated, deleteSchedule, checkInterviewerResponses } from '@/api/actions/schedules';
+import {
+  scheduleInterviewAutomated,
+  deleteSchedule,
+  deleteCandidateScheduling,
+  checkInterviewerResponses,
+} from '@/api/actions/schedules';
 import { getExternalInterviewers, getUsers } from '@/api/queries/users';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { toast } from 'sonner';
@@ -702,6 +707,41 @@ export function CandidateDetailClient({
     }
   };
 
+  // 사이드바 "현재 스케줄링 완전 삭제" (후보자 단위)
+  const handleDeleteCandidateScheduling = async (candidateId: string) => {
+    setScheduleActionLoadingId(currentActiveSchedule?.id ?? 'candidate-delete');
+    try {
+      const result = await deleteCandidateScheduling(candidateId);
+      const possibleError = (result as { error?: string }).error;
+      if (possibleError && possibleError.length > 0) {
+        toast.error(possibleError);
+      } else {
+        const deletedCount =
+          ((result as unknown as { data?: { deletedCount?: number } }).data?.deletedCount as number | undefined) ?? 0;
+        toast.success(
+          deletedCount > 0 ? `면접 일정이 삭제되었습니다. (${deletedCount}건)` : '삭제할 진행 중 스케줄이 없습니다.',
+        );
+      }
+
+      // 최신 스케줄 목록 재조회하여 코파일럿 상태를 즉시 반영
+      try {
+        const refreshed = await getSchedulesByCandidate(candidate.id);
+        const nextList = (refreshed as unknown as { data?: any[]; error?: string }).data ?? [];
+        setSchedulesState(Array.isArray(nextList) ? nextList : []);
+      } catch {
+        /* 무시 */
+      }
+      refreshCandidateData().catch(() => {});
+      refreshTimelineEvents().catch(() => {});
+    } catch (error) {
+      console.error('[CandidateDetailClient] 후보자 스케줄링 삭제 실패:', error);
+      const msg = error instanceof Error ? error.message : '스케줄링 삭제 중 오류가 발생했습니다.';
+      toast.error(msg);
+    } finally {
+      setScheduleActionLoadingId(null);
+    }
+  };
+
   /** 코파일럿: 서버·캘린더 기준으로 조율 진행 상태를 맞추고, 로컬 스케줄 목록을 항상 최신화합니다. */
   const handleCheckScheduleFromTimeline = async (scheduleId: string) => {
     setScheduleActionLoadingId(scheduleId);
@@ -815,6 +855,7 @@ export function CandidateDetailClient({
           onAddComment={() => setIsCommentModalOpen(true)}
           onRefreshTimeline={refreshTimelineEvents}
         onDeleteSchedule={handleDeleteScheduleFromTimeline}
+        onDeleteCandidateScheduling={handleDeleteCandidateScheduling}
         onCheckSchedule={handleCheckScheduleFromTimeline}
         currentActiveSchedule={currentActiveSchedule}
         scheduleActionLoadingId={scheduleActionLoadingId}

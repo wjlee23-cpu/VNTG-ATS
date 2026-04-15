@@ -1,5 +1,5 @@
-import { getDashboardStats, getRecentActivity, getTopCandidates, getPendingActions, getTodaySchedules, getPositionStatus } from '@/api/queries/dashboard';
-import { getHiringFunnel } from '@/api/queries/analytics';
+import { getDashboardStats, getPendingActions, getTodaySchedules, getPositionStatus } from '@/api/queries/dashboard';
+import { getHiringFunnel, getAnalyticsStats } from '@/api/queries/analytics';
 import { getDashboardInsight } from '@/api/actions/dashboard';
 import { OverviewClient } from '@/app/(dashboard)/OverviewClient';
 import { ensureUserExists } from '@/api/actions/auth';
@@ -29,8 +29,7 @@ export default async function DashboardPage() {
 
   // 데이터 조회 (에러 처리 포함)
   const statsResult = await getDashboardStats();
-  const recentActivityResult = await getRecentActivity();
-  const topCandidatesResult = await getTopCandidates(1); // AI 추천용으로 1개만
+  const analyticsStatsResult = await getAnalyticsStats();
   const pendingActionsResult = await getPendingActions();
   const todaySchedulesResult = await getTodaySchedules();
   const positionStatusResult = await getPositionStatus();
@@ -44,8 +43,7 @@ export default async function DashboardPage() {
     hiringCompleted: 0,
   };
 
-  const recentActivity = recentActivityResult.data || [];
-  const topCandidates = topCandidatesResult.data || [];
+  const analyticsStats = analyticsStatsResult.data;
   const pendingActions = pendingActionsResult.data || [];
   const todaySchedules = todaySchedulesResult.data || [];
   const positionStatus = positionStatusResult.data || [];
@@ -109,11 +107,8 @@ export default async function DashboardPage() {
   if (statsResult.error) {
     console.error('대시보드 통계 조회 실패:', statsResult.error);
   }
-  if (recentActivityResult.error) {
-    console.error('최근 활동 조회 실패:', recentActivityResult.error);
-  }
-  if (topCandidatesResult.error) {
-    console.error('상위 후보자 조회 실패:', topCandidatesResult.error);
+  if (analyticsStatsResult.error) {
+    console.error('분석 요약 조회 실패:', analyticsStatsResult.error);
   }
   if (pendingActionsResult.error) {
     console.error('액션 필요 항목 조회 실패:', pendingActionsResult.error);
@@ -131,13 +126,14 @@ export default async function DashboardPage() {
   return (
     <OverviewClient 
       stats={stats}
-      recentActivity={recentActivity}
-      topCandidates={topCandidates}
       pendingActions={pendingActions}
       todaySchedules={todaySchedules}
       positionStatus={positionStatus}
       hiringFunnel={hiringFunnel}
       aiInsight={aiInsight}
+      confirmedHiresCount={analyticsStats?.confirmedHiresCount ?? 0}
+      averageTimeToHireDays={analyticsStats?.avgTimeToHire?.value ?? null}
+      timeToHireChangeDays={analyticsStats?.avgTimeToHire?.change ?? null}
     />
   );
 }

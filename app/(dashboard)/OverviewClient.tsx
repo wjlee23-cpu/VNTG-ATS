@@ -1,11 +1,22 @@
-'use client';
+﻿'use client';
 
-import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Calendar, ArrowRight, ChevronRight, TrendingUp, UserPlus, CalendarCheck, Award, Sparkles, TrendingDown } from 'lucide-react';
+import {
+  Sparkles,
+  Info,
+  FileEdit,
+  AlertCircle,
+  FileText,
+  Briefcase,
+  Calendar,
+  Send,
+  Users,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getUserProfile } from '@/api/queries/auth';
 import { seedDummyData } from '@/api/actions/seed';
 import { toast } from 'sonner';
+import { StageLeadTimeCard, type StageLeadTimeRow } from '@/components/dashboard/StageLeadTimeCard';
 
 interface OverviewClientProps {
   stats: {
@@ -14,21 +25,6 @@ interface OverviewClientProps {
     offersSent: number;
     hiringCompleted: number;
   };
-  recentActivity: Array<{
-    id: string;
-    type: string;
-    candidate: string;
-    action: string;
-    job: string;
-    time: string;
-  }>;
-  topCandidates: Array<{
-    id: string;
-    name: string;
-    position: string;
-    match: number;
-    avatar: string;
-  }>;
   pendingActions: Array<{
     type: 'interview_feedback' | 'resume_review' | 'jd_approval' | 'offer_send';
     title: string;
@@ -72,41 +68,44 @@ interface OverviewClientProps {
     count: number;
   }>;
   aiInsight?: string | null | undefined;
+  confirmedHiresCount?: number;
+  averageTimeToHireDays?: number | null;
+  timeToHireChangeDays?: number | null;
 }
 
-// 트렌드 데이터 타입 (추후 실제 데이터로 교체 가능)
-interface TrendData {
-  newApplications?: number;
-  interviewsInProgress?: number;
-  offersSent?: number;
-  hiringCompleted?: number;
-}
+const KPI_TRENDS = {
+  newApplications: 12,
+  interviewsInProgress: 4,
+} as const;
 
-export function OverviewClient({ 
-  stats, 
-  recentActivity, 
-  topCandidates,
+const DUMMY_LEAD_STAGES: StageLeadTimeRow[] = [
+  { id: 's1', label: '\uC811\uC218 \u2192 \uC11C\uB958\uD1B5\uACFC', days: 3.2 },
+  { id: 's2', label: '\uC11C\uB958\uD1B5\uACFC \u2192 \uBA74\uC811', days: 8.5 },
+  { id: 's3', label: '\uBA74\uC811 \u2192 \uCC98\uC6B0\uD611\uC758', days: 4.1 },
+  { id: 's4', label: '\uCC98\uC6B0\uD611\uC758 \u2192 \uC785\uC0AC', days: 2.7 },
+];
+
+export function OverviewClient({
+  stats,
   pendingActions,
   todaySchedules,
   positionStatus,
   hiringFunnel,
   aiInsight,
+  confirmedHiresCount = 0,
+  averageTimeToHireDays = null,
+  timeToHireChangeDays = null,
 }: OverviewClientProps) {
   const router = useRouter();
   const [userRole, setUserRole] = useState<'admin' | 'recruiter' | 'interviewer' | null>(null);
-  const [userName, setUserName] = useState<string>('님');
   const [isSeeding, setIsSeeding] = useState(false);
-  const [scheduleFilter, setScheduleFilter] = useState<'today' | 'week' | 'tomorrow'>('today');
+  const [actionTab, setActionTab] = useState<'tasks' | 'schedules'>('tasks');
 
-  // 사용자 프로필 정보 로드 (이름 및 역할)
   useEffect(() => {
     async function loadUserProfile() {
       try {
         const result = await getUserProfile();
-        if (result.data) {
-          setUserRole(result.data.role);
-          setUserName(result.data.displayName || '님');
-        }
+        if (result.data) setUserRole(result.data.role);
       } catch (error) {
         console.error('사용자 프로필 로드 실패:', error);
       }
@@ -114,15 +113,6 @@ export function OverviewClient({
     loadUserProfile();
   }, []);
 
-  // 시간대별 인사말 생성 함수
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return '좋은 아침이에요';
-    if (hour < 18) return '좋은 오후에요';
-    return '좋은 저녁이에요';
-  };
-
-  // 더미 데이터 생성
   const handleSeedData = async () => {
     if (!confirm('더미 데이터를 생성하시겠습니까? (조직, 프로세스, 채용 공고 8개, 후보자 30명, 면접 일정 15개)')) {
       return;
@@ -148,26 +138,12 @@ export function OverviewClient({
     }
   };
 
-  // 시간 포맷팅
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // 시간대별 색상 클래스 (오전/오후/저녁)
-  const getTimeSlotColor = (dateString: string) => {
-    const date = new Date(dateString);
-    const hour = date.getHours();
-    if (hour < 12) {
-      return 'bg-blue-50 border-blue-200 text-blue-700';
-    } else if (hour < 18) {
-      return 'bg-orange-50 border-orange-200 text-orange-700';
-    } else {
-      return 'bg-purple-50 border-purple-200 text-purple-700';
-    }
-  };
-
-  // 면접 타입 한글 변환
   const getInterviewTypeText = (type?: string) => {
     const typeMap: Record<string, string> = {
       technical: '기술면접',
@@ -180,12 +156,13 @@ export function OverviewClient({
   };
 
   // 액션 타입별 아이콘
+
   const getActionIcon = (type: string) => {
     switch (type) {
       case 'interview_feedback':
-        return FileText;
+        return FileEdit;
       case 'resume_review':
-        return FileText;
+        return Users;
       case 'jd_approval':
         return Briefcase;
       case 'offer_send':
@@ -195,7 +172,6 @@ export function OverviewClient({
     }
   };
 
-  // 액션 타입별 색상
   const getActionColor = (type: string) => {
     switch (type) {
       case 'interview_feedback':
@@ -207,567 +183,403 @@ export function OverviewClient({
       case 'offer_send':
         return 'text-green-600 bg-green-50';
       default:
-        return 'text-gray-600 bg-gray-50';
+        return 'text-neutral-600 bg-neutral-100';
     }
   };
 
-  // 트렌드 데이터 (더미 데이터 - 추후 실제 데이터로 교체 가능)
-  const trends: TrendData = {
-    newApplications: 12,
-    interviewsInProgress: -5,
-    offersSent: 8,
-    hiringCompleted: 15,
-  };
+  const flatTasks = useMemo(
+    () =>
+      (pendingActions ?? []).flatMap((action) =>
+        (action.items ?? []).map((item) => ({ action, item }))
+      ),
+    [pendingActions]
+  );
 
-  // 진행률 바 색상 결정 함수
-  const getProgressBarColor = (progress: number) => {
-    if (progress >= 100) {
-      return 'bg-gradient-to-r from-emerald-500 to-emerald-600';
-    } else if (progress >= 50) {
-      return 'bg-gradient-to-r from-blue-500 to-indigo-600';
-    } else {
-      return 'bg-gradient-to-r from-amber-400 to-orange-500';
-    }
-  };
+  const todaySchedulesOnly = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    return (todaySchedules ?? []).filter((s) => {
+      const d = new Date(s.scheduledAt);
+      return d >= start && d <= end;
+    });
+  }, [todaySchedules]);
 
-  const hasData = stats.newApplications > 0 || stats.interviewsInProgress > 0 || stats.offersSent > 0 || stats.hiringCompleted > 0;
+  const resumeReviewWaiting = useMemo(
+    () =>
+      (pendingActions ?? [])
+        .filter((a) => a.type === 'resume_review')
+        .reduce((s, a) => s + (a.items?.length ?? 0), 0),
+    [pendingActions]
+  );
 
-  // 오늘 일정 필터링
-  const filteredSchedules = (todaySchedules || []).filter(schedule => {
-    const scheduleDate = new Date(schedule.scheduledAt);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+  const funnelRows = useMemo(() => {
+    const map = Object.fromEntries((hiringFunnel ?? []).map((s) => [s.stage, s.count]));
+    const applied = Number(map['Applied'] ?? 0);
+    const screening = Number(map['Screening'] ?? 0);
+    const interview = Number(map['Interview'] ?? 0);
+    const finalCombined = Number(map['Offer'] ?? 0) + Number(map['Hired'] ?? 0);
+    const rows = [
+      { key: 'applied', label: '서류 접수', count: applied },
+      { key: 'screening', label: '서류 통과', count: screening },
+      { key: 'interview', label: '면접 진행', count: interview },
+      { key: 'final', label: '오퍼 · 입사', count: finalCombined },
+    ];
+    const first = rows[0].count;
+    return rows.map((row, i) => {
+      const prev = i === 0 ? first : rows[i - 1].count;
+      const pctFromFirst = first > 0 ? (row.count / first) * 100 : 0;
+      const convLabel = i > 0 && prev > 0 ? Math.round((row.count / prev) * 100) : null;
+      return { ...row, barWidthPct: Math.min(100, pctFromFirst), convLabel };
+    });
+  }, [hiringFunnel]);
 
-    if (scheduleFilter === 'today') {
-      return scheduleDate >= today && scheduleDate < tomorrow;
-    } else if (scheduleFilter === 'tomorrow') {
-      return scheduleDate >= tomorrow && scheduleDate < new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
-    } else {
-      return scheduleDate >= today && scheduleDate < weekEnd;
-    }
-  });
+  const funnelBarColors = ['bg-neutral-800', 'bg-neutral-600', 'bg-neutral-400', 'bg-indigo-500'];
 
-  // 오늘 요약 계산
-  const todaySummary = {
-    interviews: filteredSchedules.length,
-    urgentActions: (pendingActions || []).reduce((sum, action) => {
-      const overdueItems = (action.items || []).filter(item => item.daysOverdue && item.daysOverdue > 0);
-      return sum + overdueItems.length;
-    }, 0),
-  };
+  const finalConversionPct = useMemo(() => {
+    const first = funnelRows[0]?.count ?? 0;
+    const last = funnelRows[3]?.count ?? 0;
+    if (first <= 0) return 0;
+    return Math.round((last / first) * 1000) / 10;
+  }, [funnelRows]);
+
+  const useRealTth = confirmedHiresCount > 0 && averageTimeToHireDays != null;
+  const displayTth = useRealTth ? averageTimeToHireDays! : 18.5;
+  const displayTthChange = useRealTth ? timeToHireChangeDays ?? 0 : -1.2;
+
+  const leadStages = DUMMY_LEAD_STAGES;
+  const leadTotal = useMemo(() => leadStages.reduce((s, x) => s + x.days, 0), [leadStages]);
+  const bottleneckStage = useMemo(
+    () => leadStages.reduce((a, b) => (a.days >= b.days ? a : b)),
+    [leadStages]
+  );
+  const leadSummary = `${bottleneckStage.label} 구간에서 가장 오래 걸립니다.`;
+
+  const firstTaskLink = flatTasks[0]?.item.link;
 
   return (
-    <div className="h-full overflow-auto bg-slate-50">
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
-        {/* AI 인사이트 히어로 섹션 */}
-        <div className="mb-8">
-          <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 rounded-2xl shadow-sm border border-slate-100 p-6 sm:p-8">
+    <div className="flex-1 overflow-y-auto p-8 lg:p-10 bg-[#F7F7F8] min-h-full">
+      <div className="max-w-[1440px] mx-auto space-y-6">
+        <div className="relative bg-white rounded-2xl p-8 border border-neutral-200 shadow-sm overflow-hidden">
+          <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-indigo-50/50 to-transparent opacity-60" />
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-100/50 flex items-center justify-center">
-                <Sparkles className="text-indigo-500" size={24} />
+              <div className="w-12 h-12 rounded-xl bg-indigo-100/50 flex items-center justify-center shrink-0 border border-indigo-200/50">
+                <Sparkles className="w-6 h-6 text-indigo-600" />
               </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-3xl font-bold tracking-tight text-indigo-950 mb-3">
-                  {aiInsight || `${getGreeting()}, ${userName}님`}
-                </h1>
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="inline-flex items-center gap-1 bg-blue-50 text-brand-main px-3 py-1 rounded-full text-sm font-medium">
-                    오늘 면접 {todaySummary.interviews}건
-                  </span>
-                  {todaySummary.urgentActions > 0 && (
-                    <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-sm font-medium">
-                      긴급 액션 {todaySummary.urgentActions}건
-                    </span>
-                  )}
+              <div>
+                <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-2">
+                  AI Overview
                 </div>
-                {aiInsight && (
-                  <div className="inline-flex items-center gap-1.5 bg-indigo-100/50 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
-                    <Sparkles size={12} className="text-indigo-500" />
-                    AI-Powered Insights
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 요약 카드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* 신규 지원 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
-                <UserPlus className="text-teal-600" size={24} />
-              </div>
-            </div>
-            <div className="text-sm text-slate-600 font-medium mb-1">신규 지원</div>
-            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.newApplications}</div>
-            {trends.newApplications !== undefined && (
-              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                trends.newApplications > 0 
-                  ? 'text-emerald-600 bg-emerald-50' 
-                  : 'text-rose-600 bg-rose-50'
-              }`}>
-                {trends.newApplications > 0 ? (
-                  <TrendingUp size={12} />
-                ) : (
-                  <TrendingDown size={12} />
-                )}
-                {trends.newApplications > 0 ? '+' : ''}{trends.newApplications}% vs last week
-              </div>
-            )}
-          </div>
-
-          {/* 면접 진행 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Clock className="text-amber-600" size={24} />
-              </div>
-            </div>
-            <div className="text-sm text-slate-600 font-medium mb-1">면접 진행</div>
-            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.interviewsInProgress}</div>
-            {trends.interviewsInProgress !== undefined && (
-              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                trends.interviewsInProgress > 0 
-                  ? 'text-emerald-600 bg-emerald-50' 
-                  : 'text-rose-600 bg-rose-50'
-              }`}>
-                {trends.interviewsInProgress > 0 ? (
-                  <TrendingUp size={12} />
-                ) : (
-                  <TrendingDown size={12} />
-                )}
-                {trends.interviewsInProgress > 0 ? '+' : ''}{trends.interviewsInProgress}% vs last week
-              </div>
-            )}
-          </div>
-
-          {/* 오퍼 발송 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                <Send className="text-blue-600" size={24} />
-              </div>
-            </div>
-            <div className="text-sm text-slate-600 font-medium mb-1">오퍼 발송</div>
-            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.offersSent}</div>
-            {trends.offersSent !== undefined && (
-              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                trends.offersSent > 0 
-                  ? 'text-emerald-600 bg-emerald-50' 
-                  : 'text-rose-600 bg-rose-50'
-              }`}>
-                {trends.offersSent > 0 ? (
-                  <TrendingUp size={12} />
-                ) : (
-                  <TrendingDown size={12} />
-                )}
-                {trends.offersSent > 0 ? '+' : ''}{trends.offersSent}% vs last week
-              </div>
-            )}
-          </div>
-
-          {/* 채용 완료 */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:-translate-y-1 hover:shadow-md transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                <Award className="text-purple-600" size={24} />
-              </div>
-            </div>
-            <div className="text-sm text-slate-600 font-medium mb-1">채용 완료</div>
-            <div className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">{stats.hiringCompleted}</div>
-            {trends.hiringCompleted !== undefined && (
-              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                trends.hiringCompleted > 0 
-                  ? 'text-emerald-600 bg-emerald-50' 
-                  : 'text-rose-600 bg-rose-50'
-              }`}>
-                {trends.hiringCompleted > 0 ? (
-                  <TrendingUp size={12} />
-                ) : (
-                  <TrendingDown size={12} />
-                )}
-                {trends.hiringCompleted > 0 ? '+' : ''}{trends.hiringCompleted}% vs last week
-              </div>
-            )}
-          </div>
-        </div>
-
-        {!hasData ? (
-          /* 빈 상태 (Empty State) */
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
-            <div className="max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                <Users className="text-slate-400" size={32} />
-              </div>
-              <h2 className="text-xl font-semibold text-slate-900 mb-2">데이터가 없습니다</h2>
-              <p className="text-slate-400 mb-6">
-                더미 데이터를 생성하여 대시보드를 테스트해보세요.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <h1 className="text-2xl font-extrabold tracking-tight text-neutral-900 mb-1">
+                  {aiInsight?.trim() ? (
+                    aiInsight
+                  ) : (
+                    <>
+                      이번 주 채용 리드타임이 지난주 대비{' '}
+                      <span className="text-indigo-600">
+                        {useRealTth && displayTthChange !== 0
+                          ? `${Math.abs(displayTthChange).toFixed(1)}일 ${displayTthChange < 0 ? '단축' : '증가'}`
+                          : '1.2일 단축'}
+                      </span>
+                      되었습니다.
+                    </>
+                  )}
+                </h1>
+                <p className="text-sm text-neutral-500 font-medium">
+                  오늘 긴급하게 처리해야 할 서류 검토가 {resumeReviewWaiting}건 대기 중입니다.
+                </p>
                 {userRole === 'admin' && (
                   <button
+                    type="button"
                     onClick={handleSeedData}
                     disabled={isSeeding}
-                    className="px-6 py-3 bg-brand-main text-white rounded-xl font-medium hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="mt-2 text-xs font-semibold text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
                   >
-                    {isSeeding ? '생성 중...' : '더미 데이터 생성'}
+                    {isSeeding ? '더미 생성 중...' : '더미 채우기'}
                   </button>
                 )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push(firstTaskLink || '/candidates')}
+              className="flex items-center gap-2 bg-neutral-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-md hover:bg-neutral-800 transition-all active:scale-[0.98]"
+            >
+              긴급 액션 처리하기
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <button
+            type="button"
+            className="card-hover bg-white rounded-2xl p-6 border border-neutral-200 cursor-pointer text-left"
+            onClick={() => router.push('/candidates')}
+          >
+            <p className="text-xs font-bold text-neutral-400 mb-1 uppercase tracking-wider">신규 지원</p>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-3xl font-extrabold text-neutral-900">{stats.newApplications}</h2>
+              <span className="text-xs font-bold text-emerald-600">+{KPI_TRENDS.newApplications}%</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className="card-hover bg-white rounded-2xl p-6 border border-neutral-200 cursor-pointer text-left"
+            onClick={() => router.push('/calendar')}
+          >
+            <p className="text-xs font-bold text-neutral-400 mb-1 uppercase tracking-wider">면접 진행</p>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-3xl font-extrabold text-neutral-900">{stats.interviewsInProgress}</h2>
+              <span className="text-xs font-bold text-emerald-600">+{KPI_TRENDS.interviewsInProgress}%</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className="card-hover bg-white rounded-2xl p-6 border border-neutral-200 cursor-pointer text-left"
+            onClick={() => router.push('/offers')}
+          >
+            <p className="text-xs font-bold text-neutral-400 mb-1 uppercase tracking-wider">오퍼 발송</p>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-3xl font-extrabold text-neutral-900">{stats.offersSent}</h2>
+              <span className="text-xs font-bold text-neutral-400">-</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className="card-hover bg-white rounded-2xl p-6 border border-neutral-200 cursor-pointer relative overflow-hidden text-left"
+            onClick={() => router.push('/analytics')}
+          >
+            <div className="absolute right-0 top-0 w-16 h-16 bg-gradient-to-bl from-indigo-50 to-transparent rounded-bl-full" />
+            <p className="text-xs font-bold text-neutral-400 mb-1 uppercase tracking-wider flex items-center gap-1.5 relative">
+              평균 리드타임 <Info className="w-3 h-3" />
+            </p>
+            <div className="flex items-baseline gap-3 relative">
+              <h2 className="text-3xl font-extrabold text-neutral-900">
+                {displayTth.toFixed(1)}
+                <span className="text-lg text-neutral-500 ml-1">일</span>
+              </h2>
+              <span
+                className={`text-xs font-bold ${displayTthChange <= 0 ? 'text-emerald-600' : 'text-red-500'}`}
+              >
+                {displayTthChange > 0 ? '+' : ''}
+                {displayTthChange.toFixed(1)}일
+              </span>
+            </div>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl p-6 border border-neutral-200 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] h-[380px] flex flex-col">
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <h2 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">내 포지션 파이프라인</h2>
+              <button
+                type="button"
+                onClick={() => router.push('/jobs')}
+                className="text-xs font-semibold text-neutral-500 hover:text-neutral-900"
+              >
+                전체 보기
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto pr-2">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="border-b border-neutral-100">
+                    <th className="pb-2 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">포지션</th>
+                    <th className="pb-2 text-[10px] font-bold text-neutral-400 uppercase tracking-wider text-center">
+                      전체
+                    </th>
+                    <th className="pb-2 text-[10px] font-bold text-neutral-400 uppercase tracking-wider w-24">진행률</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-50">
+                  {(positionStatus ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="py-8 text-center text-sm text-neutral-400">
+                        등록된 포지션이 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    (positionStatus ?? []).map((position, idx) => {
+                      const total =
+                        position.new +
+                        position.document +
+                        position.interview +
+                        position.final +
+                        position.offer;
+                      const barClass = idx % 2 === 0 ? 'bg-neutral-900' : 'bg-emerald-500';
+                      return (
+                        <tr
+                          key={position.jobPostId}
+                          className="hover:bg-neutral-50 cursor-pointer transition-colors group"
+                          onClick={() => router.push(`/jobs/${position.jobPostId}`)}
+                        >
+                          <td className="py-3">
+                            <p className="text-sm font-bold text-neutral-900 mb-0.5 group-hover:text-indigo-600">
+                              {position.position}
+                            </p>
+                            <p className="text-[10px] text-neutral-400 font-medium">
+                              D+{position.daysSincePost} · {position.team}
+                            </p>
+                          </td>
+                          <td className="py-3 text-center text-sm font-semibold text-neutral-700">{total}</td>
+                          <td className="py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${barClass}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, position.progress))}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-neutral-500 w-7 text-right">
+                                {position.progress}%
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 border border-neutral-200 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] h-[380px] flex flex-col">
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <h2 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">오늘의 액션 및 일정</h2>
+              <div className="bg-neutral-100/80 p-0.5 rounded-md flex">
                 <button
-                  onClick={() => router.push('/jobs/create')}
-                  className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors"
+                  type="button"
+                  onClick={() => setActionTab('tasks')}
+                  className={`px-2 py-1 text-[10px] rounded shadow-sm ${
+                    actionTab === 'tasks'
+                      ? 'font-bold bg-white text-neutral-900'
+                      : 'font-medium text-neutral-500 hover:text-neutral-900'
+                  }`}
                 >
-                  첫 채용 공고 만들기
+                  할 일 ({flatTasks.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActionTab('schedules')}
+                  className={`px-2 py-1 text-[10px] rounded ${
+                    actionTab === 'schedules'
+                      ? 'font-bold bg-white text-neutral-900 shadow-sm'
+                      : 'font-medium text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  일정 ({todaySchedulesOnly.length})
                 </button>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* 중앙 섹션: 액션 필요 + 오늘 일정 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 액션 필요 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
-                    <AlertCircle className="text-white" size={18} />
-                  </div>
-                  <h2 className="text-lg font-bold text-slate-900">액션 필요</h2>
-                </div>
-                {(pendingActions || []).length > 0 ? (
-                  <div className="space-y-3">
-                    {(pendingActions || []).slice(0, 5).map((action, index) => {
-                      const Icon = getActionIcon(action.type);
-                      const colorClass = getActionColor(action.type);
-                      const firstItem = action.items[0];
-                      
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-blue-50/50 cursor-pointer transition-colors"
-                          onClick={() => firstItem && router.push(firstItem.link)}
-                        >
-                          <div className={`w-10 h-10 rounded-lg ${colorClass} flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                            <Icon size={20} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-slate-900 mb-1">{action.title}</div>
-                            <div className="text-sm text-slate-600 truncate">
-                              {action.description}
-                            </div>
-                            {firstItem?.daysOverdue !== undefined && firstItem.daysOverdue > 0 && (
-                              <div className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full mt-1">
-                                <AlertCircle size={12} />
-                                {firstItem.daysOverdue}일 지연
-                              </div>
-                            )}
-                          </div>
-                          <ChevronRight className="text-slate-400 flex-shrink-0" size={20} />
-                        </div>
-                      );
-                    })}
-                  </div>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-2">
+              {actionTab === 'tasks' ? (
+                flatTasks.length === 0 ? (
+                  <p className="text-sm text-neutral-400 text-center py-8">할 일이 없습니다.</p>
                 ) : (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                      <CheckCircle2 className="text-slate-400" size={24} />
-                    </div>
-                    <p className="text-sm text-slate-400">액션이 필요한 항목이 없습니다.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* 오늘 일정 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
-                      <Calendar className="text-white" size={18} />
-                    </div>
-                    <h2 className="text-lg font-bold text-slate-900">오늘 일정 <span className="text-brand-main">{filteredSchedules.length}</span>건</h2>
-                  </div>
-                  <button
-                    onClick={() => router.push('/calendar')}
-                    className="text-sm font-medium text-brand-main hover:text-brand-dark flex items-center gap-1 transition-colors"
-                  >
-                    전체 보기 <ArrowRight size={14} />
-                  </button>
-                </div>
-                {/* Segmented Control 스타일 필터 */}
-                <div className="bg-slate-100 p-1 rounded-lg mb-4 flex gap-1">
-                  <button
-                    onClick={() => setScheduleFilter('today')}
-                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all font-medium ${
-                      scheduleFilter === 'today'
-                        ? 'bg-white text-brand-main shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    오늘까지
-                  </button>
-                  <button
-                    onClick={() => setScheduleFilter('week')}
-                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all font-medium ${
-                      scheduleFilter === 'week'
-                        ? 'bg-white text-brand-main shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    이번 주
-                  </button>
-                  <button
-                    onClick={() => setScheduleFilter('tomorrow')}
-                    className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-all font-medium ${
-                      scheduleFilter === 'tomorrow'
-                        ? 'bg-white text-brand-main shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    내일까지
-                  </button>
-                </div>
-                {filteredSchedules.length > 0 ? (
-                  <div className="space-y-3">
-                    {filteredSchedules.slice(0, 4).map((schedule) => {
-                      const timeSlotColor = getTimeSlotColor(schedule.scheduledAt);
-                      return (
-                        <div
-                          key={schedule.id}
-                          className="flex items-start gap-3 p-3 rounded-lg hover:bg-blue-50/50 cursor-pointer transition-all border border-transparent hover:border-slate-200"
-                          onClick={() => router.push(`/candidates/${schedule.candidateId}`)}
-                        >
-                          <div className={`flex-shrink-0 px-3 py-2 rounded-lg border ${timeSlotColor} min-w-[60px] text-center`}>
-                            <div className="text-sm font-bold">
-                              {formatTime(schedule.scheduledAt)}
-                            </div>
-                            <div className="text-xs font-medium">
-                              {schedule.durationMinutes}분
-                            </div>
+                  flatTasks.map(({ action, item }) => {
+                    const Icon = getActionIcon(action.type);
+                    const colorClass = getActionColor(action.type);
+                    const urgent = (item.daysOverdue ?? 0) > 0;
+                    return (
+                      <button
+                        key={`${action.type}-${item.id}`}
+                        type="button"
+                        onClick={() => router.push(item.link)}
+                        className="w-full p-3 bg-[#FCFCFC] border border-neutral-200 rounded-lg hover:border-neutral-400 cursor-pointer transition-colors flex items-center justify-between text-left"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`w-8 h-8 rounded-md ${colorClass} flex items-center justify-center shrink-0`}
+                          >
+                            <Icon className="w-4 h-4" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <CalendarCheck className="text-brand-main" size={16} />
-                              <div className="font-medium text-slate-900">
-                                {getInterviewTypeText(schedule.interviewType)}
-                              </div>
-                            </div>
-                            <div className="text-sm text-slate-600 truncate">
-                              {schedule.candidateName} · {schedule.position}
-                            </div>
-                            {schedule.interviewers.length > 0 && (
-                              <div className="text-xs text-slate-500 mt-1">
-                                면접관: {schedule.interviewers.map(i => i.email.split('@')[0]).join(', ')}
-                              </div>
-                            )}
+                          <div className="min-w-0">
+                            <h3 className="text-xs font-bold text-neutral-900 truncate">{action.title}</h3>
+                            <p className="text-[10px] text-neutral-500 truncate">
+                              {item.name}
+                              {item.position ? ` · ${item.position}` : ''}
+                            </p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                      <Calendar className="text-slate-400" size={24} />
-                    </div>
-                    <p className="text-sm text-slate-400">일정이 없습니다.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 내 포지션 현황 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
-                  <Briefcase className="text-white" size={18} />
-                </div>
-                <h2 className="text-lg font-bold text-slate-900">내 포지션 현황 <span className="text-brand-main">{(positionStatus || []).length}</span>개</h2>
-              </div>
-              {(positionStatus || []).length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">포지션</th>
-                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">신규</th>
-                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">서류</th>
-                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">면접</th>
-                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">최종</th>
-                        <th className="text-center py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">오퍼</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">진행률</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(positionStatus || []).map((position) => {
-                        const total = position.new + position.document + position.interview + position.final + position.offer;
-                        return (
-                          <tr key={position.jobPostId} className="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onClick={() => router.push(`/jobs/${position.jobPostId}`)}>
-                            <td className="py-3 px-4">
-                              <div className="font-medium text-slate-900">{position.position}</div>
-                              <div className="text-xs text-slate-500">{position.team} - D+{position.daysSincePost}</div>
-                            </td>
-                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.new}</td>
-                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.document}</td>
-                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.interview}</td>
-                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.final}</td>
-                            <td className="text-center py-3 px-4 text-sm text-slate-900">{position.offer}</td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full transition-all rounded-full ${getProgressBarColor(position.progress)}`}
-                                    style={{ width: `${position.progress}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-medium text-slate-600 w-12 text-right">{position.progress}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        {urgent && (
+                          <span className="text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded shrink-0">
+                            긴급</span>
+                        )}
+                      </button>
+                    );
+                  })
+                )
+              ) : todaySchedulesOnly.length === 0 ? (
+                <p className="text-sm text-neutral-400 text-center py-8">오늘 일정이 없습니다.</p>
               ) : (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                    <Briefcase className="text-slate-400" size={24} />
-                  </div>
-                  <p className="text-sm text-slate-400">포지션이 없습니다.</p>
-                </div>
+                todaySchedulesOnly.map((schedule) => (
+                  <button
+                    key={schedule.id}
+                    type="button"
+                    onClick={() => router.push(`/candidates/${schedule.candidateId}`)}
+                    className="w-full p-3 bg-[#FCFCFC] border border-neutral-200 rounded-lg hover:border-neutral-400 cursor-pointer transition-colors flex items-center justify-between text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-xs font-bold text-neutral-900 truncate">
+                          {getInterviewTypeText(schedule.interviewType)} · {formatTime(schedule.scheduledAt)}
+                        </h3>
+                        <p className="text-[10px] text-neutral-500 truncate">
+                          {schedule.candidateName} · {schedule.position}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-neutral-500 shrink-0">
+                      {schedule.durationMinutes}분
+                    </span>
+                  </button>
+                ))
               )}
             </div>
+          </div>
+        </div>
 
-            {/* 최근 활동 + 채용 퍼널 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 최근 활동 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
-                    <Clock className="text-white" size={18} />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-neutral-200 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.05)] flex flex-col">
+            <div className="flex items-center justify-between mb-8 shrink-0">
+              <h2 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">채용 퍼널</h2>
+              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
+                최종 전환율 {finalConversionPct}%
+              </span>
+            </div>
+            <div className="flex-1 space-y-6 flex flex-col justify-center">
+              {funnelRows.map((row, i) => (
+                <div key={row.key}>
+                  <div className="flex justify-between items-end mb-1">
+                    <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
+                      {row.label}
+                    </span>
+                    <span className="text-sm font-extrabold text-neutral-900">
+                      {row.count}{' '}
+                      {row.convLabel != null && (
+                        <span className="text-[10px] font-medium text-neutral-400 ml-1">{row.convLabel}%</span>
+                      )}
+                    </span>
                   </div>
-                  <h2 className="text-lg font-bold text-slate-900">최근 활동</h2>
+                  <div className="h-4 bg-neutral-100 rounded-sm overflow-hidden relative w-full">
+                    <div
+                      className={`absolute top-0 left-0 h-full rounded-sm ${funnelBarColors[i] ?? 'bg-neutral-800'}`}
+                      style={{ width: `${row.barWidthPct}%` }}
+                    />
+                  </div>
                 </div>
-                {(recentActivity || []).length > 0 ? (
-                  <div className="space-y-4">
-                    {(recentActivity || []).slice(0, 6).map((activity, index) => (
-                      <div key={activity.id} className="flex items-start gap-3 relative pl-6">
-                        {/* 타임라인 수직 연결선 */}
-                        {index < (recentActivity || []).slice(0, 6).length - 1 && (
-                          <div className="absolute left-[11px] top-6 bottom-0 w-0.5 border-l-2 border-slate-100" />
-                        )}
-                        {/* 타임라인 노드 */}
-                        <div className="w-2 h-2 rounded-full bg-brand-main ring-4 ring-brand-main/20 flex-shrink-0 mt-2 relative z-10" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-slate-900">
-                            <span className="font-semibold">{activity.candidate}</span>
-                            {' '}{activity.action}{' '}
-                            <span className="font-semibold">{activity.job}</span>
-                          </p>
-                          <p className="text-xs text-slate-500 mt-1">{activity.time}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                      <Clock className="text-slate-400" size={24} />
-                    </div>
-                    <p className="text-sm text-slate-400">최근 활동이 없습니다.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* 채용 퍼널 */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center">
-                      <TrendingUp className="text-white" size={18} />
-                    </div>
-                    <h2 className="text-lg font-bold text-slate-900">채용 퍼널</h2>
-                  </div>
-                  <select className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white hover:border-brand-main transition-colors">
-                    <option>전체 포지션</option>
-                  </select>
-                </div>
-                {(hiringFunnel || []).length > 0 ? (
-                  <div className="space-y-4">
-                    {(hiringFunnel || []).map((stage, index) => {
-                      const maxCount = Math.max(...(hiringFunnel || []).map(s => s.count));
-                      const percentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
-                      // 퍼널 효과: 각 단계별로 너비가 점점 좁아지도록 계산
-                      // 첫 번째 단계는 100%, 이후 단계는 이전 단계 대비 비율로 축소
-                      const funnelWidth = index === 0 
-                        ? 100 
-                        : (hiringFunnel || [])[index - 1]?.count > 0
-                          ? (stage.count / (hiringFunnel || [])[index - 1].count) * 100
-                          : 0;
-                      // 그라데이션 색상: 단계가 진행될수록 진해짐
-                      const gradientClass = index === 0
-                        ? 'bg-gradient-to-r from-blue-200 to-blue-300'
-                        : index === 1
-                        ? 'bg-gradient-to-r from-blue-300 to-blue-400'
-                        : index === 2
-                        ? 'bg-gradient-to-r from-blue-400 to-blue-500'
-                        : index === 3
-                        ? 'bg-gradient-to-r from-blue-500 to-blue-600'
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600';
-                      
-                      const stageNames: Record<string, string> = {
-                        'Applied': '서류 접수',
-                        'Screening': '서류 통과',
-                        'Interview': '면접 진행',
-                        'Offer': '최종 합격',
-                        'Hired': '채용 완료',
-                      };
-                      const stageName = stageNames[stage.stage] || stage.stage;
-                      
-                      return (
-                        <div key={index}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-slate-900">{stageName}</span>
-                            <span className="text-sm font-semibold text-brand-main">{stage.count}명</span>
-                          </div>
-                          <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all rounded-full ${gradientClass}`}
-                              style={{ width: `${Math.min(funnelWidth, 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className="pt-4 border-t border-slate-200 mt-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-600">전환율</span>
-                        <span className="text-sm font-medium text-slate-900">
-                          {(hiringFunnel || []).length > 0 && (hiringFunnel || [])[0]?.count > 0
-                            ? (((hiringFunnel || [])[(hiringFunnel || []).length - 1]?.count || 0) / (hiringFunnel || [])[0].count * 100).toFixed(1)
-                            : '0.0'}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                      <TrendingUp className="text-slate-400" size={24} />
-                    </div>
-                    <p className="text-sm text-slate-400">데이터가 없습니다.</p>
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
           </div>
-        )}
+
+          <StageLeadTimeCard stages={leadStages} totalDays={leadTotal} summaryLine={leadSummary} />
+        </div>
       </div>
     </div>
   );

@@ -55,6 +55,7 @@ interface CandidateSidebarProps {
   } | null;
   onCheckSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
+  onDeleteCandidateScheduling?: (candidateId: string) => void;
   scheduleActionLoadingId?: string | null;
 }
 
@@ -76,6 +77,7 @@ export function CandidateSidebar({
   currentActiveSchedule = null,
   onCheckSchedule,
   onDeleteSchedule,
+  onDeleteCandidateScheduling,
   scheduleActionLoadingId = null,
 }: CandidateSidebarProps) {
   // Offer 단계 여부 체크 (입사 확정 버튼 노출 여부 결정)
@@ -366,13 +368,35 @@ export function CandidateSidebar({
             <button
               className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-medium text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
+                // ✅ 후보자 단위로 "진행 중 스케줄링"을 정리해야 코파일럿 상태가 꼬이지 않습니다.
+                // - 후보자에게 pending 스케줄이 여러 개 남아 있으면, 하나만 삭제해도 "조율 진행 중"으로 계속 보일 수 있습니다.
+                const hasHandler = !!onDeleteCandidateScheduling || (!!hasSchedule && !!onDeleteSchedule);
+                if (!canManageCandidate || isActionLoading || !hasHandler) return;
+
+                if (
+                  !confirm(
+                    '현재 스케줄링(조율 진행 중)을 완전 삭제할까요?\n이 작업은 되돌릴 수 없습니다.',
+                  )
+                )
+                  return;
+                if (
+                  !confirm(
+                    '정말로 삭제하시겠습니까?\n연관 일정 옵션/캘린더 블록도 함께 정리될 수 있습니다.',
+                  )
+                )
+                  return;
+
+                if (onDeleteCandidateScheduling) {
+                  onDeleteCandidateScheduling(candidate.id);
+                  return;
+                }
+
+                // (호환) 예전 방식: 특정 schedule만 삭제
                 if (!hasSchedule || !onDeleteSchedule) return;
-                if (!confirm('이 면접 일정을 완전 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
-                if (!confirm('정말로 삭제하시겠습니까? 연관 일정 옵션/캘린더 블록도 함께 정리될 수 있습니다.')) return;
                 onDeleteSchedule(currentActiveSchedule!.id);
               }}
-              disabled={!canManageCandidate || !hasSchedule || isActionLoading || !onDeleteSchedule}
-              title={hasSchedule ? '현재 스케줄링을 완전 삭제합니다.' : '진행 중인 스케줄이 없습니다.'}
+              disabled={!canManageCandidate || isActionLoading || !(onDeleteCandidateScheduling || (hasSchedule && onDeleteSchedule))}
+              title={'현재 스케줄링(조율 진행 중)을 완전 삭제합니다.'}
             >
               <Trash2 className="w-3.5 h-3.5" />
               현재 스케줄링 완전 삭제

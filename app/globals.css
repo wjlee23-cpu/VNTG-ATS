@@ -270,6 +270,16 @@ html {
   box-shadow: 0 0 0 1px #171717, 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
+/* Overview V3 프로토타입(테스트화면3.html) KPI 카드 호버 */
+.card-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.06), 0 4px 8px -4px rgba(0, 0, 0, 0.04);
+  border-color: #d4d4d4;
+}
+
 ::selection {
   background-color: #e0e7ff;
   color: #312e81;

@@ -8,6 +8,7 @@ interface AnalyticsClientProps {
     avgTimeToHire: { value: number; change: number; isPositive: boolean };
     offerAcceptRate: { value: number; change: number; isPositive: boolean };
     costPerHire: { value: number; change: number; isPositive: boolean };
+    confirmedHiresCount?: number;
   };
   trends: Array<{ date: string; count: number }>;
   funnel: Array<{ stage: string; count: number }>;
