@@ -127,10 +127,28 @@ export async function getBusyTimes(
     })
 
     const calendars = (response.data as any)?.calendars as
-      | Record<string, { busy?: Array<{ start?: string; end?: string }> }>
+      | Record<
+          string,
+          {
+            busy?: Array<{ start?: string; end?: string }>
+            errors?: Array<{ domain?: string; reason?: string; message?: string }>
+          }
+        >
       | undefined
 
     for (const calendarId of calendarIds) {
+      // ✅ FreeBusy 응답에 errors가 있으면 해당 캘린더는 조회 불가(권한/존재/공유 문제)로 간주하고 중단합니다.
+      // - 외부 면접관 이메일 캘린더 등은 공유가 안 되어 있으면 여기로 떨어질 수 있습니다.
+      const entry = calendars?.[calendarId]
+      const errorMessage = entry?.errors?.[0]?.message
+      if (!entry || (entry.errors && entry.errors.length > 0)) {
+        throw new Error(
+          `캘린더(${calendarId})의 바쁨 시간을 조회할 수 없습니다. ` +
+            `${errorMessage ? `(${errorMessage}) ` : ''}` +
+            `캘린더 공유/권한 설정을 확인해주세요.`,
+        )
+      }
+
       const blocks = calendars?.[calendarId]?.busy || []
       for (const block of blocks) {
         if (!block?.start || !block?.end) continue

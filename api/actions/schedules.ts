@@ -1239,6 +1239,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       // 인터뷰룸(회의실) 캘린더의 바쁜 시간도 함께 조회합니다.
       // - 종일 일정(start.date)도 busy로 처리되어야 하므로 getBusyTimes()에서 변환 처리합니다.
       const roomBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+      const externalBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
       try {
         const organizerToken = await refreshAccessTokenIfNeeded(
           organizer.calendar_access_token!,
@@ -1264,6 +1265,39 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             end: bt.end,
           })));
         }
+
+        // ✅ 외부(비가입) 면접관 이메일도 바쁨 충돌 계산에 포함합니다.
+        // - 정책: 외부 면접관 캘린더를 조회할 수 없으면 자동화를 중단합니다.
+        if (externalInterviewerEmails.length > 0) {
+          try {
+            const externalBusyTimes = await getBusyTimes(
+              organizerToken,
+              externalInterviewerEmails,
+              currentStartDate,
+              currentEndDate
+            );
+
+            allBusyTimes.push(...externalBusyTimes.map(bt => ({
+              start: bt.start,
+              end: bt.end,
+            })));
+
+            if (isCalendarAvailabilityDebugEnabled()) {
+              externalBusyTimesForDebug.push(...externalBusyTimes.map(bt => ({
+                start: bt.start,
+                end: bt.end,
+              })));
+            }
+          } catch (e) {
+            console.error(`외부 면접관 캘린더 조회 실패:`, e);
+            const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
+            throw new Error(
+              `외부 면접관의 캘린더를 조회할 수 없습니다. (${externalInterviewerEmails.join(', ')}) ` +
+              `${errorMessage} ` +
+              `해결: (1) 외부 면접관이 채용담당자(주최자) 구글 계정에 캘린더를 공유하거나, (2) 플랫폼에 가입 후 구글 캘린더를 연동해주세요.`
+            );
+          }
+        }
       } catch (error) {
         console.error(`인터뷰룸 캘린더(${roomCalendarId}) 조회 실패:`, error);
         const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -1282,9 +1316,11 @@ export async function scheduleInterviewAutomated(formData: FormData) {
           roomCalendarId,
           interviewerBusyCount: interviewerBusyTimesForDebug.length,
           roomBusyCount: roomBusyTimesForDebug.length,
+          externalBusyCount: externalBusyTimesForDebug.length,
           totalBusyCount: allBusyTimes.length,
           interviewerBusySample: formatBusySampleForLog(interviewerBusyTimesForDebug),
           roomBusySample: formatBusySampleForLog(roomBusyTimesForDebug),
+          externalBusySample: formatBusySampleForLog(externalBusyTimesForDebug),
         });
       }
 
@@ -1964,6 +2000,7 @@ async function regenerateScheduleOptions(
     // - 재생성(regenerate)에서도 룸/면접관 중 하나라도 바쁘면 슬롯 생성 금지
     const roomCalendarId = getRoomCalendarId();
     const roomBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+    const externalBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
     try {
       // 재생성(regenerate)은 웹훅(세션 없음)에서도 호출될 수 있어,
       // "현재 로그인 사용자"를 전제로 하지 않고, 구글 연동된 면접관 토큰으로 룸 캘린더를 조회합니다.
@@ -1996,6 +2033,40 @@ async function regenerateScheduleOptions(
           end: bt.end,
         })));
       }
+
+      // ✅ 외부(비가입) 면접관 이메일도 바쁨 충돌 계산에 포함합니다.
+      // - 정책: 외부 면접관 캘린더를 조회할 수 없으면 재조율도 중단합니다.
+      const externalInterviewerEmails = schedule.external_interviewer_emails || [];
+      if (externalInterviewerEmails.length > 0) {
+        try {
+          const externalBusyTimes = await getBusyTimes(
+            organizerToken,
+            externalInterviewerEmails,
+            currentStartDate,
+            currentEndDate
+          );
+
+          allBusyTimes.push(...externalBusyTimes.map(bt => ({
+            start: bt.start,
+            end: bt.end,
+          })));
+
+          if (isCalendarAvailabilityDebugEnabled()) {
+            externalBusyTimesForDebug.push(...externalBusyTimes.map(bt => ({
+              start: bt.start,
+              end: bt.end,
+            })));
+          }
+        } catch (e) {
+          console.error(`외부 면접관 캘린더 조회 실패(regenerate):`, e);
+          const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
+          throw new Error(
+            `외부 면접관의 캘린더를 조회할 수 없습니다. (${externalInterviewerEmails.join(', ')}) ` +
+            `${errorMessage} ` +
+            `해결: (1) 외부 면접관이 채용담당자(주최자) 구글 계정에 캘린더를 공유하거나, (2) 플랫폼에 가입 후 구글 캘린더를 연동해주세요.`
+          );
+        }
+      }
     } catch (error) {
       console.error(`인터뷰룸 캘린더(${roomCalendarId}) 조회 실패:`, error);
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -2014,9 +2085,11 @@ async function regenerateScheduleOptions(
         roomCalendarId,
         interviewerBusyCount: interviewerBusyTimesForDebug.length,
         roomBusyCount: roomBusyTimesForDebug.length,
+        externalBusyCount: externalBusyTimesForDebug.length,
         totalBusyCount: allBusyTimes.length,
         interviewerBusySample: formatBusySampleForLog(interviewerBusyTimesForDebug),
         roomBusySample: formatBusySampleForLog(roomBusyTimesForDebug),
+        externalBusySample: formatBusySampleForLog(externalBusyTimesForDebug),
       });
     }
 
