@@ -2,7 +2,7 @@
 
 import { Search, Bell, ChevronDown, Command, LogOut, User, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { getUserProfile } from '@/api/queries/auth';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { signOut } from '@/api/actions/auth';
 import { toast } from 'sonner';
 
@@ -31,25 +31,11 @@ interface UserProfile {
 
 export function TopBar({ onCommandOpen }: TopBarProps) {
   const router = useRouter();
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // 사용자 프로필 정보 가져오기
-  useEffect(() => {
-    async function loadUserProfile() {
-      try {
-        const result = await getUserProfile();
-        if (result.data) {
-          setUserProfile(result.data);
-        }
-      } catch (error) {
-        console.error('사용자 프로필 로드 실패:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadUserProfile();
-  }, []);
+  const { data: sharedUserProfile, isLoading } = useUserProfile();
+  const userProfile = (sharedUserProfile as UserProfile | null) ?? null;
+  const loading = isLoading;
+  // (유지) TopBar 내부 상태로 추가 UX 제어가 필요한 경우 대비
+  const [_local, _setLocal] = useState(0);
 
   // 로그아웃 처리
   const handleSignOut = async () => {

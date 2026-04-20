@@ -4,6 +4,7 @@ import { Users, Clock, Send, CheckCircle2, AlertCircle, FileText, Briefcase, Cal
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUserProfile } from '@/api/queries/auth';
+import { getDashboardInsight } from '@/api/actions/dashboard';
 import { seedDummyData } from '@/api/actions/seed';
 import { toast } from 'sonner';
 
@@ -97,6 +98,7 @@ export function OverviewClient({
   const [userName, setUserName] = useState<string>('님');
   const [isSeeding, setIsSeeding] = useState(false);
   const [scheduleFilter, setScheduleFilter] = useState<'today' | 'week' | 'tomorrow'>('today');
+  const [aiInsightState, setAiInsightState] = useState<string | null>(aiInsight ?? null);
 
   // 사용자 프로필 정보 로드 (이름 및 역할)
   useEffect(() => {
@@ -112,6 +114,30 @@ export function OverviewClient({
       }
     }
     loadUserProfile();
+  }, []);
+
+  // ✅ 체감 속도 개선: AI 인사이트는 화면이 뜬 뒤 백그라운드로 로드합니다.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInsight() {
+      try {
+        // 이미 서버에서 내려온 값이 있으면 재호출하지 않습니다.
+        if (aiInsightState && aiInsightState.trim().length > 0) return;
+        const result = await getDashboardInsight();
+        if (cancelled) return;
+        if (result.data && result.data.trim().length > 0) {
+          setAiInsightState(result.data);
+        }
+      } catch (error) {
+        // 인사이트 실패는 UX 치명도가 낮으므로 조용히 무시합니다.
+        console.error('AI 인사이트 로드 실패:', error);
+      }
+    }
+    void loadInsight();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 시간대별 인사말 생성 함수
@@ -272,7 +298,7 @@ export function OverviewClient({
               </div>
               <div className="flex-1 min-w-0">
                 <h1 className="text-3xl font-bold tracking-tight text-indigo-950 mb-3">
-                  {aiInsight || `${getGreeting()}, ${userName}님`}
+                  {aiInsightState || `${getGreeting()}, ${userName}님`}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <span className="inline-flex items-center gap-1 bg-blue-50 text-brand-main px-3 py-1 rounded-full text-sm font-medium">
@@ -284,7 +310,7 @@ export function OverviewClient({
                     </span>
                   )}
                 </div>
-                {aiInsight && (
+                {aiInsightState && (
                   <div className="inline-flex items-center gap-1.5 bg-indigo-100/50 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
                     <Sparkles size={12} className="text-indigo-500" />
                     AI-Powered Insights

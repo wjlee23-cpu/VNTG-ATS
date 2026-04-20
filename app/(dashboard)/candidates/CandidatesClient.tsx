@@ -47,6 +47,18 @@ export function CandidatesClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const openedFromListRef = useRef(false);
+  const lastLoadedCandidateIdRef = useRef<string | null>(null);
+  const detailBundleCacheRef = useRef<
+    Map<
+      string,
+      {
+        at: number;
+        candidate: Candidate;
+        schedules: unknown[];
+        timelineEvents: unknown[];
+      }
+    >
+  >(new Map());
 
   // 목록/필터 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -171,8 +183,14 @@ export function CandidatesClient({
     const selected = searchParams.get("selected");
     setSelectedCandidateId(selected);
     if (selected) {
-      loadCandidateDetail(selected);
+      // ✅ URL이 바뀐 경우에만 상세를 다시 로드합니다.
+      // - 리스트 클릭 시에는 클릭 핸들러에서 이미 로드를 시작했을 수 있습니다.
+      if (lastLoadedCandidateIdRef.current !== selected) {
+        lastLoadedCandidateIdRef.current = selected;
+        loadCandidateDetail(selected);
+      }
     } else {
+      lastLoadedCandidateIdRef.current = null;
       setCandidateDetail(null);
       setSchedules([]);
       setTimelineEvents([]);
@@ -187,6 +205,17 @@ export function CandidatesClient({
       setCandidateDetail({ ...initialCandidate });
     }
     try {
+      // ✅ 체감 속도 개선(짧은 캐시): 같은 후보자를 다시 열 때는 30초 동안 상세 번들을 재사용합니다.
+      const cached = detailBundleCacheRef.current.get(candidateId);
+      const now = Date.now();
+      if (cached && now - cached.at <= 30_000) {
+        setCandidateDetail(cached.candidate);
+        setSchedules(cached.schedules || []);
+        setTimelineEvents(cached.timelineEvents || []);
+        setDetailError(null);
+        return;
+      }
+
       // ✅ 상세 데이터는 서버에서 한 번에 번들로 가져와 네트워크 요청 수를 줄입니다.
       // - 타임라인은 기본적으로 포함하지 않고(빈 배열), 탭 진입 시 로드합니다.
       const bundleResult = await getCandidateDetailBundle(candidateId);
@@ -205,6 +234,14 @@ export function CandidatesClient({
         setSchedules(bundleResult.data.schedules || []);
         setTimelineEvents(bundleResult.data.timelineEvents || []);
         setDetailError(null);
+
+        // ✅ 짧은 캐시 저장
+        detailBundleCacheRef.current.set(candidateId, {
+          at: Date.now(),
+          candidate: bundleResult.data.candidate,
+          schedules: bundleResult.data.schedules || [],
+          timelineEvents: bundleResult.data.timelineEvents || [],
+        });
       }
     } catch (err) {
       if (!initialCandidate) {
@@ -292,6 +329,12 @@ export function CandidatesClient({
   const handleCandidateClick = (candidateId: string) => {
     // 사용자가 리스트에서 상세를 연 경우, 닫을 때 back()으로 즉시 복귀할 수 있게 플래그를 기록합니다.
     openedFromListRef.current = true;
+    // ✅ 체감 속도 개선: URL 반영을 기다리지 말고 즉시 모달을 엽니다.
+    setSelectedCandidateId(candidateId);
+    lastLoadedCandidateIdRef.current = candidateId;
+    // ✅ 클릭 즉시 상세 로딩을 시작합니다.
+    loadCandidateDetail(candidateId);
+    // ✅ URL은 뒤에서 동기화합니다.
     router.push(`/candidates?selected=${candidateId}`);
   };
 

@@ -28,6 +28,21 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  // ✅ 체감 속도 개선: 커맨드 팔레트가 열리면, 추천 경로를 미리 로딩합니다.
+  useEffect(() => {
+    if (!open) return;
+    const targets: AppView[] = ['overview', 'candidates', 'jobs', 'jd-requests', 'calendar', 'analytics', 'team', 'templates', 'settings'];
+    targets.forEach((v) => {
+      const path = viewToPath(v);
+      try {
+        router.prefetch(path);
+      } catch {
+        /* noop */
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   useEffect(() => {
     if (open) {
       inputRef.current?.focus();

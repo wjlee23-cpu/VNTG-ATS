@@ -124,6 +124,8 @@ export function CandidateDetailClient({
     Array.isArray(_schedules) ? (_schedules as any[]) : [],
   );
   const schedulesFetchGenRef = useRef(0);
+  const aiTriggerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiTriggerStartedRef = useRef<boolean>(false);
 
   const fetchSchedulesAndApplyIfGenerationCurrent = async (
     generation: number,
@@ -303,11 +305,30 @@ export function CandidateDetailClient({
       resumeFiles.length > 0 &&
       (candidate.ai_analysis_status === null || candidate.ai_analysis_status === 'pending') &&
       candidate.job_post_id;
-    if (shouldTrigger) {
+    // ✅ 체감 속도 개선: 상세 화면을 여는 순간 AI 분석을 바로 시작하지 않고,
+    //    백그라운드로 몇 초 지연하여 “모달 오픈/콘텐츠 표시”를 우선합니다.
+    if (!shouldTrigger) return;
+    if (aiTriggerStartedRef.current) return;
+
+    // 기존 타이머가 있으면 정리
+    if (aiTriggerTimeoutRef.current) {
+      clearTimeout(aiTriggerTimeoutRef.current);
+      aiTriggerTimeoutRef.current = null;
+    }
+
+    aiTriggerTimeoutRef.current = setTimeout(() => {
+      aiTriggerStartedRef.current = true;
       triggerAIAnalysis(candidate.id)
         .then(() => refreshCandidateData())
         .catch((err) => console.error('[CandidateDetailClient] AI 분석 시작 실패:', err));
-    }
+    }, 4000);
+
+    return () => {
+      if (aiTriggerTimeoutRef.current) {
+        clearTimeout(aiTriggerTimeoutRef.current);
+        aiTriggerTimeoutRef.current = null;
+      }
+    };
   }, [resumeFiles.length, candidate.ai_analysis_status, candidate.job_post_id, candidate.id]);
 
   useEffect(() => {

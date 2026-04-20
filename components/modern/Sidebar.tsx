@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { 
   LayoutGrid, 
   Users, 
@@ -17,31 +17,14 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { pathToView, type AppView } from '@/types/navigation';
 import { cn } from '@/components/ui/utils';
-import { getUserProfile } from '@/api/queries/auth';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const currentView = pathToView(pathname);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // 사용자 역할 확인
-  useEffect(() => {
-    async function checkUserRole() {
-      try {
-        const result = await getUserProfile();
-        if (result.data) {
-          setIsAdmin(result.data.role === 'admin');
-        }
-      } catch (error) {
-        console.error('사용자 역할 확인 실패:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    checkUserRole();
-  }, []);
+  const { data: userProfile } = useUserProfile();
+  const isAdmin = userProfile?.role === 'admin';
 
   const menuItems = [
     { icon: LayoutGrid, label: 'Overview', view: 'overview' as AppView, path: '/dashboard' },
@@ -57,6 +40,19 @@ export function Sidebar() {
   const bottomNavItems = [
     { id: 'settings' as AppView, icon: Settings, label: 'Settings', path: '/settings' },
   ];
+
+  // ✅ 체감 속도 개선: 주요 메뉴는 미리 로딩(prefetch)해서 클릭 후 전환을 빠르게 만듭니다.
+  useEffect(() => {
+    const prefetchTargets = [...menuItems, ...bottomNavItems].map((i) => i.path);
+    prefetchTargets.forEach((path) => {
+      try {
+        router.prefetch(path);
+      } catch {
+        /* router가 준비되지 않은 타이밍이면 무시 */
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNavigate = (path: string) => {
     router.push(path);
@@ -79,6 +75,13 @@ export function Sidebar() {
             <button
               key={item.view}
               onClick={() => handleNavigate(item.path)}
+              onMouseEnter={() => {
+                try {
+                  router.prefetch(item.path);
+                } catch {
+                  /* noop */
+                }
+              }}
               className={cn(
                 "w-10 h-10 rounded-lg flex items-center justify-center transition-all group relative",
                 isActive
@@ -113,6 +116,13 @@ export function Sidebar() {
             <button
               key={item.id}
               onClick={() => handleNavigate(item.path)}
+              onMouseEnter={() => {
+                try {
+                  router.prefetch(item.path);
+                } catch {
+                  /* noop */
+                }
+              }}
               className={cn(
                 "w-10 h-10 rounded-lg flex items-center justify-center transition-all group relative",
                 isActive
