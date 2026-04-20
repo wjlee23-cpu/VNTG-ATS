@@ -70,7 +70,9 @@ export function CandidateDetailClient({
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const [users, setUsers] = useState<Array<{ id: string; email: string; role: string }>>([]);
+  const [users, setUsers] = useState<
+    Array<{ id: string; email: string; role: string; name: string | null; avatar_url: string | null }>
+  >([]);
   const [externalInterviewerPool, setExternalInterviewerPool] = useState<
     Array<{ id: string; email: string; display_name: string | null }>
   >([]);
@@ -383,14 +385,64 @@ export function CandidateDetailClient({
     setIsLoadingUsers(true);
     try {
       const [usersResult, externalResult] = await Promise.all([getUsers(), getExternalInterviewers()]);
-      const list = (usersResult.data || []) as Array<{ id: string; email: string; role: string }>;
+      const list = (usersResult.data || []) as Array<{
+        id: string;
+        email: string;
+        role: string;
+        name: string | null;
+        avatar_url: string | null;
+      }>;
       const externalList = (externalResult.data || []) as Array<{
         id: string;
         email: string;
         display_name: string | null;
       }>;
-      setUsers(list.filter((u) => u.role === 'interviewer' || u.role === 'admin'));
-      setExternalInterviewerPool(externalList);
+
+      // ✅ 내부 면접관 목록(관리자/면접관)만 유지
+      const internalInterviewers = list.filter((u) => u.role === 'interviewer' || u.role === 'admin');
+
+      // ✅ 안전장치: 내부 사용자 이메일과 겹치는 외부 면접관은 UI에서 제거합니다.
+      // (서버에서 삭제/필터링을 하지만, 캐시/동기화 타이밍으로 혹시 남아있을 수 있어 2중 방어)
+      const normalizeEmail = (email: string) => email.trim().toLowerCase();
+      const internalEmailSet = new Set(internalInterviewers.map((u) => normalizeEmail(u.email)));
+      const filteredExternal = externalList.filter((e) => !internalEmailSet.has(normalizeEmail(e.email)));
+
+      setUsers(internalInterviewers);
+      setExternalInterviewerPool(filteredExternal);
+
+      // ✅ 이미 선택된 외부 이메일이 내부 사용자로 가입된 경우:
+      // - 외부 이메일 선택을 제거하고
+      // - 내부 면접관(id) 선택으로 자동 변환합니다.
+      setScheduleFormData((prev) => {
+        const nextExternal = (prev.external_interviewer_emails || []).map(normalizeEmail);
+        if (nextExternal.length === 0) return prev;
+
+        const emailToUserId = new Map(internalInterviewers.map((u) => [normalizeEmail(u.email), u.id]));
+        const toPromote = nextExternal
+          .map((email) => emailToUserId.get(email))
+          .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+        const nextInterviewerIds = Array.from(
+          new Set([...(prev.interviewer_ids || []), ...toPromote]),
+        );
+
+        const remainingExternal = nextExternal.filter((email) => !emailToUserId.has(email));
+
+        // 변화가 없다면 state 업데이트를 피합니다.
+        const sameInterviewer =
+          nextInterviewerIds.length === (prev.interviewer_ids || []).length &&
+          nextInterviewerIds.every((id, idx) => id === (prev.interviewer_ids || [])[idx]);
+        const sameExternal =
+          remainingExternal.length === (prev.external_interviewer_emails || []).length &&
+          remainingExternal.every((email, idx) => email === (prev.external_interviewer_emails || [])[idx]);
+        if (sameInterviewer && sameExternal) return prev;
+
+        return {
+          ...prev,
+          interviewer_ids: nextInterviewerIds,
+          external_interviewer_emails: remainingExternal,
+        };
+      });
     } catch {
       toast.error('면접관 목록을 불러올 수 없습니다.');
     } finally {

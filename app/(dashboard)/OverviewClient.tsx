@@ -53,7 +53,7 @@ interface OverviewClientProps {
     interviewType?: string;
     meetingPlatform?: string;
     meetingLink?: string;
-    interviewers: Array<{ id: string; email: string }>;
+    interviewers: Array<{ id: string; email: string; name?: string | null; avatar_url?: string | null }>;
   }>;
   positionStatus: Array<{
     jobPostId: string;
@@ -562,7 +562,13 @@ export function OverviewClient({
                             </div>
                             {schedule.interviewers.length > 0 && (
                               <div className="text-xs text-slate-500 mt-1">
-                                면접관: {schedule.interviewers.map(i => i.email.split('@')[0]).join(', ')}
+                                면접관:{' '}
+                                {schedule.interviewers
+                                  .map((i) => {
+                                    const trimmed = (i.name || '').trim();
+                                    return trimmed.length > 0 ? trimmed : i.email.split('@')[0];
+                                  })
+                                  .join(', ')}
                               </div>
                             )}
                           </div>

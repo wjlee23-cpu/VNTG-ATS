@@ -115,7 +115,8 @@ export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
       if (allInterviewerIds.size > 0) {
         const { data: interviewers } = await supabase
           .from('users')
-          .select('id, email')
+          // 사용자 표시용(이름/프로필 사진)을 함께 가져옵니다.
+          .select('id, email, name, avatar_url')
           .in('id', Array.from(allInterviewerIds));
 
         const interviewerMap = new Map(
@@ -125,11 +126,22 @@ export async function getSchedulesByDateRange(startDate: Date, endDate: Date) {
         // 각 일정에 면접관 정보 추가
         data.forEach(schedule => {
           // 타입 안전성을 위해 인터뷰어 정보를 별도 속성으로 추가
-          (schedule as typeof schedule & { interviewers: Array<{ id: string; email: string }> }).interviewers = 
+          (schedule as typeof schedule & {
+            interviewers: Array<{
+              id: string;
+              email: string;
+              name: string | null;
+              avatar_url: string | null;
+            }>;
+          }).interviewers = 
             schedule.interviewer_ids
               ?.map((id: string) => interviewerMap.get(id))
               .filter(
-                (i: { id: string; email: string } | undefined): i is { id: string; email: string } =>
+                (
+                  i:
+                    | { id: string; email: string; name: string | null; avatar_url: string | null }
+                    | undefined
+                ): i is { id: string; email: string; name: string | null; avatar_url: string | null } =>
                   i !== undefined
               ) || [];
         });
@@ -336,11 +348,12 @@ export async function getAllScheduleProgress() {
       }
     });
 
-    let interviewers: Array<{ id: string; email: string }> = [];
+    let interviewers: Array<{ id: string; email: string; name: string | null; avatar_url: string | null }> = [];
     if (allInterviewerIds.size > 0) {
       const { data: interviewerData } = await supabase
         .from('users')
-        .select('id, email')
+        // 사용자 표시용(이름/프로필 사진)을 함께 가져옵니다.
+        .select('id, email, name, avatar_url')
         .in('id', Array.from(allInterviewerIds));
       
       interviewers = interviewerData || [];
@@ -356,7 +369,11 @@ export async function getAllScheduleProgress() {
       interviewers: schedule.interviewer_ids
         ?.map((id: string) => interviewerMap.get(id))
         .filter(
-          (i: { id: string; email: string } | undefined): i is { id: string; email: string } =>
+          (
+            i:
+              | { id: string; email: string; name: string | null; avatar_url: string | null }
+              | undefined
+          ): i is { id: string; email: string; name: string | null; avatar_url: string | null } =>
             i !== undefined
         ) || [],
     }));

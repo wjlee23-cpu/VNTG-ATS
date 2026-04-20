@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
@@ -51,6 +52,8 @@ interface UserOption {
   id: string;
   email: string;
   role: string;
+  name: string | null;
+  avatar_url: string | null;
 }
 
 interface StageOption {
@@ -120,15 +123,21 @@ export function CandidateScheduleForm({
   const selectedUsers = users.filter((user) => formData.interviewer_ids.includes(user.id));
   const selectedExternalEmails = formData.external_interviewer_emails;
 
-  // 사용자 이름 추출 (이메일에서)
-  const getUserName = (email: string) => {
-    return email.split('@')[0];
+  // 사용자 표시 이름(이름 우선, 없으면 이메일 prefix)
+  const getDisplayName = (user: { name: string | null; email: string }) => {
+    const trimmed = (user.name || '').trim();
+    if (trimmed.length > 0) return trimmed;
+    return user.email.split('@')[0];
   };
 
-  // 사용자 이니셜 추출
-  const getUserInitial = (email: string) => {
-    return email.charAt(0).toUpperCase();
+  // 이니셜(프로필 이미지 없을 때 fallback)
+  const getInitial = (nameOrEmail: string) => {
+    const v = (nameOrEmail || '').trim();
+    return v.length > 0 ? v.charAt(0).toUpperCase() : '?';
   };
+
+  // 외부 면접관 표시 이름(저장된 display_name 우선, 없으면 이메일 prefix)
+  const getExternalDisplayName = (email: string) => email.split('@')[0];
 
   const addExternalEmailFromInput = () => {
     const normalized = externalEmailInput.trim().toLowerCase();
@@ -245,11 +254,14 @@ export function CandidateScheduleForm({
                           key={user.id}
                           className="flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 bg-white border border-neutral-200 rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.02)] group hover:border-neutral-300 transition-colors"
                         >
-                          <div className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[10px] font-medium">
-                            {getUserInitial(user.email)}
-                          </div>
+                          <Avatar className="w-5 h-5">
+                            <AvatarImage src={user.avatar_url || undefined} alt={getDisplayName(user)} />
+                            <AvatarFallback className="bg-neutral-900 text-white text-[10px] font-medium">
+                              {getInitial(getDisplayName(user))}
+                            </AvatarFallback>
+                          </Avatar>
                           <span className="text-xs font-medium text-neutral-900 ml-0.5">
-                            {getUserName(user.email)}
+                            {getDisplayName(user)}
                           </span>
                           {user.role && (
                             <span className="text-[10px] text-neutral-400 mr-1">{user.role}</span>
@@ -268,11 +280,13 @@ export function CandidateScheduleForm({
                           key={email}
                           className="flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 bg-white border border-neutral-200 rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.02)] group hover:border-neutral-300 transition-colors"
                         >
-                          <div className="w-5 h-5 rounded-full bg-neutral-700 text-white flex items-center justify-center text-[10px] font-medium">
-                            {getUserInitial(email)}
-                          </div>
+                          <Avatar className="w-5 h-5">
+                            <AvatarFallback className="bg-neutral-700 text-white text-[10px] font-medium">
+                              {getInitial(getExternalDisplayName(email))}
+                            </AvatarFallback>
+                          </Avatar>
                           <span className="text-xs font-medium text-neutral-900 ml-0.5">
-                            {getUserName(email)}
+                            {getExternalDisplayName(email)}
                           </span>
                           <span className="text-[10px] text-neutral-400 mr-1">external</span>
                           <button
@@ -332,10 +346,23 @@ export function CandidateScheduleForm({
                                   onClick={() => onToggleInterviewer(user.id)}
                                   className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-md transition-colors"
                                 >
-                                  <div className="font-medium">{getUserName(user.email)}</div>
-                                  {user.role && (
-                                    <div className="text-xs text-neutral-500">{user.role}</div>
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="w-6 h-6">
+                                      <AvatarImage
+                                        src={user.avatar_url || undefined}
+                                        alt={getDisplayName(user)}
+                                      />
+                                      <AvatarFallback className="bg-neutral-900 text-white text-[10px] font-medium">
+                                        {getInitial(getDisplayName(user))}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium truncate">{getDisplayName(user)}</div>
+                                      {user.role && (
+                                        <div className="text-xs text-neutral-500">{user.role}</div>
+                                      )}
+                                    </div>
+                                  </div>
                                 </button>
                               ))}
                             {externalInterviewerPool
@@ -347,8 +374,17 @@ export function CandidateScheduleForm({
                                   onClick={() => onAddExternalInterviewer(entry.email)}
                                   className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-md transition-colors"
                                 >
-                                  <div className="font-medium">{entry.email}</div>
-                                  <div className="text-xs text-neutral-500">저장된 외부 면접관</div>
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="w-6 h-6">
+                                      <AvatarFallback className="bg-neutral-700 text-white text-[10px] font-medium">
+                                        {getInitial(getExternalDisplayName(entry.email))}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium truncate">{entry.email}</div>
+                                      <div className="text-xs text-neutral-500">저장된 외부 면접관</div>
+                                    </div>
+                                  </div>
                                 </button>
                               ))}
                           </div>

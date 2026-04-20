@@ -20,6 +20,8 @@ interface Schedule {
   interviewers?: Array<{
     id: string;
     email: string;
+    name?: string | null;
+    avatar_url?: string | null;
   }>;
   candidates?: {
     id: string;
@@ -101,8 +103,9 @@ export function CalendarClient({ initialSchedules, error }: CalendarClientProps)
   const getInterviewerNames = (schedule: Schedule) => {
     if (schedule.interviewers && schedule.interviewers.length > 0) {
       return schedule.interviewers.map(i => {
-        const name = i.email.split('@')[0];
-        return name.split('.').map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(' ');
+        // 가입한 사용자는 이름(name)을 우선 표시하고, 없으면 이메일 prefix로 폴백합니다.
+        const raw = (i.name || '').trim().length > 0 ? (i.name as string) : i.email.split('@')[0];
+        return raw.split('.').map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(' ');
       }).join(', ');
     }
     return 'HR Team';

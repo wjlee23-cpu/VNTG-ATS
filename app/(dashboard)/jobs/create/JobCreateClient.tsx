@@ -20,6 +20,8 @@ interface User {
   id: string;
   email: string;
   role: string;
+  name: string | null;
+  avatar_url: string | null;
 }
 
 interface JobCreateClientProps {

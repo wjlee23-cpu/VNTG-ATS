@@ -1,6 +1,7 @@
 'use client';
 
 import { Users, Mail, Shield, User, Briefcase } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface TeamUser {
   id: string;
@@ -8,6 +9,8 @@ interface TeamUser {
   role: 'admin' | 'recruiter' | 'interviewer';
   organization_id: string;
   created_at: string;
+  name: string | null;
+  avatar_url: string | null;
 }
 
 interface TeamClientProps {
@@ -17,6 +20,19 @@ interface TeamClientProps {
 }
 
 export function TeamClient({ users, error, isAdmin }: TeamClientProps) {
+  // 사용자 표시 이름(이름 우선, 없으면 이메일 prefix)
+  const getDisplayName = (user: { name: string | null; email: string }) => {
+    const trimmed = (user.name || '').trim();
+    if (trimmed.length > 0) return trimmed;
+    return user.email.split('@')[0];
+  };
+
+  // 이니셜(프로필 이미지 없을 때 fallback)
+  const getInitial = (nameOrEmail: string) => {
+    const v = (nameOrEmail || '').trim();
+    return v.length > 0 ? v.charAt(0).toUpperCase() : '?';
+  };
+
   const getRoleText = (role: string) => {
     const roleMap: Record<string, string> = {
       admin: '관리자',
@@ -74,16 +90,19 @@ export function TeamClient({ users, error, isAdmin }: TeamClientProps) {
                 className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-dark to-brand-main flex items-center justify-center text-white font-semibold">
-                    {user.email.charAt(0).toUpperCase()}
-                  </div>
+                  <Avatar className="w-12 h-12 ring-2 ring-brand-main/10">
+                    <AvatarImage src={user.avatar_url || undefined} alt={getDisplayName(user)} />
+                    <AvatarFallback className="bg-gradient-to-br from-brand-dark to-brand-main text-white font-semibold">
+                      {getInitial(getDisplayName(user))}
+                    </AvatarFallback>
+                  </Avatar>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getRoleColor(user.role)}`}>
                     {getRoleIcon(user.role)}
                     {getRoleText(user.role)}
                   </span>
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  {user.email.split('@')[0]}
+                  {getDisplayName(user)}
                 </h3>
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center gap-2">

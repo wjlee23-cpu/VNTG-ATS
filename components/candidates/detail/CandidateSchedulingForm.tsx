@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { format } from 'date-fns';
@@ -52,6 +52,8 @@ interface UserOption {
   id: string;
   email: string;
   role: string;
+  name: string | null;
+  avatar_url: string | null;
 }
 
 interface CandidateSchedulingFormProps {
@@ -82,6 +84,19 @@ export function CandidateSchedulingForm({
   onToggleInterviewer,
   onBack,
 }: CandidateSchedulingFormProps) {
+  // 사용자 표시 이름(이름 우선, 없으면 이메일 prefix)
+  const getDisplayName = (user: { name: string | null; email: string }) => {
+    const trimmed = (user.name || '').trim();
+    if (trimmed.length > 0) return trimmed;
+    return user.email.split('@')[0];
+  };
+
+  // 이니셜(프로필 이미지 없을 때 fallback)
+  const getInitial = (nameOrEmail: string) => {
+    const v = (nameOrEmail || '').trim();
+    return v.length > 0 ? v.charAt(0).toUpperCase() : '?';
+  };
+
   return (
     <div className="space-y-4">
       {/* 상단 공통 뒤로 가기 버튼: 카드와 동일한 좌측 기준선에서 정렬 */}
@@ -419,18 +434,19 @@ export function CandidateSchedulingForm({
                             isSelected ? 'border-neutral-900' : 'border-neutral-200',
                           )}
                         >
+                          <AvatarImage src={user.avatar_url || undefined} alt={getDisplayName(user)} />
                           <AvatarFallback
                             className={cn(
                               'text-sm font-medium',
                               isSelected ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600',
                             )}
                           >
-                            {user.email.charAt(0).toUpperCase()}
+                            {getInitial(getDisplayName(user))}
                           </AvatarFallback>
                         </Avatar>
                         <div className="text-center">
                           <p className="text-xs font-bold text-neutral-700 break-words">
-                            {user.email.split('@')[0]}
+                            {getDisplayName(user)}
                           </p>
                           {user.role === 'admin' && (
                             <Badge

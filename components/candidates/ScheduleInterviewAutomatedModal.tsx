@@ -11,7 +11,7 @@ import {
   DrawerDescription 
 } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -40,7 +40,9 @@ export function ScheduleInterviewAutomatedModal({
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const [users, setUsers] = useState<Array<{ id: string; email: string; role: string }>>([]);
+  const [users, setUsers] = useState<
+    Array<{ id: string; email: string; role: string; name: string | null; avatar_url: string | null }>
+  >([]);
   const [formData, setFormData] = useState({
     start_date: '',
     end_date: '',
@@ -198,6 +200,19 @@ export function ScheduleInterviewAutomatedModal({
 
   // 일정 옵션 개수
   const numOptionsList = [1, 2, 3, 4, 5];
+
+  // 사용자 표시 이름(이름 우선, 없으면 이메일 prefix)
+  const getDisplayName = (user: { name: string | null; email: string }) => {
+    const trimmed = (user.name || '').trim();
+    if (trimmed.length > 0) return trimmed;
+    return user.email.split('@')[0];
+  };
+
+  // 이니셜(프로필 이미지 없을 때 fallback)
+  const getInitial = (nameOrEmail: string) => {
+    const v = (nameOrEmail || '').trim();
+    return v.length > 0 ? v.charAt(0).toUpperCase() : '?';
+  };
 
   return (
     <Drawer open={isOpen} onOpenChange={onClose} direction="right">
@@ -621,18 +636,22 @@ export function ScheduleInterviewAutomatedModal({
                               "w-12 h-12 border-2 transition-all",
                               isSelected ? "border-neutral-900" : "border-neutral-200"
                             )}>
+                              <AvatarImage
+                                src={user.avatar_url || undefined}
+                                alt={getDisplayName(user)}
+                              />
                               <AvatarFallback className={cn(
                                 "text-sm font-medium",
                                 isSelected 
                                   ? "bg-neutral-900 text-white" 
                                   : "bg-neutral-100 text-neutral-600"
                               )}>
-                                {user.email.charAt(0).toUpperCase()}
+                                {getInitial(getDisplayName(user))}
                               </AvatarFallback>
                             </Avatar>
                             <div className="text-center">
                               <p className="text-xs font-medium text-neutral-700 truncate max-w-[70px]">
-                                {user.email.split('@')[0]}
+                                {getDisplayName(user)}
                               </p>
                               {user.role === 'admin' && (
                                 <Badge 
@@ -661,7 +680,9 @@ export function ScheduleInterviewAutomatedModal({
                         const user = users.find(u => u.id === id);
                         return (
                           <div key={id} className="flex items-center gap-3">
-                            <span className="text-sm text-neutral-700 w-40 truncate">{user?.email || id}</span>
+                            <span className="text-sm text-neutral-700 w-40 truncate">
+                              {user ? getDisplayName(user) : id}
+                            </span>
                             <select
                               value={interviewerPreferences[id] || 'none'}
                               onChange={(e) => setInterviewerPreferences(prev => ({ ...prev, [id]: e.target.value as any }))}

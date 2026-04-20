@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Plus, X, User } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { CustomStage, BaseStage } from '@/types/job';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 
@@ -37,6 +38,8 @@ interface User {
   id: string;
   email: string;
   role: string;
+  name: string | null;
+  avatar_url: string | null;
 }
 
 interface ProcessStageBuilderProps {
@@ -74,6 +77,19 @@ function SortableStageItem({
 
   const availableUsers = users.filter(u => !stage.assignees.includes(u.id));
   const selectedUsers = users.filter(u => stage.assignees.includes(u.id));
+
+  // 사용자 표시 이름(이름 우선, 없으면 이메일 prefix)
+  const getDisplayName = (user: { name: string | null; email: string }) => {
+    const trimmed = (user.name || '').trim();
+    if (trimmed.length > 0) return trimmed;
+    return user.email.split('@')[0];
+  };
+
+  // 이니셜(프로필 이미지 없을 때 fallback)
+  const getInitial = (nameOrEmail: string) => {
+    const v = (nameOrEmail || '').trim();
+    return v.length > 0 ? v.charAt(0).toUpperCase() : '?';
+  };
 
   return (
     <div
@@ -127,7 +143,13 @@ function SortableStageItem({
                   key={user.id}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-sm"
                 >
-                  <span>{user.email.split('@')[0]}</span>
+                  <Avatar className="w-5 h-5">
+                    <AvatarImage src={user.avatar_url || undefined} alt={getDisplayName(user)} />
+                    <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
+                      {getInitial(getDisplayName(user))}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span>{getDisplayName(user)}</span>
                   <button
                     onClick={() => {
                       onAssigneesChange(stage.assignees.filter(id => id !== user.id));
@@ -154,7 +176,7 @@ function SortableStageItem({
                   <option value="">담당자 추가...</option>
                   {availableUsers.map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.email.split('@')[0]} ({user.email})
+                      {getDisplayName(user)} ({user.email})
                     </option>
                   ))}
                 </select>
