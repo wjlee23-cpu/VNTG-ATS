@@ -16,11 +16,7 @@ import {
   bulkMoveToStage,
 } from "@/api/actions/candidates-archive";
 import { toast } from "sonner";
-import type {
-  Candidate,
-  CandidateStatus,
-  CandidateWithArchiveReason,
-} from "@/types/candidates";
+import type { Candidate, CandidateWithArchiveReason } from "@/types/candidates";
 import { ArchiveCandidateModal } from "@/components/candidates/ArchiveCandidateModal";
 import { AddCandidateModal } from "@/components/candidates/AddCandidateModal";
 import { CandidateDetailDialog } from "@/components/candidates/CandidateDetailDialog";
@@ -75,20 +71,6 @@ export function CandidatesClient({
   >("active");
   const [selectedArchiveReason, setSelectedArchiveReason] =
     useState<string>("all");
-
-  // ─── 테이블 컬럼 필터(엑셀 스타일) ─────────────────────────────
-  // 비개발자 사용성: 입력 즉시 반영(로컬 필터), URL 저장은 하지 않습니다.
-  const [candidateQuery, setCandidateQuery] = useState<string>("");
-  const [positionQuery, setPositionQuery] = useState<string>("");
-  const [stageColumnFilter, setStageColumnFilter] = useState<string>("all"); // stage "name" 기준
-  const [statusColumnFilter, setStatusColumnFilter] = useState<
-    CandidateStatus | "all"
-  >("all");
-  const [aiMatchBucket, setAiMatchBucket] = useState<
-    "all" | "0" | "1_57" | "58_87" | "88_100"
-  >("all");
-  const [appliedFrom, setAppliedFrom] = useState<string>(""); // YYYY-MM-DD
-  const [appliedTo, setAppliedTo] = useState<string>(""); // YYYY-MM-DD
 
   // 상세 패널(모달) 상태
   const [candidateDetail, setCandidateDetail] = useState<Candidate | null>(
@@ -163,17 +145,6 @@ export function CandidatesClient({
   useEffect(() => {
     setSelectedIds(new Set());
   }, [selectedStage, searchQuery]);
-
-  const resetColumnFilters = useCallback(() => {
-    // 사용자가 한 번에 초기화할 수 있도록 기본값으로 되돌립니다.
-    setCandidateQuery("");
-    setPositionQuery("");
-    setStageColumnFilter("all");
-    setStatusColumnFilter("all");
-    setAiMatchBucket("all");
-    setAppliedFrom("");
-    setAppliedTo("");
-  }, []);
 
   const loadArchivedCandidates = async () => {
     setIsLoadingArchived(true);
@@ -325,80 +296,16 @@ export function CandidatesClient({
       )
         return false;
     }
-
-    // ─── 기존 통합 검색(searchQuery) ────────────────────────────
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchesSearch =
-        candidate.name.toLowerCase().includes(query) ||
-        candidate.email.toLowerCase().includes(query) ||
-        candidate.job_posts?.title?.toLowerCase().includes(query) ||
-        candidate.parsed_data?.skills?.some((skill) =>
-          skill.toLowerCase().includes(query),
-        );
-      if (!matchesSearch) return false;
-    }
-
-    // ─── 컬럼 필터(엑셀 스타일) ─────────────────────────────────
-    // Candidate: 이름/이메일 포함 검색
-    if (candidateQuery.trim()) {
-      const q = candidateQuery.trim().toLowerCase();
-      const matchesCandidate =
-        candidate.name.toLowerCase().includes(q) ||
-        candidate.email.toLowerCase().includes(q);
-      if (!matchesCandidate) return false;
-    }
-
-    // Position: job_posts.title 포함 검색
-    if (positionQuery.trim()) {
-      const q = positionQuery.trim().toLowerCase();
-      const title = candidate.job_posts?.title?.toLowerCase() ?? "";
-      if (!title.includes(q)) return false;
-    }
-
-    // Stage: stage 이름 기준 선택
-    if (stageColumnFilter !== "all") {
-      const stageName = getStageName(candidate.current_stage_id);
-      if (!stageName || stageName !== stageColumnFilter) return false;
-    }
-
-    // Status: 후보자 상태
-    if (statusColumnFilter !== "all") {
-      if (candidate.status !== statusColumnFilter) return false;
-    }
-
-    // AI Match: 점수 구간
-    if (aiMatchBucket !== "all") {
-      const score = candidate.ai_score ?? 0;
-      const inBucket =
-        aiMatchBucket === "0"
-          ? score <= 0
-          : aiMatchBucket === "1_57"
-            ? score >= 1 && score <= 57
-            : aiMatchBucket === "58_87"
-              ? score >= 58 && score <= 87
-              : score >= 88 && score <= 100;
-      if (!inBucket) return false;
-    }
-
-    // Applied: 기간 필터(YYYY-MM-DD)
-    if (appliedFrom || appliedTo) {
-      const createdAtMs = new Date(candidate.created_at).getTime();
-
-      if (appliedFrom) {
-        // 시작일 00:00:00 기준
-        const fromMs = new Date(`${appliedFrom}T00:00:00`).getTime();
-        if (Number.isFinite(fromMs) && createdAtMs < fromMs) return false;
-      }
-
-      if (appliedTo) {
-        // 종료일 23:59:59 기준(그날 포함)
-        const toMs = new Date(`${appliedTo}T23:59:59`).getTime();
-        if (Number.isFinite(toMs) && createdAtMs > toMs) return false;
-      }
-    }
-
-    return true;
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      candidate.name.toLowerCase().includes(query) ||
+      candidate.email.toLowerCase().includes(query) ||
+      candidate.job_posts?.title?.toLowerCase().includes(query) ||
+      candidate.parsed_data?.skills?.some((skill) =>
+        skill.toLowerCase().includes(query),
+      )
+    );
   });
 
   const getStatusConfig = useCallback((status: string) => {
@@ -660,22 +567,6 @@ export function CandidatesClient({
               isSomeSelected={isSomeSelected}
               getStageName={getStageName}
               getStatusConfig={getStatusConfig}
-              // 컬럼 필터(엑셀 스타일)
-              candidateQuery={candidateQuery}
-              onCandidateQueryChange={setCandidateQuery}
-              positionQuery={positionQuery}
-              onPositionQueryChange={setPositionQuery}
-              stageColumnFilter={stageColumnFilter}
-              onStageColumnFilterChange={setStageColumnFilter}
-              aiMatchBucket={aiMatchBucket}
-              onAiMatchBucketChange={setAiMatchBucket}
-              appliedFrom={appliedFrom}
-              onAppliedFromChange={setAppliedFrom}
-              appliedTo={appliedTo}
-              onAppliedToChange={setAppliedTo}
-              statusColumnFilter={statusColumnFilter}
-              onStatusColumnFilterChange={setStatusColumnFilter}
-              onResetColumnFilters={resetColumnFilters}
               onRowClick={handleCandidateClick}
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
