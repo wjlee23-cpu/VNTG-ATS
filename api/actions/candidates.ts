@@ -228,7 +228,9 @@ export async function updateCandidateStatus(
     // - 이미 아카이브 사유가 있는 경우 덮어쓰지 않습니다(데이터 손실 방지).
     if (status === 'rejected') {
       updateData.archived = true;
-      updateData.archive_reason = candidate.archive_reason ?? 'rejected';
+      // Supabase 생성 타입이 archived/archive_reason 컬럼을 아직 모르는 환경에서도 빌드가 깨지지 않도록 안전하게 접근합니다.
+      (updateData as any).archive_reason =
+        (candidate as any)?.archive_reason ?? 'rejected';
     }
 
     const { data, error } = await supabase
