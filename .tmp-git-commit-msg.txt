@@ -1,5 +1,0 @@
-[Fix] Candidates 경력 표기 및 AI Insight 이력서 인식 수정
-
-- Candidates 헤더를 EXP./PIPELINE으로 정리하고, 총 경력을 5y 3m 형식으로 통일
-- 이력서 업로드 후 AI 분석이 '이력서 없음'으로 실패하는 경로를 Service Role 기반으로 안정화
-
