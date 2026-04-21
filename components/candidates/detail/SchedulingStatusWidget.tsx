@@ -93,6 +93,26 @@ function getActiveStepCopy(
   }
 }
 
+type VerticalStepKey = 'generate' | 'interviewers' | 'candidate' | 'confirmed';
+
+type VerticalStep = {
+  key: VerticalStepKey;
+  title: string;
+  subtitle?: string | null;
+};
+
+const VERTICAL_STEPS: VerticalStep[] = [
+  { key: 'generate', title: '최적 일정 옵션 생성' },
+  { key: 'interviewers', title: '면접관 응답 대기' },
+  { key: 'candidate', title: '후보자 선택 대기' },
+  { key: 'confirmed', title: '최종 확정' },
+];
+
+function getVerticalStepIndex(key: VerticalStepKey) {
+  const idx = VERTICAL_STEPS.findIndex((s) => s.key === key);
+  return idx === -1 ? 0 : idx;
+}
+
 function MiniPipeline({
   currentStageId,
 }: {
@@ -160,6 +180,7 @@ export function SchedulingStatusWidget({
 
   const activeStep = getActiveStepKey(workflowStatus);
   const activeCopy = getActiveStepCopy(workflowStatus);
+  const activeStepIndex = getVerticalStepIndex(activeStep);
 
   return (
     <div className="pt-5 border-t border-neutral-200/60 flex-1 flex flex-col mt-6">
@@ -195,40 +216,51 @@ export function SchedulingStatusWidget({
           </div>
         ) : (
           <>
-            {/* Active: 조율 스텝 (HTML 구조 1:1) */}
+            {/* Active: 조율 스텝 (단일 단계 배열 기반 렌더링 - 중복/순서 혼선 방지) */}
             <div className="relative border-l-2 border-neutral-100 ml-2 space-y-4 flex-1">
-              {/* 1) 최적 일정 옵션 생성 (완료) */}
-              <div className="relative pl-5">
-                <div className="absolute -left-[7px] top-0.5 w-[12px] h-[12px] rounded-full bg-white border-[3px] border-neutral-900" />
-                <p className="text-xs font-bold text-neutral-900 leading-none">최적 일정 옵션 생성</p>
-              </div>
+              {VERTICAL_STEPS.map((step, idx) => {
+                const isDone = idx < activeStepIndex;
+                const isActive = idx === activeStepIndex;
 
-              {/* 2) 현재 진행 단계 (ping) */}
-              <div className="relative pl-5">
-                <div className="absolute -left-[7px] top-0.5 flex items-center justify-center">
-                  {/* 현재 단계에만 맥박 효과를 줍니다. */}
-                  {(activeStep === 'interviewers' || activeStep === 'candidate' || activeStep === 'confirmed') && (
-                    <span className="absolute inline-flex h-3 w-3 rounded-full bg-blue-400 opacity-75 animate-ping" />
-                  )}
-                  <span className="relative inline-flex rounded-full h-[12px] w-[12px] bg-blue-500 border-2 border-white shadow-sm" />
-                </div>
-                <p className="text-xs font-bold text-blue-600 leading-none">{activeCopy.title}</p>
-                {activeCopy.subtitle ? (
-                  <p className="text-[10px] font-semibold text-neutral-400 mt-1.5">{activeCopy.subtitle}</p>
-                ) : null}
-              </div>
+                const title = isActive ? activeCopy.title : step.title;
+                const subtitle = isActive ? activeCopy.subtitle : step.subtitle;
 
-              {/* 3) 후보자 선택 대기 */}
-              <div className="relative pl-5">
-                <div className="absolute -left-[5px] top-1 w-[8px] h-[8px] rounded-full bg-neutral-200 ring-2 ring-white" />
-                <p className="text-xs font-medium text-neutral-400 leading-none">후보자 선택 대기</p>
-              </div>
+                return (
+                  <div key={step.key} className="relative pl-5">
+                    <div className="absolute -left-[7px] top-0.5 flex items-center justify-center">
+                      {isActive ? (
+                        <>
+                          {/* 현재 단계에만 맥박 효과를 줍니다. */}
+                          {activeStep !== 'generate' && (
+                            <span className="absolute inline-flex h-3 w-3 rounded-full bg-blue-400 opacity-75 animate-ping" />
+                          )}
+                          <span className="relative inline-flex rounded-full h-[12px] w-[12px] bg-blue-500 border-2 border-white shadow-sm" />
+                        </>
+                      ) : isDone ? (
+                        <span className="w-[12px] h-[12px] rounded-full bg-white border-[3px] border-neutral-900" />
+                      ) : (
+                        <span className="w-[8px] h-[8px] rounded-full bg-neutral-200 ring-2 ring-white" />
+                      )}
+                    </div>
 
-              {/* 4) 최종 확정 */}
-              <div className="relative pl-5">
-                <div className="absolute -left-[5px] top-1 w-[8px] h-[8px] rounded-full bg-neutral-200 ring-2 ring-white" />
-                <p className="text-xs font-medium text-neutral-400 leading-none">최종 확정</p>
-              </div>
+                    <p
+                      className={[
+                        'text-xs leading-none',
+                        isActive
+                          ? 'font-bold text-blue-600'
+                          : isDone
+                            ? 'font-bold text-neutral-900'
+                            : 'font-medium text-neutral-400',
+                      ].join(' ')}
+                    >
+                      {title}
+                    </p>
+                    {subtitle ? (
+                      <p className="text-[10px] font-semibold text-neutral-400 mt-1.5">{subtitle}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Active: 액션 버튼 */}

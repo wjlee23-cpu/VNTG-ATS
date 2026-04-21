@@ -162,12 +162,40 @@ export function CandidateDetailClient({
     // - 따라서 workflow_status가 존재하는 스케줄만 코파일럿 상태 계산에 포함합니다.
     const valid = list.filter((s: any) => s && s.id && s.workflow_status);
 
+    // ✅ “면접이 끝났다” 판단(정책: 시간 경과 OR 다음 단계로 이동 시 끝남 처리)
+    // - confirmed 이면서 면접 시각(scheduled_at)이 현재보다 과거면: 더 이상 사이드바에 표시하지 않음(초기화)
+    // - confirmed 이면서 스케줄의 stage_id가 현재 후보 단계보다 과거 단계면: 다음 단계로 넘어간 것으로 보고 숨김
+    const stageOrder = (stageId: string | null | undefined) => {
+      const raw = typeof stageId === 'string' ? stageId.trim() : '';
+      // stage-5 같은 패턴에서 숫자만 뽑아 비교합니다. (패턴이 깨지면 0으로 처리)
+      const m = raw.match(/^stage-(\d+)$/);
+      if (!m) return 0;
+      const n = Number(m[1]);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const now = Date.now();
+    const currentStageOrder = stageOrder(currentStageId);
+
+    const isFinishedConfirmed = (s: any) => {
+      if (s?.workflow_status !== 'confirmed') return false;
+
+      const scheduledAtRaw = s?.scheduled_at;
+      const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw).getTime() : NaN;
+      const isPastByTime = Number.isFinite(scheduledAt) ? scheduledAt < now : false;
+
+      const scheduleStageOrder = stageOrder(s?.stage_id ?? null);
+      const isPastByStage = scheduleStageOrder > 0 && scheduleStageOrder < currentStageOrder;
+
+      return isPastByTime || isPastByStage;
+    };
+
+    const filtered = valid.filter((s: any) => !isFinishedConfirmed(s));
+
     // ✅ 우선순위: 실제 UI에서 "지금 상태"로 보고 싶은 스케줄을 먼저 고릅니다.
     // - 예: confirmed가 존재하는데도 created_at 정렬 때문에 pending을 잡으면 코파일럿이 "대기"로 보여 혼동됩니다.
     const priority = (status: string | null | undefined) => {
       switch (status) {
-        case 'confirmed':
-          return 5;
         case 'pending_candidate':
           return 4;
         case 'pending_interviewers':
@@ -176,6 +204,10 @@ export function CandidateDetailClient({
           return 2;
         case 'regenerating':
           return 1;
+        case 'confirmed':
+          // ✅ confirmed는 “끝난 면접(시간 경과/단계 이동)”을 위에서 제외했기 때문에,
+          //    여기서는 진행 중/최근 확정만 남습니다. 우선순위는 낮추지 않고 그대로 둡니다.
+          return 5;
         case 'cancelled':
           return 0;
         default:
@@ -183,17 +215,26 @@ export function CandidateDetailClient({
       }
     };
 
-    const sorted = valid.sort((a: any, b: any) => {
-      const prA = priority(a.workflow_status);
-      const prB = priority(b.workflow_status);
-      if (prA !== prB) return prB - prA;
+    // ✅ 선택 정책: “현재 단계(stage_id === currentStageId)” 스케줄이 있으면 우선, 없으면 최근 스케줄
+    const byStage = (arr: any[], stageId: string) =>
+      arr.filter((s: any) => String(s?.stage_id ?? '') === String(stageId));
 
-      const atA = new Date(a.updated_at || a.created_at || a.scheduled_at || 0).getTime();
-      const atB = new Date(b.updated_at || b.created_at || b.scheduled_at || 0).getTime();
-      return atB - atA;
-    });
+    const pickBest = (arr: any[]) => {
+      const sorted = [...arr].sort((a: any, b: any) => {
+        const prA = priority(a.workflow_status);
+        const prB = priority(b.workflow_status);
+        if (prA !== prB) return prB - prA;
 
-    const pick: any = sorted[0] as any;
+        const atA = new Date(a.updated_at || a.created_at || a.scheduled_at || 0).getTime();
+        const atB = new Date(b.updated_at || b.created_at || b.scheduled_at || 0).getTime();
+        return atB - atA;
+      });
+      return sorted[0] as any;
+    };
+
+    const stageMatched = byStage(filtered, currentStageId);
+    const pick: any = stageMatched.length > 0 ? pickBest(stageMatched) : pickBest(filtered);
+
     return pick
       ? {
           id: String(pick.id),
