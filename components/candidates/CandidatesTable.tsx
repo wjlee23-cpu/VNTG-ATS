@@ -10,10 +10,11 @@ import {
   XCircle,
   MoreHorizontal,
 } from 'lucide-react';
+import { RECRUITMENT_STAGES } from '@/constants/stages';
 import { getStageNameByStageId } from '@/constants/stages';
 import { CANDIDATE_STATUS_CONFIG } from '@/constants/candidates';
 import { cn } from '@/components/ui/utils';
-import type { Candidate } from '@/types/candidates';
+import type { Candidate, CandidateStatus } from '@/types/candidates';
 
 type StatusConfig = {
   label: string;
@@ -31,6 +32,22 @@ interface CandidatesTableProps {
   isSomeSelected: boolean;
   getStageName: (stageId: string | null) => string;
   getStatusConfig: (status: string) => StatusConfig;
+  // ─── 컬럼 필터(엑셀 스타일) ─────────────────────────────────
+  candidateQuery: string;
+  onCandidateQueryChange: (value: string) => void;
+  positionQuery: string;
+  onPositionQueryChange: (value: string) => void;
+  stageColumnFilter: string;
+  onStageColumnFilterChange: (value: string) => void;
+  aiMatchBucket: 'all' | '0' | '1_57' | '58_87' | '88_100';
+  onAiMatchBucketChange: (value: 'all' | '0' | '1_57' | '58_87' | '88_100') => void;
+  appliedFrom: string;
+  onAppliedFromChange: (value: string) => void;
+  appliedTo: string;
+  onAppliedToChange: (value: string) => void;
+  statusColumnFilter: CandidateStatus | 'all';
+  onStatusColumnFilterChange: (value: CandidateStatus | 'all') => void;
+  onResetColumnFilters: () => void;
   onRowClick: (candidateId: string) => void;
   onToggleSelect: (candidateId: string, e?: React.MouseEvent) => void;
   onToggleSelectAll: () => void;
@@ -48,12 +65,35 @@ export function CandidatesTable({
   isSomeSelected,
   getStageName,
   getStatusConfig,
+  candidateQuery,
+  onCandidateQueryChange,
+  positionQuery,
+  onPositionQueryChange,
+  stageColumnFilter,
+  onStageColumnFilterChange,
+  aiMatchBucket,
+  onAiMatchBucketChange,
+  appliedFrom,
+  onAppliedFromChange,
+  appliedTo,
+  onAppliedToChange,
+  statusColumnFilter,
+  onStatusColumnFilterChange,
+  onResetColumnFilters,
   onRowClick,
   onToggleSelect,
   onToggleSelectAll,
   onArchiveClick,
   onConfirmHire,
 }: CandidatesTableProps) {
+  const statusOptions: Array<{ value: CandidateStatus; label: string }> = [
+    { value: 'pending', label: CANDIDATE_STATUS_CONFIG.pending?.label ?? 'Pending' },
+    { value: 'in_progress', label: CANDIDATE_STATUS_CONFIG.in_progress?.label ?? 'In progress' },
+    { value: 'confirmed', label: CANDIDATE_STATUS_CONFIG.confirmed?.label ?? 'Confirmed' },
+    { value: 'rejected', label: CANDIDATE_STATUS_CONFIG.rejected?.label ?? 'Rejected' },
+    { value: 'issue', label: CANDIDATE_STATUS_CONFIG.issue?.label ?? 'Issue' },
+  ];
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left border-collapse">
@@ -88,6 +128,105 @@ export function CandidatesTable({
               Status
             </th>
             <th className="px-4 py-3 w-16"></th>
+          </tr>
+
+          {/* 엑셀처럼: 헤더 아래 필터 행 */}
+          <tr className="border-b border-neutral-100 bg-[#FCFCFC]">
+            <th className="w-12 px-5 py-2"></th>
+            <th className="px-4 py-2">
+              <input
+                value={candidateQuery}
+                onChange={(e) => onCandidateQueryChange(e.target.value)}
+                placeholder="이름/이메일"
+                className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+              />
+            </th>
+            <th className="px-4 py-2">
+              <input
+                value={positionQuery}
+                onChange={(e) => onPositionQueryChange(e.target.value)}
+                placeholder="포지션"
+                className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+              />
+            </th>
+            {selectedStage === 'all' && (
+              <th className="px-4 py-2">
+                <select
+                  value={stageColumnFilter}
+                  onChange={(e) => onStageColumnFilterChange(e.target.value)}
+                  className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+                >
+                  <option value="all">전체</option>
+                  {RECRUITMENT_STAGES.filter((s) => s.id !== 'all').map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </th>
+            )}
+            <th className="px-4 py-2">
+              <select
+                value={aiMatchBucket}
+                onChange={(e) =>
+                  onAiMatchBucketChange(
+                    e.target.value as 'all' | '0' | '1_57' | '58_87' | '88_100',
+                  )
+                }
+                className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+              >
+                <option value="all">전체</option>
+                <option value="0">0</option>
+                <option value="1_57">1~57</option>
+                <option value="58_87">58~87</option>
+                <option value="88_100">88~100</option>
+              </select>
+            </th>
+            <th className="px-4 py-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={appliedFrom}
+                  onChange={(e) => onAppliedFromChange(e.target.value)}
+                  className="h-9 px-2 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+                />
+                <span className="text-xs text-neutral-400">~</span>
+                <input
+                  type="date"
+                  value={appliedTo}
+                  onChange={(e) => onAppliedToChange(e.target.value)}
+                  className="h-9 px-2 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+                />
+              </div>
+            </th>
+            <th className="px-4 py-2">
+              <select
+                value={statusColumnFilter}
+                onChange={(e) =>
+                  onStatusColumnFilterChange(
+                    e.target.value as CandidateStatus | 'all',
+                  )
+                }
+                className="w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
+              >
+                <option value="all">전체</option>
+                {statusOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </th>
+            <th className="px-4 py-2 text-right">
+              <button
+                type="button"
+                onClick={onResetColumnFilters}
+                className="h-9 px-3 text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+                title="Reset filters"
+              >
+                Reset
+              </button>
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100/60">
