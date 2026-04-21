@@ -428,6 +428,11 @@ export async function rejectCandidate(candidateId: string, stageId: string, reas
       .from('candidates')
       .update({
         status: 'rejected',
+        // 불합격 처리 시 자동 아카이브로 전환합니다.
+        // - Active 탭에서는 archived=false만 노출되므로, rejected는 Archived로 이동시키는 정책을 따릅니다.
+        archived: true,
+        // 이미 사유가 있으면 덮어쓰지 않습니다(데이터 손실 방지).
+        archive_reason: (candidate as any)?.archive_reason ?? 'rejected',
       })
       .eq('id', candidateId)
       .select()

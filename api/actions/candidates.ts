@@ -223,6 +223,14 @@ export async function updateCandidateStatus(
       updateData.current_stage_id = validateUUID(stageId, '단계 ID');
     }
 
+    // 불합격(rejected) 처리 시 자동 아카이브로 전환합니다.
+    // - Active 탭에서는 archived=false만 노출되므로, rejected는 Archived로 이동시키는 정책을 따릅니다.
+    // - 이미 아카이브 사유가 있는 경우 덮어쓰지 않습니다(데이터 손실 방지).
+    if (status === 'rejected') {
+      updateData.archived = true;
+      updateData.archive_reason = candidate.archive_reason ?? 'rejected';
+    }
+
     const { data, error } = await supabase
       .from('candidates')
       .update(updateData)

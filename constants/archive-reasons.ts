@@ -3,6 +3,11 @@
  * 후보자를 아카이브할 때 선택할 수 있는 사유 목록
  */
 export const ARCHIVE_REASONS = [
+  {
+    id: 'rejected',
+    label: 'Rejected',
+    description: '불합격 처리됨',
+  },
   { 
     id: 'position_filled', 
     label: 'Position Filled', 

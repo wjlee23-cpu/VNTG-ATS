@@ -318,6 +318,8 @@ export async function verifyCandidateAccess(candidateId: string) {
       id,
       job_post_id,
       status,
+      archived,
+      archive_reason,
       ai_analysis_status,
       current_stage_id,
       job_posts!inner(organization_id)
