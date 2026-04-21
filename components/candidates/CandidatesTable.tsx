@@ -9,6 +9,7 @@ import { getStageNameByStageId } from '@/constants/stages';
 import { cn } from '@/components/ui/utils';
 import type { Candidate } from '@/types/candidates';
 import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
+import { formatExperienceFromCandidateLike } from '@/utils/experience-format';
 
 interface CandidatesTableProps {
   candidates: Candidate[];
@@ -60,10 +61,10 @@ export function CandidatesTable({
               Position
             </th>
             <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-              Exp. (경력)
+              EXP.
             </th>
             <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider min-w-[280px]">
-              전형 진행 현황 (Pipeline)
+              PIPELINE
             </th>
             <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
               AI Match
@@ -192,13 +193,7 @@ function CandidatesTableRow({
       </td>
       <td className="px-4 py-3">
         <p className="text-sm font-semibold text-neutral-600">
-          {candidate.experience ||
-            candidate.parsed_data?.experience ||
-            (parseInt(candidate.id.replace(/[^0-9]/g, '').slice(-1) || '0', 10) % 3 === 0
-              ? '신입'
-              : parseInt(candidate.id.replace(/[^0-9]/g, '').slice(-1) || '1', 10) % 3 === 1
-                ? '3년'
-                : '5년')}
+          {formatExperienceFromCandidateLike(candidate)}
         </p>
       </td>
       <td className="px-4 py-3">

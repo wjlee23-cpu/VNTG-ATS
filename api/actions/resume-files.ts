@@ -20,9 +20,10 @@ export async function uploadResumeFile(candidateId: string, formData: FormData) 
     // 후보자 접근 권한 확인
     await verifyCandidateAccess(candidateId);
     
-    const user = await getCurrentUser();
-    const isAdmin = user.role === 'admin';
-    const supabase = isAdmin ? createServiceClient() : await createClient();
+    // ✅ Storage 업로드/DB insert/AI 트리거까지 한 흐름으로 이어지도록 Service Role을 사용합니다.
+    // - 권한은 requireRecruiterOrAdmin + verifyCandidateAccess로 보장합니다.
+    // - 배포 환경 RLS/정책 차이로 인해 resume_files가 “보이는데도 안 보이는” 문제를 차단합니다.
+    const supabase = createServiceClient();
 
     const file = formData.get('file') as File;
     if (!file) {
@@ -57,12 +58,7 @@ export async function uploadResumeFile(candidateId: string, formData: FormData) 
     const fileName = `${candidateId}/${Date.now()}-${sanitizedName}.${fileExtension}`;
     const filePath = fileName; // bucket 이름 제거 (resumes/ 제거)
 
-    // 현재 사용자 확인 (디버깅용)
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[uploadResumeFile] Auth user:', authUser?.id);
-      console.log('[uploadResumeFile] User role:', user.role);
-    }
+    // 참고: Service Role Client는 세션 기반 사용자 정보를 가지지 않습니다.
 
     // Supabase Storage에 파일 업로드
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -94,7 +90,7 @@ export async function uploadResumeFile(candidateId: string, formData: FormData) 
     // resume_files 테이블에 메타데이터 저장
     // 원본 파일명을 저장하여 UI에서 한글 파일명을 표시할 수 있도록 함
     // original_name 컬럼이 없을 수 있으므로, 먼저 시도하고 실패하면 없이 재시도
-    let insertData: any = {
+    let insertData: Record<string, unknown> = {
       candidate_id: validateUUID(candidateId, '후보자 ID'),
       file_url: fileUrl,
       file_type: fileExtension,

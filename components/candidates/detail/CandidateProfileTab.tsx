@@ -16,6 +16,7 @@ import {
 import type { Candidate } from '@/types/candidates';
 import type { ResumeFile } from '@/types/candidate-detail';
 import { ResumeInlinePreview } from './ResumeInlinePreview';
+import { formatExperienceFromCandidateLike } from '@/utils/experience-format';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,10 +36,7 @@ interface CandidateProfileTabProps {
 }
 
 function totalExperienceLabel(c: Candidate): string {
-  if (c.experience && String(c.experience).trim()) return String(c.experience).trim();
-  const fromParsed = c.parsed_data?.experience;
-  if (fromParsed && String(fromParsed).trim()) return String(fromParsed).trim();
-  return '—';
+  return formatExperienceFromCandidateLike(c);
 }
 
 function birthLabel(c: Candidate): string {

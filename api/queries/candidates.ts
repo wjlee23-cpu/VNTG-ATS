@@ -53,6 +53,8 @@ export async function getCandidates(jobPostId?: string) {
         current_stage_id,
         job_post_id,
         ai_score,
+        total_experience_months,
+        experience,
         parsed_data,
         created_at,
         job_posts (

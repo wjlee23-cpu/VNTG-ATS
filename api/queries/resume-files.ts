@@ -72,11 +72,9 @@ export async function getResumeFilesByCandidate(candidateId: string) {
   return withErrorHandling(async () => {
     // 접근 권한 확인
     await verifyCandidateAccess(candidateId);
-    const user = await getCurrentUser();
-    const isAdmin = user.role === 'admin';
-    
-    // 관리자일 경우 Service Role Client를 사용하여 RLS 정책 우회하여 모든 데이터 조회
-    const supabase = isAdmin ? createServiceClient() : await createClient();
+    // ✅ 목록/상세에서 “이력서가 있음에도 없다로 보이는” 문제를 막기 위해,
+    //    읽기는 Service Role로 일관화하고 권한은 verifyCandidateAccess로 제한합니다.
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from('resume_files')

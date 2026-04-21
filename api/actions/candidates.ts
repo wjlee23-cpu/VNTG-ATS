@@ -417,7 +417,10 @@ export async function triggerAIAnalysis(candidateId: string) {
     
     // 후보자 접근 권한 확인
     const candidate = await verifyCandidateAccess(candidateId);
-    const supabase = await createClient();
+    // ✅ resume_files 존재 여부 확인은 Service Role로 수행합니다.
+    // - 권한은 verifyCandidateAccess()에서 이미 검증했으므로 안전합니다.
+    // - RLS/정책 차이로 인해 “이력서를 올렸는데도 0개로 보이는” 케이스를 차단합니다.
+    const supabase = createServiceClient();
 
     console.log('[triggerAIAnalysis] 후보자 정보:', {
       candidateId: candidate.id,
