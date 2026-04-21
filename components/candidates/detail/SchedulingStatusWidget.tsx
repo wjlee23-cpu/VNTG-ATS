@@ -13,6 +13,23 @@ type StageLike = {
   order?: number | null;
 };
 
+type FixedPipelineStep = {
+  stageId: string;
+  label: string;
+};
+
+// Candidates 화면의 `CandidatePipeline`과 동일한 전체 채용 프로세스 단계(고정 8단계)
+const FIXED_PIPELINE_STEPS: FixedPipelineStep[] = [
+  { stageId: 'stage-1', label: '신규' },
+  { stageId: 'stage-2', label: '서류' },
+  { stageId: 'stage-3', label: '역량' },
+  { stageId: 'stage-4', label: '기술' },
+  { stageId: 'stage-5', label: '1차' },
+  { stageId: 'stage-6', label: '레퍼' },
+  { stageId: 'stage-7', label: '2차' },
+  { stageId: 'stage-8', label: '오퍼' },
+];
+
 export type SchedulingWorkflowStatus =
   | 'pending_interviewers'
   | 'pending_candidate'
@@ -34,24 +51,13 @@ interface SchedulingStatusWidgetProps {
   // 후보자의 현재 전형(파이프라인의 검은 점 위치)
   currentStageId: string;
   currentStageName: string;
-  // 공고의 전형 단계 목록(점 개수/순서)
+  // (레거시) 공고의 전형 단계 목록: 이제는 고정 파이프라인을 쓰지만, 외부 호출 호환을 위해 유지합니다.
   stages?: StageLike[] | null;
   // 액션 제어
   canManageCandidate: boolean;
   onCheckSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   scheduleActionLoadingId?: string | null;
-}
-
-function normalizeStages(stages?: StageLike[] | null): StageLike[] {
-  const list = Array.isArray(stages) ? stages.filter((s) => s && s.id) : [];
-  if (list.length === 0) return [{ id: '__fallback_stage__', name: '현재 단계' }];
-
-  const hasOrder = list.some((s) => typeof s.order === 'number');
-  const sorted = hasOrder
-    ? [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    : [...list];
-  return sorted;
 }
 
 function getActiveStepKey(
@@ -88,25 +94,23 @@ function getActiveStepCopy(
 }
 
 function MiniPipeline({
-  stages,
   currentStageId,
 }: {
-  stages: StageLike[];
   currentStageId: string;
 }) {
-  // 공통 영역: 점/선을 stages 길이에 맞춰 렌더링합니다.
-  const list = normalizeStages(stages);
-  const currentIndex = list.findIndex((s) => s.id === currentStageId);
+  // ✅ 공통 영역: Candidates의 Pipeline과 동일한 전체 단계를 고정으로 렌더링합니다.
+  const list = FIXED_PIPELINE_STEPS;
+  const currentIndex = list.findIndex((s) => s.stageId === currentStageId);
   const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
 
   return (
     <div className="flex items-center w-full mb-3 px-1">
-      {list.map((stage, idx) => {
+      {list.map((step, idx) => {
         const isCurrent = idx === safeCurrentIndex;
         const isDone = idx < safeCurrentIndex;
 
         return (
-          <span key={stage.id} className="contents">
+          <span key={step.stageId} className="contents">
             <span
               className={[
                 isCurrent
@@ -116,6 +120,8 @@ function MiniPipeline({
                     : 'w-1.5 h-1.5 rounded-full bg-neutral-200',
               ].join(' ')}
               aria-hidden="true"
+              // ✅ UX: 각 단계에 마우스를 올리면 단계명이 보이게 합니다.
+              title={step.label}
             />
             {idx < list.length - 1 && (
               <span
@@ -165,7 +171,7 @@ export function SchedulingStatusWidget({
       <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm flex-1 flex flex-col relative overflow-hidden group">
         {/* 공통: 미니 파이프라인 + 현재 전형 */}
         <div className="mb-4">
-          <MiniPipeline stages={stages ?? []} currentStageId={currentStageId} />
+          <MiniPipeline currentStageId={currentStageId} />
           <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">
             현재 전형 단계
           </p>

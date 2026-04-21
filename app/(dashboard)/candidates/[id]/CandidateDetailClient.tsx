@@ -598,6 +598,11 @@ export function CandidateDetailClient({
           window.sessionStorage.setItem(getDetailTabStorageKey(), 'timeline');
         }
         setViewMode('detail');
+        // ✅ 자동화 시작 직후에도 좌측 사이드바(일정 조율 현황)가 즉시 갱신되도록
+        //    스케줄 목록을 서버에서 재조회해 로컬 상태에 반영합니다.
+        //    (타임라인만 새로고침하면 schedulesState가 stale이라 "등록된 일정이 없습니다"가 유지될 수 있음)
+        await applySchedulesFromServer(candidate.id);
+        router.refresh();
         refreshCandidateData().catch(() => {});
         refreshTimelineEvents().catch(() => {});
       }

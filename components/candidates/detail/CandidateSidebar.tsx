@@ -223,15 +223,6 @@ export function CandidateSidebar({
           scheduleActionLoadingId={scheduleActionLoadingId}
         />
       </div>
-
-      {/* 현재 상태 표시 */}
-      <div className="px-3 py-3 rounded-md bg-neutral-100/50 border border-neutral-200/50 flex items-start gap-2">
-        <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></div>
-        <div>
-          <p className="text-xs font-semibold text-neutral-700">현재 상태</p>
-          <p className="text-xs text-neutral-500 mt-0.5">{currentStageName}</p>
-        </div>
-      </div>
     </div>
   );
 }
