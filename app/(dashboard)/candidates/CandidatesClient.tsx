@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getStageNameByStageId, getStageNameById } from "@/constants/stages";
 import { CANDIDATE_STATUS_CONFIG } from "@/constants/candidates";
@@ -30,6 +30,8 @@ import { BulkActionBar } from "@/components/candidates/BulkActionBar";
 import { CandidatesTable } from "@/components/candidates/CandidatesTable";
 import { CandidatesEmptyState } from "@/components/candidates/CandidatesEmptyState";
 import { CandidatesTableLoading } from "@/components/candidates/CandidatesTableLoading";
+import { Search, ChevronDown, RotateCcw } from "lucide-react";
+import { cn } from "@/components/ui/utils";
 
 // ─── Props ─────────────────────────────────────────────────────
 interface CandidatesClientProps {
@@ -71,6 +73,17 @@ export function CandidatesClient({
   >("active");
   const [selectedArchiveReason, setSelectedArchiveReason] =
     useState<string>("all");
+
+  // Smart Filter Bar 상태 (포지션/경력/접수일)
+  const [positionFilter, setPositionFilter] = useState<string>("all");
+  const [experienceFilter, setExperienceFilter] = useState<string>("all");
+  const [appliedFrom, setAppliedFrom] = useState<string>("");
+  const [appliedTo, setAppliedTo] = useState<string>("");
+
+  const [openFilter, setOpenFilter] = useState<
+    null | "position" | "experience" | "applied"
+  >(null);
+  const filterBarRef = useRef<HTMLDivElement | null>(null);
 
   // 상세 패널(모달) 상태
   const [candidateDetail, setCandidateDetail] = useState<Candidate | null>(
@@ -144,7 +157,19 @@ export function CandidatesClient({
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [selectedStage, searchQuery]);
+  }, [selectedStage, searchQuery, positionFilter, experienceFilter, appliedFrom, appliedTo]);
+
+  // Smart Filter Bar: 바깥 클릭 시 드롭다운 닫기
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (!filterBarRef.current) return;
+      if (!filterBarRef.current.contains(e.target as Node)) {
+        setOpenFilter(null);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
 
   const loadArchivedCandidates = async () => {
     setIsLoadingArchived(true);
@@ -281,6 +306,24 @@ export function CandidatesClient({
         ? confirmedCandidates
         : initialCandidates;
 
+  const positionOptions = useMemo(() => {
+    const titles = new Set<string>();
+    for (const c of candidatesToFilter) {
+      const title = c.job_posts?.title?.trim();
+      if (title) titles.add(title);
+    }
+    return Array.from(titles).sort((a, b) => a.localeCompare(b));
+  }, [candidatesToFilter]);
+
+  const experienceOptions = useMemo(() => {
+    const values = new Set<string>();
+    for (const c of candidatesToFilter) {
+      const exp = (c.experience || c.parsed_data?.experience || "").trim();
+      if (exp) values.add(exp);
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [candidatesToFilter]);
+
   const filteredCandidates = candidatesToFilter.filter((candidate) => {
     if (archiveFilter === "archived" && selectedArchiveReason !== "all") {
       if ((candidate as CandidateWithArchiveReason).archive_reason !== selectedArchiveReason)
@@ -307,6 +350,40 @@ export function CandidatesClient({
       )
     );
   });
+
+  const smartFilteredCandidates = useMemo(() => {
+    return filteredCandidates.filter((candidate) => {
+    // 포지션 필터
+    if (positionFilter !== "all") {
+      const title = candidate.job_posts?.title || "";
+      if (title !== positionFilter) return false;
+    }
+
+    // 경력 필터
+    if (experienceFilter !== "all") {
+      const exp = candidate.experience || candidate.parsed_data?.experience || "";
+      if (!exp) return false;
+      if (exp !== experienceFilter) return false;
+    }
+
+    // 접수일 필터 (from/to)
+    if (appliedFrom || appliedTo) {
+      const createdAt = new Date(candidate.created_at);
+      if (Number.isNaN(createdAt.getTime())) return false;
+
+      if (appliedFrom) {
+        const from = new Date(`${appliedFrom}T00:00:00`);
+        if (createdAt < from) return false;
+      }
+      if (appliedTo) {
+        const to = new Date(`${appliedTo}T23:59:59`);
+        if (createdAt > to) return false;
+      }
+    }
+
+    return true;
+    });
+  }, [filteredCandidates, positionFilter, experienceFilter, appliedFrom, appliedTo]);
 
   const getStatusConfig = useCallback((status: string) => {
     return (
@@ -365,21 +442,21 @@ export function CandidatesClient({
   );
 
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === filteredCandidates.length) {
+    if (selectedIds.size === smartFilteredCandidates.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredCandidates.map((c) => c.id)));
+      setSelectedIds(new Set(smartFilteredCandidates.map((c) => c.id)));
     }
-  }, [selectedIds.size, filteredCandidates]);
+  }, [selectedIds.size, smartFilteredCandidates]);
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  const selectedCandidates = filteredCandidates.filter((c) =>
+  const selectedCandidates = smartFilteredCandidates.filter((c) =>
     selectedIds.has(c.id),
   );
   const isAllSelected =
-    filteredCandidates.length > 0 &&
-    selectedIds.size === filteredCandidates.length;
+    smartFilteredCandidates.length > 0 &&
+    selectedIds.size === smartFilteredCandidates.length;
   const isSomeSelected = selectedIds.size > 0;
 
   const handleBulkArchive = async () => {
@@ -505,12 +582,13 @@ export function CandidatesClient({
   const showLoading =
     (isLoadingArchived && archiveFilter === "archived") ||
     (isLoadingConfirmed && archiveFilter === "confirmed");
-  const showEmpty = filteredCandidates.length === 0;
+  const showEmpty = smartFilteredCandidates.length === 0;
   const showTable = !showLoading && !showEmpty;
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+    <div className="min-h-screen bg-[#F7F7F8] p-6">
+      <div className="bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden flex flex-col">
+        <div className="p-8">
         <CandidatesHeader
           archiveFilter={archiveFilter}
           onArchiveFilterChange={setArchiveFilter}
@@ -551,22 +629,219 @@ export function CandidatesClient({
             onBulkArchive={() => setBulkArchiveModalOpen(true)}
           />
         )}
+        </div>
+
+        {/* Smart Filter Bar (Stage 탭 아래 / 테이블 위) */}
+        {archiveFilter === "active" && (
+          <div
+            ref={filterBarRef}
+            className="px-6 py-3 bg-[#FCFCFC] border-b border-neutral-100 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <div className="relative w-64">
+                <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="이름, 이메일 검색..."
+                  className="w-full pl-9 pr-3 py-1.5 text-sm bg-white border border-neutral-200 rounded-md focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 outline-none transition-all placeholder:text-neutral-400"
+                />
+              </div>
+
+              <div className="w-px h-5 bg-neutral-200 mx-2" />
+
+              {/* 포지션 필터 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenFilter((prev) => (prev === "position" ? null : "position"))
+                  }
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-white border border-neutral-200 rounded-md text-neutral-600 hover:bg-neutral-50 shadow-sm transition-colors"
+                >
+                  포지션 <ChevronDown className="w-3 h-3" />
+                </button>
+                {openFilter === "position" && (
+                  <div className="absolute z-50 mt-2 w-60 rounded-lg border border-neutral-200 bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.12)] p-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPositionFilter("all");
+                        setOpenFilter(null);
+                      }}
+                      className={cn(
+                        "w-full text-left px-2 py-2 rounded-md text-sm hover:bg-neutral-50",
+                        positionFilter === "all" && "bg-neutral-100/60 font-semibold",
+                      )}
+                    >
+                      전체
+                    </button>
+                    <div className="max-h-64 overflow-auto">
+                      {positionOptions.map((title) => (
+                        <button
+                          key={title}
+                          type="button"
+                          onClick={() => {
+                            setPositionFilter(title);
+                            setOpenFilter(null);
+                          }}
+                          className={cn(
+                            "w-full text-left px-2 py-2 rounded-md text-sm hover:bg-neutral-50",
+                            positionFilter === title && "bg-neutral-100/60 font-semibold",
+                          )}
+                        >
+                          {title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 경력 필터 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenFilter((prev) => (prev === "experience" ? null : "experience"))
+                  }
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-white border border-neutral-200 rounded-md text-neutral-600 hover:bg-neutral-50 shadow-sm transition-colors"
+                >
+                  경력 <ChevronDown className="w-3 h-3" />
+                </button>
+                {openFilter === "experience" && (
+                  <div className="absolute z-50 mt-2 w-56 rounded-lg border border-neutral-200 bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.12)] p-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExperienceFilter("all");
+                        setOpenFilter(null);
+                      }}
+                      className={cn(
+                        "w-full text-left px-2 py-2 rounded-md text-sm hover:bg-neutral-50",
+                        experienceFilter === "all" && "bg-neutral-100/60 font-semibold",
+                      )}
+                    >
+                      전체
+                    </button>
+                    <div className="max-h-64 overflow-auto">
+                      {experienceOptions.map((exp) => (
+                        <button
+                          key={exp}
+                          type="button"
+                          onClick={() => {
+                            setExperienceFilter(exp);
+                            setOpenFilter(null);
+                          }}
+                          className={cn(
+                            "w-full text-left px-2 py-2 rounded-md text-sm hover:bg-neutral-50",
+                            experienceFilter === exp && "bg-neutral-100/60 font-semibold",
+                          )}
+                        >
+                          {exp}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 접수일 필터 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenFilter((prev) => (prev === "applied" ? null : "applied"))
+                  }
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-white border border-neutral-200 rounded-md text-neutral-600 hover:bg-neutral-50 shadow-sm transition-colors"
+                >
+                  접수일 <ChevronDown className="w-3 h-3" />
+                </button>
+                {openFilter === "applied" && (
+                  <div className="absolute z-50 mt-2 w-72 rounded-lg border border-neutral-200 bg-white shadow-[0_24px_60px_-15px_rgba(0,0,0,0.12)] p-3">
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                            From
+                          </p>
+                          <input
+                            type="date"
+                            value={appliedFrom}
+                            onChange={(e) => setAppliedFrom(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-neutral-200 rounded-md focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                            To
+                          </p>
+                          <input
+                            type="date"
+                            value={appliedTo}
+                            onChange={(e) => setAppliedTo(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm bg-white border border-neutral-200 rounded-md focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppliedFrom("");
+                            setAppliedTo("");
+                            setOpenFilter(null);
+                          }}
+                          className="text-xs font-semibold text-neutral-500 hover:text-neutral-900"
+                        >
+                          초기화
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOpenFilter(null)}
+                          className="px-2.5 py-1.5 text-xs font-semibold bg-neutral-900 text-white rounded-md hover:bg-neutral-800 active:scale-[0.98] transition-all"
+                        >
+                          적용
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setPositionFilter("all");
+                setExperienceFilter("all");
+                setAppliedFrom("");
+                setAppliedTo("");
+                setOpenFilter(null);
+              }}
+              className="text-xs font-semibold text-neutral-400 hover:text-neutral-900 flex items-center gap-1 transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" /> 필터 초기화
+            </button>
+          </div>
+        )}
 
         {showLoading && <CandidatesTableLoading />}
-        {!showLoading && showEmpty && (
+        {!showLoading && smartFilteredCandidates.length === 0 && (
           <CandidatesEmptyState hasSearchQuery={!!searchQuery} />
         )}
-        {showTable && (
+        {!showLoading && smartFilteredCandidates.length > 0 && (
           <>
             <CandidatesTable
-              candidates={filteredCandidates}
+              candidates={smartFilteredCandidates}
               selectedStage={selectedStage}
               selectedCandidateId={selectedCandidateId}
               selectedIds={selectedIds}
               isAllSelected={isAllSelected}
               isSomeSelected={isSomeSelected}
               getStageName={getStageName}
-              getStatusConfig={getStatusConfig}
               onRowClick={handleCandidateClick}
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
@@ -577,7 +852,7 @@ export function CandidatesClient({
               onConfirmHire={handleConfirmHire}
             />
             <div className="mt-4 text-sm text-slate-600">
-              총 {filteredCandidates.length}명의 후보자
+              총 {smartFilteredCandidates.length}명의 후보자
             </div>
           </>
         )}

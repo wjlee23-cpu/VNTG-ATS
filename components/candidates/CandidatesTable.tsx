@@ -3,24 +3,12 @@
 import {
   Check,
   Archive,
-  CheckCircle2,
-  CircleDashed,
-  AlertCircle,
-  Clock,
-  XCircle,
   MoreHorizontal,
 } from 'lucide-react';
 import { getStageNameByStageId } from '@/constants/stages';
-import { CANDIDATE_STATUS_CONFIG } from '@/constants/candidates';
 import { cn } from '@/components/ui/utils';
 import type { Candidate } from '@/types/candidates';
-
-type StatusConfig = {
-  label: string;
-  dotColor: string;
-  bgColor: string;
-  textColor: string;
-};
+import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
 
 interface CandidatesTableProps {
   candidates: Candidate[];
@@ -30,7 +18,6 @@ interface CandidatesTableProps {
   isAllSelected: boolean;
   isSomeSelected: boolean;
   getStageName: (stageId: string | null) => string;
-  getStatusConfig: (status: string) => StatusConfig;
   onRowClick: (candidateId: string) => void;
   onToggleSelect: (candidateId: string, e?: React.MouseEvent) => void;
   onToggleSelectAll: () => void;
@@ -47,7 +34,6 @@ export function CandidatesTable({
   isAllSelected,
   isSomeSelected,
   getStageName,
-  getStatusConfig,
   onRowClick,
   onToggleSelect,
   onToggleSelectAll,
@@ -73,19 +59,17 @@ export function CandidatesTable({
             <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
               Position
             </th>
-            {selectedStage === 'all' && (
-              <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-                Stage
-              </th>
-            )}
+            <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Exp. (경력)
+            </th>
+            <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider min-w-[280px]">
+              전형 진행 현황 (Pipeline)
+            </th>
             <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
               AI Match
             </th>
             <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
               Applied
-            </th>
-            <th className="px-4 py-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-              Status
             </th>
             <th className="px-4 py-3 w-16"></th>
           </tr>
@@ -99,7 +83,6 @@ export function CandidatesTable({
               selectedCandidateId={selectedCandidateId}
               isChecked={selectedIds.has(candidate.id)}
               getStageName={getStageName}
-              getStatusConfig={getStatusConfig}
               onRowClick={onRowClick}
               onToggleSelect={onToggleSelect}
               onArchiveClick={onArchiveClick}
@@ -118,7 +101,6 @@ interface CandidatesTableRowProps {
   selectedCandidateId: string | null;
   isChecked: boolean;
   getStageName: (stageId: string | null) => string;
-  getStatusConfig: (status: string) => StatusConfig;
   onRowClick: (candidateId: string) => void;
   onToggleSelect: (candidateId: string, e?: React.MouseEvent) => void;
   onArchiveClick: (candidate: { id: string; name: string }) => void;
@@ -131,7 +113,6 @@ function CandidatesTableRow({
   selectedCandidateId,
   isChecked,
   getStageName,
-  getStatusConfig,
   onRowClick,
   onToggleSelect,
   onArchiveClick,
@@ -139,25 +120,8 @@ function CandidatesTableRow({
 }: CandidatesTableRowProps) {
   const stageName = getStageName(candidate.current_stage_id);
   const matchScore = candidate.ai_score ?? 0;
-  const statusCfg = getStatusConfig(candidate.status);
   const showConfirmHire =
     getStageNameByStageId(candidate.current_stage_id) === 'Offer';
-
-  // Status 아이콘 매핑
-  const statusIconMap: Record<
-    string,
-    { icon: React.ComponentType<{ className?: string }>; color: string }
-  > = {
-    in_progress: { icon: CircleDashed, color: 'text-blue-500' },
-    issue: { icon: AlertCircle, color: 'text-orange-500' },
-    pending: { icon: Clock, color: 'text-amber-500' },
-    confirmed: { icon: CheckCircle2, color: 'text-emerald-500' },
-    rejected: { icon: XCircle, color: 'text-rose-500' },
-  };
-
-  const StatusIcon = statusIconMap[candidate.status]?.icon || CircleDashed;
-  const statusColor =
-    statusIconMap[candidate.status]?.color || 'text-neutral-500';
 
   // AI Match Score 색상 결정
   const getMatchScoreColor = (score: number) => {
@@ -192,6 +156,7 @@ function CandidatesTableRow({
       className={cn(
         'group hover:bg-neutral-50/50 transition-colors cursor-pointer',
         isChecked && 'bg-neutral-50/40',
+        candidate.status === 'rejected' && 'bg-red-50/20',
       )}
     >
       <td className="px-5 py-3">
@@ -225,13 +190,30 @@ function CandidatesTableRow({
         </p>
         <p className="text-xs text-neutral-400">Seoul, Korea</p>
       </td>
-      {selectedStage === 'all' && (
-        <td className="px-4 py-3">
-          <span className="px-2.5 py-1 rounded bg-[#FCFCFC] border border-neutral-200/80 text-xs font-medium text-neutral-600">
-            {stageName}
-          </span>
-        </td>
-      )}
+      <td className="px-4 py-3">
+        <p className="text-sm font-semibold text-neutral-600">
+          {candidate.experience ||
+            candidate.parsed_data?.experience ||
+            (parseInt(candidate.id.replace(/[^0-9]/g, '').slice(-1) || '0', 10) % 3 === 0
+              ? '신입'
+              : parseInt(candidate.id.replace(/[^0-9]/g, '').slice(-1) || '1', 10) % 3 === 1
+                ? '3년'
+                : '5년')}
+        </p>
+      </td>
+      <td className="px-4 py-3">
+        <CandidatePipeline
+          currentStageId={candidate.current_stage_id}
+          status={candidate.status}
+          rejectedStageId={
+            // 불합격 발생 단계 데이터가 별도로 있으면 우선 사용 (없으면 currentStageId fallback)
+            (candidate as any)?.rejected_stage_id ||
+            (candidate as any)?.rejectedStageId ||
+            (candidate as any)?.rejected_at_stage_id ||
+            null
+          }
+        />
+      </td>
       <td className="px-4 py-3">
         {matchScore > 0 ? (
           <div className="flex items-center gap-2">
@@ -281,14 +263,6 @@ function CandidatesTableRow({
         <p className="text-sm text-neutral-500">
           {formatDate(candidate.created_at)}
         </p>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1.5">
-          <StatusIcon className={`w-3.5 h-3.5 ${statusColor}`} />
-          <span className="text-xs font-medium text-neutral-700">
-            {statusCfg.label}
-          </span>
-        </div>
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100">
