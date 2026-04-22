@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Download, FileIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ResumeFile } from '@/types/candidate-detail';
+import { getFileName } from '@/lib/candidate-detail-utils';
+import { downloadUrlAsFile } from '@/lib/download-file';
 
 interface ResumeInlinePreviewProps {
   file: ResumeFile | null;
@@ -21,12 +24,12 @@ export function ResumeInlinePreview({
     setPdfLoadError(null);
   }, [file?.id]);
 
-  const handleDownload = (f: ResumeFile) => {
-    const fileName = f.original_name || f.file_url.split('/').pop() || 'document';
-    const link = document.createElement('a');
-    link.href = f.file_url;
-    link.download = fileName;
-    link.click();
+  const handleDownload = async (f: ResumeFile) => {
+    try {
+      await downloadUrlAsFile(f.file_url, getFileName(f));
+    } catch {
+      toast.error('파일을 다운로드할 수 없습니다.');
+    }
   };
 
   if (!file) {
@@ -85,7 +88,7 @@ export function ResumeInlinePreview({
       <p className="text-xs text-neutral-500 mb-6 text-center">파일을 다운로드하여 확인해주세요.</p>
       <button
         type="button"
-        onClick={() => handleDownload(file)}
+        onClick={() => void handleDownload(file)}
         className="px-4 py-2 bg-white border border-neutral-200 rounded text-sm font-medium text-neutral-600 hover:bg-neutral-50 transition-colors flex items-center gap-2"
       >
         <Download className="w-4 h-4" />

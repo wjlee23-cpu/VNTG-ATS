@@ -11,7 +11,14 @@ export function getFileName(file: ResumeFile | string): string {
   }
   const fileUrl = typeof file === 'string' ? file : file.file_url;
   const parts = fileUrl.split('/');
-  return parts[parts.length - 1] || 'document';
+  let last = parts[parts.length - 1] || 'document';
+  const q = last.indexOf('?');
+  if (q !== -1) last = last.slice(0, q);
+  try {
+    return decodeURIComponent(last) || 'document';
+  } catch {
+    return last || 'document';
+  }
 }
 
 /** 날짜 포맷 (예: 2024년 3월 16일) */

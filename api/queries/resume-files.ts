@@ -1,36 +1,10 @@
 'use server';
 
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { extractFilePathFromUrl } from '@/lib/resume-storage-path';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
-
-/**
- * file_url에서 Storage 경로 추출
- * @param fileUrl Supabase Storage URL
- * @returns Storage 경로 (예: "candidate-id/timestamp-filename.pdf")
- */
-function extractFilePathFromUrl(fileUrl: string): string | null {
-  try {
-    // Supabase Storage URL 형식:
-    // https://[project].supabase.co/storage/v1/object/public/resumes/[path]
-    // 또는
-    // https://[project].supabase.co/storage/v1/object/sign/resumes/[path]?token=...
-    const url = new URL(fileUrl);
-    const pathParts = url.pathname.split('/');
-    const resumesIndex = pathParts.indexOf('resumes');
-    
-    if (resumesIndex !== -1 && resumesIndex < pathParts.length - 1) {
-      // "resumes" 다음의 경로를 추출
-      return pathParts.slice(resumesIndex + 1).join('/');
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('[extractFilePathFromUrl] URL 파싱 실패:', error);
-    return null;
-  }
-}
 
 /**
  * 파일 경로에 대한 Signed URL 생성

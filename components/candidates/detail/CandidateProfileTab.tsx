@@ -12,7 +12,11 @@ import {
   ZoomOut,
   Link2,
   MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { getFileName } from '@/lib/candidate-detail-utils';
+import { downloadUrlAsFile } from '@/lib/download-file';
 import type { Candidate } from '@/types/candidates';
 import type { ResumeFile } from '@/types/candidate-detail';
 import { ResumeInlinePreview } from './ResumeInlinePreview';
@@ -32,7 +36,7 @@ interface CandidateProfileTabProps {
   /** 기본 정보 / 연봉 정보 각각의 수정 모달 열기 */
   onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
   onFileUpload?: () => void;
-  onFileSelect?: (file: ResumeFile) => void;
+  onFileDelete?: (fileId: string) => void;
 }
 
 function totalExperienceLabel(c: Candidate): string {
@@ -66,7 +70,7 @@ export function CandidateProfileTab({
   canViewCompensation,
   onOpenProfileSectionEdit,
   onFileUpload,
-  onFileSelect,
+  onFileDelete,
 }: CandidateProfileTabProps) {
   const [selectedFile, setSelectedFile] = useState<ResumeFile | null>(null);
   const [revealCurrentSalary, setRevealCurrentSalary] = useState(false);
@@ -74,10 +78,16 @@ export function CandidateProfileTab({
   const [zoomPercent, setZoomPercent] = useState(100);
 
   useEffect(() => {
-    if (resumeFiles.length > 0 && !selectedFile) {
-      setSelectedFile(resumeFiles[0]);
-    } else if (resumeFiles.length === 0) {
+    if (resumeFiles.length === 0) {
       setSelectedFile(null);
+      return;
+    }
+    if (!selectedFile) {
+      setSelectedFile(resumeFiles[0]);
+      return;
+    }
+    if (!resumeFiles.some((f) => f.id === selectedFile.id)) {
+      setSelectedFile(resumeFiles[0]);
     }
   }, [resumeFiles, selectedFile]);
 
@@ -85,12 +95,12 @@ export function CandidateProfileTab({
     candidate.ai_summary?.trim() ||
     'AI 요약이 아직 없습니다. 이력서를 업로드하고 분석을 실행하면 Gemini Quick Summary가 표시됩니다.';
 
-  const handleDownload = (file: ResumeFile) => {
-    const fileName = file.original_name || file.file_url.split('/').pop() || 'document';
-    const link = document.createElement('a');
-    link.href = file.file_url;
-    link.download = fileName;
-    link.click();
+  const handleDownload = async (file: ResumeFile) => {
+    try {
+      await downloadUrlAsFile(file.file_url, getFileName(file));
+    } catch {
+      toast.error('파일을 다운로드할 수 없습니다.');
+    }
   };
 
   const adjustZoom = (delta: number) => {
@@ -98,8 +108,7 @@ export function CandidateProfileTab({
   };
 
   const links = portfolioLinks(candidate);
-  const displayName =
-    selectedFile?.original_name || selectedFile?.file_url.split('/').pop() || '문서';
+  const displayName = selectedFile ? getFileName(selectedFile) : '문서';
 
   return (
     <div className="flex-1 flex flex-col bg-white relative min-h-0">
@@ -252,26 +261,40 @@ export function CandidateProfileTab({
           </h3>
           <div className="flex flex-wrap gap-2">
             {resumeFiles.map((file) => {
-              const fileName = file.original_name || file.file_url.split('/').pop() || 'document';
+              const fileName = getFileName(file);
               const active = selectedFile?.id === file.id;
               return (
-                <button
-                  key={file.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedFile(file);
-                    setZoomPercent(100);
-                    onFileSelect?.(file);
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FCFCFC] border rounded-lg text-xs font-medium transition-colors shadow-sm ${
-                    active
-                      ? 'border-neutral-900 text-neutral-900'
-                      : 'border-neutral-200 text-neutral-700 hover:border-neutral-300'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span className="truncate max-w-[220px]">{fileName}</span>
-                </button>
+                <div key={file.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFile(file);
+                      setZoomPercent(100);
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FCFCFC] border rounded-lg text-xs font-medium transition-colors shadow-sm ${
+                      active
+                        ? 'border-neutral-900 text-neutral-900'
+                        : 'border-neutral-200 text-neutral-700 hover:border-neutral-300'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span className="truncate max-w-[220px]">{fileName}</span>
+                  </button>
+                  {canManageCandidate && onFileDelete && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFileDelete(file.id);
+                      }}
+                      className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      title="파일 삭제"
+                      aria-label="파일 삭제"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               );
             })}
             {links.map((link) => (
@@ -331,7 +354,7 @@ export function CandidateProfileTab({
               {selectedFile && (
                 <button
                   type="button"
-                  onClick={() => handleDownload(selectedFile)}
+                  onClick={() => void handleDownload(selectedFile)}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-neutral-900 text-white rounded-md text-xs font-medium hover:bg-neutral-800 transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />

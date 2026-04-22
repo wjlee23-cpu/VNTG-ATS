@@ -25,8 +25,6 @@ import { EmailModal } from '@/components/candidates/EmailModal';
 import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateModal';
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
 import { CommentModal } from '@/components/candidates/CommentModal';
-import { DocumentPreviewModal } from '@/components/candidates/DocumentPreviewModal';
-import { getFileName } from '@/lib/candidate-detail-utils';
 import { CandidateDetailLayout } from '@/components/candidates/detail/CandidateDetailLayout';
 import { CandidateProfileEditDialog } from '@/components/candidates/detail/CandidateProfileEditDialog';
 import { CandidateScheduleForm } from '@/components/candidates/detail/CandidateScheduleForm';
@@ -55,9 +53,6 @@ export function CandidateDetailClient({
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
-  const [isDocumentPreviewOpen, setIsDocumentPreviewOpen] = useState(false);
-  const [selectedDocument, setSelectedDocument] = useState<ResumeFile | null>(null);
-  const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
   const [evaluations, setEvaluations] = useState<unknown[]>([]);
   const [resumeFiles, setResumeFiles] = useState<ResumeFile[]>([]);
   const [timelineEventsState, setTimelineEventsState] = useState<TimelineEvent[]>(timelineEvents);
@@ -336,10 +331,6 @@ export function CandidateDetailClient({
   useEffect(() => {
     if (viewMode === 'scheduling') loadUsers();
   }, [viewMode]);
-
-  useEffect(() => {
-    if (resumeFiles.length > 0 && !selectedDocument) setSelectedDocument(resumeFiles[0]);
-  }, [resumeFiles]);
 
   useEffect(() => {
     const shouldTrigger =
@@ -764,14 +755,6 @@ export function CandidateDetailClient({
     }
   };
 
-  const handleFileDownload = (file: ResumeFile) => {
-    const fileName = getFileName(file);
-    const link = document.createElement('a');
-    link.href = file.file_url;
-    link.download = fileName;
-    link.click();
-  };
-
   const handleFileDelete = async (fileId: string) => {
     if (!confirm('정말 이 파일을 삭제하시겠습니까?')) return;
     try {
@@ -982,11 +965,7 @@ export function CandidateDetailClient({
             };
             input.click();
           }}
-          onFileSelect={(file) => {
-            setSelectedDocument(file);
-            setPdfLoadError(null);
-            setIsDocumentPreviewOpen(true);
-          }}
+          onFileDelete={handleFileDelete}
         />
       ) : (
         <CandidateScheduleForm
@@ -1070,23 +1049,6 @@ export function CandidateDetailClient({
           }}
         />
       )}
-      <DocumentPreviewModal
-        file={
-          selectedDocument
-            ? {
-                id: selectedDocument.id,
-                file_url: selectedDocument.file_url,
-                file_type: selectedDocument.file_type,
-                original_name: selectedDocument.original_name,
-              }
-            : null
-        }
-        isOpen={isDocumentPreviewOpen}
-        onClose={() => {
-          setIsDocumentPreviewOpen(false);
-          setSelectedDocument(null);
-        }}
-      />
       <CandidateProfileEditDialog
         open={profileEditMode !== null}
         mode={profileEditMode}

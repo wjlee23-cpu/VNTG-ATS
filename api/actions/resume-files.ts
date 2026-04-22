@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { extractFilePathFromUrl } from '@/lib/resume-storage-path';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess, requireRecruiterOrAdmin } from '@/api/utils/auth';
 import { validateUUID } from '@/api/utils/validation';
@@ -218,21 +219,14 @@ export async function deleteResumeFile(fileId: string) {
     // 후보자 접근 권한 확인
     await verifyCandidateAccess(candidate.id);
 
-    // Storage에서 파일 경로 추출 (file_url에서)
-    const fileUrl = resumeFile.file_url;
-    // URL에서 파일 경로 추출 (예: https://xxx.supabase.co/storage/v1/object/public/resumes/xxx/xxx.pdf)
-    const urlParts = fileUrl.split('/resumes/');
-    const storagePath = urlParts.length > 1 ? `resumes/${urlParts[1]}` : null;
+    const fileUrl = resumeFile.file_url as string;
+    const objectPath = extractFilePathFromUrl(fileUrl);
 
-    // Storage에서 파일 삭제
-    if (storagePath) {
-      const { error: storageError } = await supabase.storage
-        .from('resumes')
-        .remove([storagePath]);
+    if (objectPath) {
+      const { error: storageError } = await supabase.storage.from('resumes').remove([objectPath]);
 
       if (storageError) {
         console.error('Storage 파일 삭제 실패:', storageError);
-        // Storage 삭제 실패해도 DB는 삭제 진행
       }
     }
 

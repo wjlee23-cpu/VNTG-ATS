@@ -59,7 +59,7 @@ interface CandidateDetailLayoutProps {
   canViewCompensation: boolean;
   onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
   onFileUpload?: () => void;
-  onFileSelect?: (file: ResumeFile) => void;
+  onFileDelete?: (fileId: string) => void;
   initialActiveTab?: TabType;
   activeTab?: TabType;
   onActiveTabChange?: (tab: TabType) => void;
@@ -98,7 +98,7 @@ export function CandidateDetailLayout({
   canViewCompensation,
   onOpenProfileSectionEdit,
   onFileUpload,
-  onFileSelect,
+  onFileDelete,
   initialActiveTab = 'profile',
   activeTab,
   onActiveTabChange,
@@ -169,7 +169,7 @@ export function CandidateDetailLayout({
             canViewCompensation={canViewCompensation}
             onOpenProfileSectionEdit={onOpenProfileSectionEdit}
             onFileUpload={onFileUpload}
-            onFileSelect={onFileSelect}
+            onFileDelete={onFileDelete}
           />
         )}
         {resolvedActiveTab === 'insight' && <CandidateInsightTab candidate={candidate} />}
