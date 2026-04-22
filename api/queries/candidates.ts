@@ -6,11 +6,11 @@ import { validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { getStageNameByStageId } from '@/constants/stages';
 import { formatInTimeZone } from 'date-fns-tz';
+import type { Candidate } from '@/types/candidates';
 
-type CandidateListRow = {
-  id: string;
-  job_posts?: unknown;
-  [key: string]: unknown;
+type CandidateListRow = Candidate & {
+  // Supabase join 결과가 배열로 내려오는 경우가 있어 정규화가 필요합니다.
+  job_posts?: Candidate['job_posts'] | Array<Candidate['job_posts']>;
 };
 
 type ConfirmedScheduleRow = {
@@ -93,13 +93,13 @@ export async function getCandidates(jobPostId?: string) {
 
     // ✅ Supabase join 결과가 job_posts를 배열로 내려주는 경우가 있어,
     // UI에서 항상 "단일 객체"로 다룰 수 있게 여기서 정규화합니다.
-    const normalized: CandidateListRow[] =
+    const normalized: Candidate[] =
       ((data || []) as CandidateListRow[]).map((row) => {
         const jp = row?.job_posts;
         return {
           ...row,
           job_posts: Array.isArray(jp) ? jp[0] : jp,
-        };
+        } as Candidate;
       }) || [];
 
     // ✅ 후보자 목록 파이프라인(확정 체크 노드/툴팁)용 confirmed 스케줄 매핑
