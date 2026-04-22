@@ -93,8 +93,10 @@ export async function getCandidates(jobPostId?: string) {
 
     // ✅ Supabase join 결과가 job_posts를 배열로 내려주는 경우가 있어,
     // UI에서 항상 "단일 객체"로 다룰 수 있게 여기서 정규화합니다.
+    // ✅ Supabase 반환 타입이 상황에 따라 더 넓게 추론되어, 직접 캐스팅이 빌드(TypeScript)에서 실패할 수 있습니다.
+    // 따라서 unknown을 한 번 거쳐 “정규화 로직” 기준으로 안전하게 단언합니다.
     const normalized: Candidate[] =
-      ((data || []) as CandidateListRow[]).map((row) => {
+      ((data || []) as unknown as CandidateListRow[]).map((row) => {
         const jp = row?.job_posts;
         return {
           ...row,
