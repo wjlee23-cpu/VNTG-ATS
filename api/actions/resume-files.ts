@@ -165,23 +165,22 @@ export async function uploadResumeFile(candidateId: string, formData: FormData) 
 
     if (candidateData?.job_post_id) {
       console.log('[uploadResumeFile] AI 분석 시작 - 후보자 ID:', candidateId, '채용 공고 ID:', candidateData.job_post_id);
-      // AI 분석 시작 (비동기, 에러는 로그만 남김)
-      // analyzeCandidateMatch 내부에서 파일 조회 재시도 로직이 있으므로 즉시 호출 가능
-      // analyzeCandidateMatch 내부에서 ai_analysis_status를 'processing'으로 업데이트함
-      analyzeCandidateMatch(candidateId, candidateData.job_post_id)
-        .then((result) => {
-          console.log('[uploadResumeFile] AI 분석 완료:', result);
-        })
-        .catch((err) => {
-          console.error('[uploadResumeFile] AI 분석 시작 실패:', err);
-          console.error('[uploadResumeFile] 에러 스택:', err instanceof Error ? err.stack : '스택 정보 없음');
-        });
+      // 서버 액션 반환 후 런타임이 정리되면 백그라운드 Promise가 끊길 수 있어 await로 완료를 보장합니다.
+      try {
+        await analyzeCandidateMatch(candidateId, candidateData.job_post_id);
+        console.log('[uploadResumeFile] AI 분석 완료');
+      } catch (err) {
+        console.error('[uploadResumeFile] AI 분석 실패:', err);
+        console.error('[uploadResumeFile] 에러 스택:', err instanceof Error ? err.stack : '스택 정보 없음');
+        // analyzeCandidateMatch catch에서 ai_analysis_status·ai_summary 갱신됨
+      }
     } else {
       console.warn('[uploadResumeFile] job_post_id가 없어 AI 분석을 건너뜁니다. 후보자 ID:', candidateId);
     }
 
     // 캐시 무효화
     revalidatePath(`/candidates/${candidateId}`);
+    revalidatePath(`/dashboard/candidates/${candidateId}`);
 
     return resumeFile;
   });

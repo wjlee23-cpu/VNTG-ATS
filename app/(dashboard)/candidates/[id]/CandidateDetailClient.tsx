@@ -299,6 +299,13 @@ export function CandidateDetailClient({
     }
   }, [candidate.id]);
 
+  // 첨부가 모두 없어지면 AI 자동 트리거 ref를 초기화해, 재업로드 시 4초 폴백이 다시 동작하게 합니다.
+  useEffect(() => {
+    if (resumeFiles.length === 0) {
+      aiTriggerStartedRef.current = false;
+    }
+  }, [resumeFiles.length]);
+
   // 페이지 진입 시 스케줄 목록을 한 번 더 받아 코파일럿이 서버와 어긋나지 않게 합니다.
   useEffect(() => {
     if (!candidate.id) return;
@@ -744,6 +751,7 @@ export function CandidateDetailClient({
       if (result.error) toast.error(result.error);
       else {
         toast.success('파일이 업로드되었습니다.');
+        aiTriggerStartedRef.current = false;
         loadResumeFiles();
         refreshCandidateData().catch(() => {});
       }

@@ -464,15 +464,14 @@ export async function triggerAIAnalysis(candidateId: string) {
       throw new Error('이력서 파일이 없어 AI 분석을 시작할 수 없습니다.');
     }
 
-    // AI 분석 시작 (비동기, 에러는 로그만 남김)
+    // 분석이 끝까지 실행되도록 await (반환 직후 런타임 종료로 작업이 끊기는 것을 방지)
     console.log('[triggerAIAnalysis] analyzeCandidateMatch 호출 시작 - 후보자 ID:', candidateId, '채용 공고 ID:', candidate.job_post_id);
-    analyzeCandidateMatch(candidateId, candidate.job_post_id)
-      .then((result) => {
-        console.log('[triggerAIAnalysis] analyzeCandidateMatch 성공:', result);
-      })
-      .catch((err) => {
-        console.error('[triggerAIAnalysis] AI 분석 시작 실패:', err);
-      });
+    try {
+      await analyzeCandidateMatch(candidateId, candidate.job_post_id);
+      console.log('[triggerAIAnalysis] analyzeCandidateMatch 성공');
+    } catch (err) {
+      console.error('[triggerAIAnalysis] analyzeCandidateMatch 실패:', err);
+    }
 
     // 캐시 무효화
     revalidatePath(`/candidates/${candidateId}`);

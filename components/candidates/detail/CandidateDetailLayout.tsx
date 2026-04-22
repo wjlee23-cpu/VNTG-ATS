@@ -172,7 +172,9 @@ export function CandidateDetailLayout({
             onFileDelete={onFileDelete}
           />
         )}
-        {resolvedActiveTab === 'insight' && <CandidateInsightTab candidate={candidate} />}
+        {resolvedActiveTab === 'insight' && (
+          <CandidateInsightTab candidate={candidate} resumeFileCount={resumeFiles.length} />
+        )}
         {resolvedActiveTab === 'timeline' && (
           <CandidateTimelineView
             candidateName={candidate.name}
