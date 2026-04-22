@@ -88,7 +88,7 @@ export function CandidateSidebar({
   const jobTitle = candidate.job_posts?.title || '';
 
   return (
-    <div className="w-[280px] bg-[#FCFCFC] border-r border-neutral-200 p-7 flex flex-col justify-between shrink-0">
+    <div className="w-[280px] h-full min-h-0 overflow-y-auto bg-[#FCFCFC] border-r border-neutral-200 p-7 flex flex-col justify-between shrink-0 overscroll-contain">
       <div>
         {/* 프로필 영역 */}
         <div className="flex items-center gap-4 mb-8">
