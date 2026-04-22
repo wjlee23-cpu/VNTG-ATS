@@ -200,6 +200,15 @@ function CandidatesTableRow({
         <CandidatePipeline
           currentStageId={candidate.current_stage_id}
           status={candidate.status}
+          confirmedSchedule={
+            candidate.confirmed_schedule?.stage_id &&
+            candidate.confirmed_schedule?.scheduled_at
+              ? {
+                  stageId: candidate.confirmed_schedule.stage_id,
+                  scheduledAt: candidate.confirmed_schedule.scheduled_at,
+                }
+              : null
+          }
           rejectedStageId={
             // 불합격 발생 단계 데이터가 별도로 있으면 우선 사용 (없으면 currentStageId fallback)
             (candidate as any)?.rejected_stage_id ||

@@ -5,6 +5,20 @@ import { getCurrentUser, verifyCandidateAccess, verifyJobPostAccess } from '@/ap
 import { validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { getStageNameByStageId } from '@/constants/stages';
+import { formatInTimeZone } from 'date-fns-tz';
+
+type CandidateListRow = {
+  id: string;
+  job_posts?: unknown;
+  [key: string]: unknown;
+};
+
+type ConfirmedScheduleRow = {
+  candidate_id: string;
+  stage_id: string;
+  scheduled_at: string;
+  duration_minutes: number | null;
+};
 
 /**
  * 현재 조직의 모든 후보자 조회
@@ -79,8 +93,8 @@ export async function getCandidates(jobPostId?: string) {
 
     // ✅ Supabase join 결과가 job_posts를 배열로 내려주는 경우가 있어,
     // UI에서 항상 "단일 객체"로 다룰 수 있게 여기서 정규화합니다.
-    const normalized =
-      (data || []).map((row: any) => {
+    const normalized: CandidateListRow[] =
+      ((data || []) as CandidateListRow[]).map((row) => {
         const jp = row?.job_posts;
         return {
           ...row,
@@ -88,7 +102,80 @@ export async function getCandidates(jobPostId?: string) {
         };
       }) || [];
 
-    return normalized;
+    // ✅ 후보자 목록 파이프라인(확정 체크 노드/툴팁)용 confirmed 스케줄 매핑
+    // - 규칙: “가장 가까운 미래 confirmed 1개”, 없으면 “가장 최근 confirmed 1개”
+    const candidateIds = normalized.map((c) => String(c?.id ?? '')).filter(Boolean);
+    if (candidateIds.length === 0) return normalized;
+
+    const { data: confirmedSchedules, error: confirmedError } = await supabase
+      .from('schedules')
+      .select('candidate_id, stage_id, scheduled_at, duration_minutes')
+      .in('candidate_id', candidateIds)
+      .eq('workflow_status', 'confirmed');
+
+    // 스케줄 조회 실패는 치명적이지 않으므로, 후보자 목록은 그대로 반환합니다.
+    if (confirmedError || !confirmedSchedules || confirmedSchedules.length === 0) {
+      return normalized.map((c) => ({ ...c, confirmed_schedule: null }));
+    }
+
+    const KST_TZ = 'Asia/Seoul';
+    const nowKstYmdHm = formatInTimeZone(new Date(), KST_TZ, 'yyyy-MM-dd HH:mm');
+
+    const toKstComparable = (iso: string) => formatInTimeZone(iso, KST_TZ, 'yyyy-MM-dd HH:mm');
+
+    const safeConfirmed = (confirmedSchedules as unknown as ConfirmedScheduleRow[]) || [];
+    const byCandidate = new Map<string, ConfirmedScheduleRow[]>();
+    for (const s of safeConfirmed) {
+      const cid = String(s?.candidate_id ?? '');
+      if (!cid) continue;
+      const list = byCandidate.get(cid) || [];
+      list.push(s);
+      byCandidate.set(cid, list);
+    }
+
+    const pickOne = (list: ConfirmedScheduleRow[]) => {
+      const safe = Array.isArray(list) ? list.filter(Boolean) : [];
+      if (safe.length === 0) return null;
+
+      const future = safe
+        .filter((s) => {
+          const at = String(s?.scheduled_at ?? '');
+          if (!at) return false;
+          return toKstComparable(at) >= nowKstYmdHm;
+        })
+        .sort((a, b) => {
+          const aAt = toKstComparable(String(a?.scheduled_at ?? ''));
+          const bAt = toKstComparable(String(b?.scheduled_at ?? ''));
+          return aAt.localeCompare(bAt);
+        });
+
+      if (future.length > 0) return future[0];
+
+      // 미래가 없으면 “가장 최근(최신) 확정”을 선택
+      const pastOrAny = safe.sort((a, b) => {
+        const aAt = toKstComparable(String(a?.scheduled_at ?? ''));
+        const bAt = toKstComparable(String(b?.scheduled_at ?? ''));
+        return bAt.localeCompare(aAt);
+      });
+      return pastOrAny[0] || null;
+    };
+
+    return normalized.map((c) => {
+      const cid = String(c?.id ?? '');
+      const list = byCandidate.get(cid) || [];
+      const pick = pickOne(list);
+      return {
+        ...c,
+        confirmed_schedule: pick
+          ? {
+              stage_id: String(pick.stage_id),
+              scheduled_at: String(pick.scheduled_at),
+              duration_minutes:
+                typeof pick.duration_minutes === 'number' ? pick.duration_minutes : null,
+            }
+          : null,
+      };
+    });
   });
 }
 

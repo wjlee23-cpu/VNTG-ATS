@@ -5,7 +5,12 @@
 // - currentActiveSchedule 유무에 따라 조건부 렌더링합니다.
 // - 상단 미니 파이프라인은 공고 stage 목록을 기반으로 동적으로 생성합니다.
 
-import { CalendarClock, CalendarOff, RefreshCw, Trash2 } from 'lucide-react';
+import { CalendarClock, CalendarOff, Clock, ExternalLink, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  formatConfirmedDateLine,
+  formatConfirmedTimeRange,
+  formatDdayBadge,
+} from '@/utils/schedule-format';
 
 type StageLike = {
   id: string;
@@ -43,6 +48,14 @@ export type CurrentActiveScheduleLike = {
   id: string;
   stage_id?: string | null;
   workflow_status: SchedulingWorkflowStatus;
+  scheduled_at?: string | null;
+  duration_minutes?: number | null;
+  interviewers?: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    avatar_url: string | null;
+  }> | null;
 } | null;
 
 interface SchedulingStatusWidgetProps {
@@ -182,6 +195,21 @@ export function SchedulingStatusWidget({
   const activeCopy = getActiveStepCopy(workflowStatus);
   const activeStepIndex = getVerticalStepIndex(activeStep);
 
+  const confirmedScheduledAt = currentActiveSchedule?.scheduled_at ?? null;
+  const confirmedDurationMinutes = currentActiveSchedule?.duration_minutes ?? null;
+  const confirmedInterviewers = currentActiveSchedule?.interviewers ?? null;
+
+  const confirmedDateLine =
+    workflowStatus === 'confirmed' && confirmedScheduledAt
+      ? formatConfirmedDateLine(confirmedScheduledAt)
+      : null;
+  const confirmedTimeRange =
+    workflowStatus === 'confirmed' && confirmedScheduledAt
+      ? formatConfirmedTimeRange(confirmedScheduledAt, confirmedDurationMinutes)
+      : null;
+  const confirmedDday =
+    workflowStatus === 'confirmed' && confirmedScheduledAt ? formatDdayBadge(confirmedScheduledAt) : null;
+
   return (
     <div className="pt-5 border-t border-neutral-200/60 flex-1 flex flex-col mt-6">
       <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider mb-4 flex items-center gap-1.5">
@@ -214,6 +242,102 @@ export function SchedulingStatusWidget({
               새로운 면접 조율을 시작할 수 있습니다.
             </p>
           </div>
+        ) : workflowStatus === 'confirmed' ? (
+          <>
+            {/* ✅ Confirmed: 세로 스텝퍼 대신 “확정 티켓 UI” 렌더링 */}
+            <div className="relative bg-neutral-900 rounded-xl p-4 text-white shadow-[0_8px_16px_rgba(0,0,0,0.15)] overflow-hidden">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-blue-500/30 to-transparent rounded-bl-full" />
+
+              <div className="flex justify-between items-start mb-3 relative z-10">
+                <span className="px-2 py-0.5 bg-white/10 border border-white/10 rounded text-[10px] font-bold uppercase tracking-widest text-neutral-300">
+                  최종 확정
+                </span>
+                {confirmedDday ? (
+                  <span className="px-2 py-0.5 bg-emerald-500 text-white rounded text-[10px] font-extrabold shadow-sm animate-pulse">
+                    {confirmedDday}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="relative z-10 mt-1">
+                <p className="text-xl font-extrabold tracking-tight mb-0.5">
+                  {confirmedDateLine || '일정 확정'}
+                </p>
+                <p className="text-sm font-medium text-neutral-400 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  {confirmedTimeRange || '시간 정보 없음'}
+                </p>
+              </div>
+
+              <div className="relative z-10 mt-4 pt-3 border-t border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex -space-x-2">
+                    {(Array.isArray(confirmedInterviewers) ? confirmedInterviewers : [])
+                      .slice(0, 6)
+                      .map((inv) => {
+                        const displayName = (inv?.name || inv?.email || '').trim() || '면접관';
+                        const initial = displayName.charAt(0);
+                        const avatarUrl = inv?.avatar_url || '';
+                        return (
+                          <div
+                            key={inv.id}
+                            className="relative group/avatar cursor-pointer"
+                          >
+                            {avatarUrl ? (
+                              <img
+                                src={avatarUrl}
+                                alt={displayName}
+                                className="w-6 h-6 rounded-full border-2 border-neutral-900 shadow-sm relative z-10 group-hover/avatar:z-20 transition-transform group-hover/avatar:scale-110 object-cover"
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full border-2 border-neutral-900 shadow-sm relative z-10 bg-white/10 text-white flex items-center justify-center text-[11px] font-extrabold group-hover/avatar:z-20 transition-transform group-hover/avatar:scale-110">
+                                {initial || 'I'}
+                              </div>
+                            )}
+
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-white text-neutral-900 text-[10px] font-bold rounded shadow-lg opacity-0 invisible group-hover/avatar:opacity-100 group-hover/avatar:visible transition-all whitespace-nowrap z-30">
+                              {displayName}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-t-[4px] border-l-transparent border-r-transparent border-t-white" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+                  Interviewers
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <button
+                className="w-full flex items-center justify-center gap-2 bg-neutral-50 border border-neutral-200 text-neutral-700 rounded-lg py-2 px-3 text-xs font-semibold hover:bg-neutral-100 hover:text-neutral-900 transition-colors shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => scheduleId && onCheckSchedule?.(scheduleId)}
+                disabled={!canRefresh}
+                title={canRefresh ? '진행 상태를 최신으로 맞춥니다.' : '진행 상태를 새로고칠 수 없습니다.'}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                캘린더 상세 보기
+              </button>
+
+              <button
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (!scheduleId || !onDeleteSchedule) return;
+                  if (!confirm('이 일정을 취소할까요? 되돌릴 수 없습니다.')) return;
+                  if (!confirm('정말 취소할까요? 캘린더 일정도 함께 정리될 수 있어요.')) return;
+                  onDeleteSchedule(scheduleId);
+                }}
+                disabled={!canDelete}
+                title={canDelete ? '일정을 취소합니다.' : '취소할 수 없습니다.'}
+              >
+                <CalendarOff className="w-3 h-3" />
+                일정 취소
+              </button>
+            </div>
+          </>
         ) : (
           <>
             {/* Active: 조율 스텝 (단일 단계 배열 기반 렌더링 - 중복/순서 혼선 방지) */}

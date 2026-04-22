@@ -70,6 +70,15 @@ export interface Candidate {
   current_salary?: string | null;
   expected_salary?: string | null;
   skills?: string[] | null;
+  /**
+   * 후보자 목록 파이프라인(확정 체크 노드/툴팁) 표시용
+   * - 후보자별 confirmed 스케줄 1개만 매핑해서 내려줍니다.
+   */
+  confirmed_schedule?: {
+    stage_id: string;
+    scheduled_at: string;
+    duration_minutes?: number | null;
+  } | null;
   /** DB 컬럼 (상세 조회 시) */
   education?: string | null;
   experience?: string | null;

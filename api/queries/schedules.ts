@@ -36,7 +36,51 @@ export async function getSchedulesByCandidate(candidateId: string) {
       throw new Error(`면접 일정 조회 실패: ${error.message}`);
     }
 
-    return data || [];
+    const schedules = (data || []) as any[];
+
+    // ✅ 면접관 표시용(이름/아바타) 정보를 schedules에 주입합니다.
+    // - Sidebar 확정 티켓/타임라인 등에서 공통으로 사용합니다.
+    // - interviewer_ids가 없는 스케줄은 그대로 반환합니다.
+    const allInterviewerIds = new Set<string>();
+    for (const s of schedules) {
+      const ids = (s as any)?.interviewer_ids;
+      if (Array.isArray(ids)) {
+        for (const id of ids) {
+          if (typeof id === 'string' && id.trim()) allInterviewerIds.add(id);
+        }
+      }
+    }
+
+    if (allInterviewerIds.size === 0) {
+      return schedules;
+    }
+
+    const { data: interviewerData, error: interviewerError } = await supabase
+      .from('users')
+      .select('id, email, name, avatar_url')
+      .in('id', Array.from(allInterviewerIds));
+
+    // 면접관 조회 실패는 스케줄 조회 실패로 취급하지 않고, 스케줄만 반환합니다.
+    if (interviewerError) {
+      return schedules;
+    }
+
+    const interviewerMap = new Map(
+      (interviewerData || []).map((u: any) => [String(u.id), u]),
+    );
+
+    return schedules.map((s) => {
+      const ids = ((s as any)?.interviewer_ids || []) as any[];
+      const interviewers = Array.isArray(ids)
+        ? ids
+            .map((id) => interviewerMap.get(String(id)))
+            .filter(Boolean)
+        : [];
+      return {
+        ...s,
+        interviewers,
+      };
+    });
   });
 }
 

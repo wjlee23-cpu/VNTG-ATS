@@ -243,6 +243,17 @@ export function CandidateDetailClient({
             | 'cancelled'
             | 'needs_rescheduling'
             | null,
+          // ✅ 확정 티켓/파이프라인 툴팁에 필요한 필드들
+          scheduled_at: (pick.scheduled_at ?? null) as string | null,
+          duration_minutes: (pick.duration_minutes ?? null) as number | null,
+          interviewers: (pick.interviewers ?? null) as
+            | Array<{
+                id: string;
+                email: string;
+                name: string | null;
+                avatar_url: string | null;
+              }>
+            | null,
         }
       : null;
   })();

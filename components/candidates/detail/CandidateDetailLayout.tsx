@@ -51,6 +51,14 @@ interface CandidateDetailLayoutProps {
       | 'cancelled'
       | 'needs_rescheduling'
       | null;
+    scheduled_at?: string | null;
+    duration_minutes?: number | null;
+    interviewers?: Array<{
+      id: string;
+      email: string;
+      name: string | null;
+      avatar_url: string | null;
+    }> | null;
   } | null;
   onDeleteSchedule?: (scheduleId: string) => void;
   onCheckSchedule?: (scheduleId: string) => void;

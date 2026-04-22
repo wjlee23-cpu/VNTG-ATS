@@ -52,6 +52,14 @@ interface CandidateSidebarProps {
       | 'cancelled'
       | 'needs_rescheduling'
       | null;
+    scheduled_at?: string | null;
+    duration_minutes?: number | null;
+    interviewers?: Array<{
+      id: string;
+      email: string;
+      name: string | null;
+      avatar_url: string | null;
+    }> | null;
   } | null;
   onCheckSchedule?: (scheduleId: string) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
