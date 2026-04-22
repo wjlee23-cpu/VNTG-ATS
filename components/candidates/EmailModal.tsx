@@ -286,7 +286,6 @@ export function EmailModal({
                     >
                       내용
                     </label>
-                    <span className="text-xs font-medium text-neutral-400">Editor/HTML</span>
                   </div>
 
                   <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
@@ -297,7 +296,9 @@ export function EmailModal({
                         disabled={isLoading}
                         placeholder="이메일 내용을 입력하세요..."
                         minEditorHeightPx={260}
-                        chromeLess
+                        showModeTabs
+                        showToolbar
+                        showHelperText={false}
                       />
                     </div>
 

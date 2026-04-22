@@ -385,7 +385,6 @@ export function TemplatesClient() {
                       >
                         이메일 본문
                       </label>
-                      <span className="text-xs font-medium text-neutral-400">Editor/HTML</span>
                     </div>
 
                     <div className="flex h-[380px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
@@ -397,7 +396,9 @@ export function TemplatesClient() {
                           disabled={isSubmitting}
                           placeholder="우측 패널의 변수를 클릭하여 내용에 삽입할 수 있습니다."
                           minEditorHeightPx={260}
-                          chromeLess
+                          showModeTabs
+                          showToolbar
+                          showHelperText={false}
                         />
                       </div>
                       <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-2.5 text-[10px] font-medium text-neutral-400">
@@ -573,7 +574,6 @@ export function TemplatesClient() {
                       >
                         이메일 본문
                       </label>
-                      <span className="text-xs font-medium text-neutral-400">Editor/HTML</span>
                     </div>
 
                     <div className="flex h-[380px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
@@ -585,7 +585,9 @@ export function TemplatesClient() {
                           disabled={isSubmitting}
                           placeholder="우측 패널의 변수를 클릭하여 내용에 삽입할 수 있습니다."
                           minEditorHeightPx={260}
-                          chromeLess
+                          showModeTabs
+                          showToolbar
+                          showHelperText={false}
                         />
                       </div>
                       <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-2.5 text-[10px] font-medium text-neutral-400">

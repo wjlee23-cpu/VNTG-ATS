@@ -41,6 +41,21 @@ type EmailHtmlEditorProps = {
   placeholder?: string;
   minEditorHeightPx?: number;
   /**
+   * Editor/HTML 모드 전환(탭)을 노출할지 여부입니다.
+   * - 기본값: `chromeLess`가 false면 true, `chromeLess`가 true면 false
+   */
+  showModeTabs?: boolean;
+  /**
+   * Editor 모드 툴바(굵게/기울임/링크/목록/표 등)를 노출할지 여부입니다.
+   * - 기본값: `chromeLess`가 false면 true, `chromeLess`가 true면 false
+   */
+  showToolbar?: boolean;
+  /**
+   * 하단 도움말 문구(주의/설명)를 노출할지 여부입니다.
+   * - 기본값: `chromeLess`가 false면 true, `chromeLess`가 true면 false
+   */
+  showHelperText?: boolean;
+  /**
    * 상단 탭/툴바/도움말을 숨기고 “본문 작성 영역”만 보여주는 모드입니다.
    * - 기존 사용처 영향 방지를 위해 기본값은 false입니다.
    * - 외부 컨테이너(모달)에서 하단 얇은 바/액션을 구성할 때 사용합니다.
@@ -60,6 +75,9 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
     disabled = false,
     placeholder = '메일 본문을 작성하세요…',
     minEditorHeightPx = 220,
+    showModeTabs,
+    showToolbar,
+    showHelperText,
     chromeLess = false,
     className,
   },
@@ -72,6 +90,11 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
   const [textColor, setTextColor] = useState<string>('#171717');
   const lastHtmlRef = useRef<string>(htmlValue);
   const htmlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // chromeLess는 “전부 숨김” 레거시 옵션이므로, 새 옵션을 명시하지 않은 경우에만 기본값을 보정합니다.
+  const isModeTabsVisible = showModeTabs ?? !chromeLess;
+  const isToolbarVisible = showToolbar ?? !chromeLess;
+  const isHelperTextVisible = showHelperText ?? !chromeLess;
 
   const editor = useEditor({
     // TipTap은 Next.js에서 SSR/hydration 환경을 감지하면 경고/에러를 띄울 수 있습니다.
@@ -386,7 +409,7 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
         }}
         className="gap-3"
       >
-        {!chromeLess ? (
+        {isModeTabsVisible ? (
           <div className="flex items-center justify-between gap-3">
             <TabsList className="h-9 rounded-xl border border-neutral-200 bg-neutral-100/70">
               <TabsTrigger value="editor" className="text-sm">
@@ -405,14 +428,14 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
         ) : null}
 
         <TabsContent value="editor" className={chromeLess ? 'space-y-0' : 'space-y-3'}>
-          {!chromeLess ? toolbar : null}
+          {isToolbarVisible ? toolbar : null}
           <div
             className={chromeLess ? 'bg-transparent' : 'rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm'}
             style={{ minHeight: minEditorHeightPx }}
           >
             <EditorContent editor={editor} />
           </div>
-          {!chromeLess ? (
+          {isHelperTextVisible ? (
             <p className="text-[11px] font-medium text-neutral-400">
               이메일 클라이언트는 일부 스타일/태그를 제거할 수 있어요. 최종 화면은 ‘미리보기’에서 확인하세요.
             </p>
@@ -438,7 +461,7 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
             }
             placeholder="<p>안녕하세요…</p>"
           />
-          {!chromeLess ? (
+          {isHelperTextVisible ? (
             <p className="text-[11px] font-medium text-neutral-400">
               HTML 탭에서 수정한 내용은 Editor 탭으로 돌아가면 자동 반영됩니다.
             </p>
