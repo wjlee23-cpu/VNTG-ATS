@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRightCircle, Check, Loader2 } from 'lucide-react';
+import { MoveRight, Check, Loader2 } from 'lucide-react';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,7 +26,7 @@ interface BulkMoveModalProps {
   onCancel: () => void;
 }
 
-/** 일괄 전형 이동 모달 */
+/** 전형 이동 모달 */
 export function BulkMoveModal({
   open,
   onOpenChange,
@@ -42,9 +42,9 @@ export function BulkMoveModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ArrowRightCircle className="w-5 h-5 text-violet-600" />
-            일괄 전형 이동
+          <DialogTitle className="flex items-center justify-center gap-2 sm:justify-start">
+            <MoveRight className="w-5 h-5 text-violet-600 shrink-0" />
+            <span className="truncate">전형 이동</span>
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -87,14 +87,19 @@ export function BulkMoveModal({
             </div>
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+        <DialogFooter className="w-full flex flex-col gap-2 pt-4 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="w-full sm:w-auto whitespace-nowrap"
+          >
             취소
           </Button>
           <Button
             onClick={onConfirm}
             disabled={isLoading || !targetStageId}
-            className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white"
+            className="w-full sm:w-auto whitespace-nowrap bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white"
           >
             {isLoading ? (
               <>
@@ -102,10 +107,7 @@ export function BulkMoveModal({
                 이동 중...
               </>
             ) : (
-              <>
-                <ArrowRightCircle className="w-4 h-4 mr-2" />
-                {selectedCount}명 이동
-              </>
+              <>{selectedCount}명 전형 이동</>
             )}
           </Button>
         </DialogFooter>

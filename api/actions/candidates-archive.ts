@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess, requireRecruiterOrAdmin } from '@/api/utils/auth';
 import { withErrorHandling } from '@/api/utils/errors';
@@ -17,8 +17,9 @@ export async function archiveCandidate(id: string, reason: string) {
     await requireRecruiterOrAdmin();
     
     const user = await getCurrentUser();
-    const candidate = await verifyCandidateAccess(id);
-    const supabase = await createClient();
+    await verifyCandidateAccess(id);
+    // 권한 검증이 끝난 뒤에는 Service Role로 업데이트/타임라인을 처리해 RLS로 인한 0행 반환을 방지합니다.
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from('candidates')
@@ -219,7 +220,8 @@ export async function unarchiveCandidate(id: string) {
     
     const user = await getCurrentUser();
     await verifyCandidateAccess(id);
-    const supabase = await createClient();
+    // 권한 검증이 끝난 뒤에는 Service Role로 업데이트/타임라인을 처리해 RLS로 인한 0행 반환을 방지합니다.
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from('candidates')

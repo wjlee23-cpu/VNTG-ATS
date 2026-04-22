@@ -26,7 +26,7 @@ interface BulkEmailModalProps {
   onCancel: () => void;
 }
 
-/** 일괄 이메일 발송 모달 */
+/** 이메일 발송 모달 */
 export function BulkEmailModal({
   open,
   onOpenChange,
@@ -46,7 +46,7 @@ export function BulkEmailModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-sky-600" />
-            일괄 이메일 발송
+            이메일 발송
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -90,14 +90,19 @@ export function BulkEmailModal({
             />
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+        <DialogFooter className="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="w-full sm:w-max sm:flex-none"
+          >
             취소
           </Button>
           <Button
             onClick={onConfirm}
             disabled={isLoading || !subject || !body}
-            className="bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white"
+            className="w-full sm:w-max sm:flex-none bg-gradient-to-r from-[#0248FF] to-[#5287FF] hover:from-[#0248FF]/90 hover:to-[#5287FF]/90 text-white"
           >
             {isLoading ? (
               <>
@@ -105,10 +110,7 @@ export function BulkEmailModal({
                 발송 중...
               </>
             ) : (
-              <>
-                <Mail className="w-4 h-4 mr-2" />
-                {selectedCount}명에게 발송
-              </>
+              <>이메일 발송</>
             )}
           </Button>
         </DialogFooter>

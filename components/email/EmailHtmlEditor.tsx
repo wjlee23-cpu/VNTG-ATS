@@ -67,6 +67,9 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
   const htmlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const editor = useEditor({
+    // TipTap은 Next.js에서 SSR/hydration 환경을 감지하면 경고/에러를 띄울 수 있습니다.
+    // 즉시 렌더링을 끄면(클라이언트에서 마운트된 뒤 렌더) 하이드레이션 불일치를 피할 수 있습니다.
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         // 이메일 본문에서 heading은 클라이언트별 렌더 편차가 크므로 일단 paragraph 중심으로.

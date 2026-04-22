@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronsUpDown, Eye, Image, Loader2, Paperclip, Send, X } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { sendEmailToCandidate } from '@/api/actions/emails';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -175,6 +175,8 @@ export function EmailModal({
       }}
     >
       <DialogContent className="max-w-[640px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
+        {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
+        <DialogTitle className="sr-only">이메일 발송</DialogTitle>
         <div className="relative flex flex-col bg-white">
           <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
 
@@ -387,6 +389,8 @@ export function EmailPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[820px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
+        {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
+        <DialogTitle className="sr-only">이메일 미리보기</DialogTitle>
         <div className="relative flex flex-col bg-white">
           <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
 

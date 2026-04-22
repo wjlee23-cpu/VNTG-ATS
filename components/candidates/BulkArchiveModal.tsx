@@ -25,7 +25,7 @@ interface BulkArchiveModalProps {
   onCancel: () => void;
 }
 
-/** 일괄 아카이브 모달 */
+/** 아카이브 모달 */
 export function BulkArchiveModal({
   open,
   onOpenChange,
@@ -43,7 +43,7 @@ export function BulkArchiveModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Archive className="w-5 h-5 text-orange-600" />
-            일괄 아카이브
+            아카이브
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -80,14 +80,19 @@ export function BulkArchiveModal({
             )}
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+        <DialogFooter className="w-full flex flex-col gap-2 pt-4 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="w-full sm:w-auto whitespace-nowrap"
+          >
             취소
           </Button>
           <Button
             onClick={onConfirm}
             disabled={isLoading || !reason}
-            className="bg-orange-600 hover:bg-orange-700 text-white"
+            className="w-full sm:w-auto whitespace-nowrap bg-orange-600 hover:bg-orange-700 text-white"
           >
             {isLoading ? (
               <>
@@ -95,10 +100,7 @@ export function BulkArchiveModal({
                 처리 중...
               </>
             ) : (
-              <>
-                <Archive className="w-4 h-4 mr-2" />
-                {selectedCount}명 아카이브
-              </>
+              <>{selectedCount}명 아카이브</>
             )}
           </Button>
         </DialogFooter>

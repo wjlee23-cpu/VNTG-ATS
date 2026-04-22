@@ -126,6 +126,8 @@ export function CandidatesClient({
   const [bulkEmailSubject, setBulkEmailSubject] = useState("");
   const [bulkEmailBody, setBulkEmailBody] = useState("");
   const [isBulkEmailing, setIsBulkEmailing] = useState(false);
+  const isAnyBulkModalOpen =
+    bulkArchiveModalOpen || bulkMoveModalOpen || bulkEmailModalOpen;
 
   // Hydration 방지
   useEffect(() => {
@@ -620,7 +622,7 @@ export function CandidatesClient({
           </div>
         )}
 
-        {isSomeSelected && (
+        {isSomeSelected && !isAnyBulkModalOpen && (
           <BulkActionBar
             selectedCount={selectedIds.size}
             onClearSelection={clearSelection}
