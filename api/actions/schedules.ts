@@ -2061,6 +2061,14 @@ async function regenerateScheduleOptions(
   // 각 일정 옵션에 대해 구글 캘린더 block 일정 생성
   const scheduleOptions = [];
 
+  // ✅ 주최자(조직 관리자/리크루터)의 토큰으로 캘린더 이벤트를 생성합니다.
+  // - 면접관 개인 OAuth는 필수가 아니며, organizer 권한으로 회의실/면접관 캘린더를 조회/생성합니다.
+  const organizerToken = await refreshAccessTokenIfNeeded(
+    organizer.calendar_access_token,
+    organizer.calendar_refresh_token,
+    organizer.id,
+  );
+
   // 웹훅으로 사용할 공개 주소(구글이 호출하는 URL)
   const webhookAddressBase =
     process.env.GOOGLE_CALENDAR_WEBHOOK_URL ||
@@ -2081,18 +2089,10 @@ async function regenerateScheduleOptions(
     const endTime = new Date(slot.scheduledAt);
     endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
 
-    // 첫 번째 면접관의 토큰을 사용하여 이벤트 생성 (주최자)
-    const organizer = interviewersWithCalendar[0];
-    const organizerToken = await refreshAccessTokenIfNeeded(
-      organizer.calendar_access_token!,
-      organizer.calendar_refresh_token!,
-      organizer.id
-    );
-
     // 구글 캘린더에 block 일정 생성
     const createdEvent = await createCalendarEvent(
       organizerToken,
-      organizer.calendar_refresh_token!,
+      organizer.calendar_refresh_token,
       {
         summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
         description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
@@ -2134,7 +2134,12 @@ async function regenerateScheduleOptions(
     if (optionError || !option) {
       // 이벤트는 생성되었지만 DB 저장 실패 시 이벤트 삭제 시도
       try {
-        await deleteCalendarEvent(organizerToken, organizer.calendar_refresh_token!, eventId, getRoomCalendarId());
+        await deleteCalendarEvent(
+          organizerToken,
+          organizer.calendar_refresh_token,
+          eventId,
+          getRoomCalendarId(),
+        );
       } catch (deleteError) {
         console.error('이벤트 삭제 실패:', deleteError);
       }
