@@ -1124,22 +1124,10 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       interviewers = internalInterviewers;
     }
 
-    // 구글 캘린더 연동 확인
-    const interviewersWithCalendar = interviewers.filter(
-      inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
-    );
-
-    if (interviewerIds.length > 0 && interviewersWithCalendar.length !== interviewerIds.length) {
-      // 연동되지 않은 면접관 목록 생성
-      const interviewersWithoutCalendar = interviewers.filter(
-        inv => !(inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token)
-      );
-      
-      const missingEmails = interviewersWithoutCalendar.map(inv => inv.email).join(', ');
-      throw new Error(
-        `모든 면접관이 구글 캘린더에 연동되어 있어야 합니다. 연동되지 않은 면접관: ${missingEmails}`
-      );
-    }
+    // ✅ 정책 변경: 면접관 개인 OAuth(우리 서비스의 ‘구글 연동’)은 더 이상 필수가 아닙니다.
+    // - 바쁨 조회(FreeBusy)와 초대 발송은 관리자(주최자) 구글 계정 권한으로 수행합니다.
+    // - 단, 특정 면접관 캘린더(이메일)를 조회하려면 해당 캘린더가 주최자 계정에 공유되어 있어야 합니다.
+    const internalInterviewerEmails = interviewers.map((inv) => inv.email);
 
     // 주최자(이벤트를 생성할 구글 캘린더 소유자) 정보 조회
     // - 기존 로직은 "선택된 면접관 중 첫 번째(연동된 사람)"를 주최자로 잡을 수 있어
@@ -1165,11 +1153,10 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       throw new Error('일정 생성을 위해 먼저 구글 캘린더를 연동해주세요. (/dashboard/connect-calendar)');
     }
 
-    // 가용시간 계산 기준: 내부 면접관이 있으면 내부 면접관, 없으면 주최자(로그인 사용자)
-    const availabilityParticipants =
-      interviewersWithCalendar.length > 0 ? interviewersWithCalendar : [organizer];
-    const availabilityInterviewerIds =
-      interviewerIds.length > 0 ? interviewerIds : [organizer.id];
+    // 가용시간 계산 기준
+    // - 바쁨 조회는 organizer 토큰 1개로 수행(캘린더 ID = 이메일 기반)
+    // - 슬롯 생성 알고리즘은 내부 면접관 ID를 그대로 사용합니다. (외부 이메일은 슬롯/선호 계산 대상이 아님)
+    const availabilityInterviewerIds = interviewerIds.length > 0 ? interviewerIds : [];
 
     // 인터뷰룸(회의실) 캘린더도 충돌 계산에 포함합니다.
     // - 정책: 인터뷰룸 또는 면접관 중 하나라도 바쁘면 일정 제안/초대 생성 금지
@@ -1198,18 +1185,28 @@ export async function scheduleInterviewAutomated(formData: FormData) {
       const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
       const interviewerBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
       
-      for (const interviewer of availabilityParticipants) {
+      // 인터뷰룸(회의실) + 내부 면접관(이메일) + 외부 면접관(이메일) 캘린더의 바쁜 시간을 한 번에 조회합니다.
+      // - 조회는 organizer 토큰으로 수행합니다.
+      // - 특정 캘린더가 공유/권한 문제로 조회 불가하면 자동화를 중단하고 “공유 설정 필요”로 안내합니다.
+      const roomBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+      const externalBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
+      try {
+        const organizerToken = await refreshAccessTokenIfNeeded(
+          organizer.calendar_access_token!,
+          organizer.calendar_refresh_token!,
+          organizer.id
+        );
+
+        const calendarIdsToCheck = Array.from(
+          new Set(
+            [roomCalendarId, ...internalInterviewerEmails, ...externalInterviewerEmails].filter(Boolean)
+          )
+        );
+
         try {
-          // userId를 전달하여 갱신된 토큰을 DB에 자동 저장
-          const token = await refreshAccessTokenIfNeeded(
-            interviewer.calendar_access_token!,
-            interviewer.calendar_refresh_token!,
-            interviewer.id
-          );
-          
           const busyTimes = await getBusyTimes(
-            token,
-            ['primary'],
+            organizerToken,
+            calendarIdsToCheck,
             currentStartDate,
             currentEndDate
           );
@@ -1225,86 +1222,31 @@ export async function scheduleInterviewAutomated(formData: FormData) {
               end: bt.end,
             })));
           }
-        } catch (error) {
-          console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
-          const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+        } catch (e) {
+          // 에러가 나면 어떤 캘린더가 문제인지 최대한 식별해서 안내합니다.
+          const failingCalendarIds: string[] = [];
+          for (const cid of calendarIdsToCheck) {
+            try {
+              await getBusyTimes(organizerToken, [cid], currentStartDate, currentEndDate);
+            } catch {
+              failingCalendarIds.push(cid);
+            }
+          }
+
+          const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
+          const failingText = failingCalendarIds.length > 0
+            ? `연동/공유 확인이 필요한 캘린더: ${failingCalendarIds.join(', ')}`
+            : '연동/공유 확인이 필요한 캘린더가 있습니다.';
+
           throw new Error(
-            `면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다. ` +
+            `면접관/회의실 캘린더의 바쁨 시간을 조회할 수 없습니다. ${failingText} ` +
             `${errorMessage} ` +
-            `면접관이 구글 캘린더를 재연동해야 할 수 있습니다. (/dashboard/connect-calendar)`
+            `해결: (1) 해당 면접관이 자신의 캘린더를 채용담당자(주최자) 구글 계정에 공유하거나, (2) Google Workspace 정책/권한을 확인해주세요.`
           );
         }
-      }
-
-      // 인터뷰룸(회의실) 캘린더의 바쁜 시간도 함께 조회합니다.
-      // - 종일 일정(start.date)도 busy로 처리되어야 하므로 getBusyTimes()에서 변환 처리합니다.
-      const roomBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
-      const externalBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
-      try {
-        const organizerToken = await refreshAccessTokenIfNeeded(
-          organizer.calendar_access_token!,
-          organizer.calendar_refresh_token!,
-          organizer.id
-        );
-
-        const roomBusyTimes = await getBusyTimes(
-          organizerToken,
-          [roomCalendarId],
-          currentStartDate,
-          currentEndDate
-        );
-
-        allBusyTimes.push(...roomBusyTimes.map(bt => ({
-          start: bt.start,
-          end: bt.end,
-        })));
-
-        if (isCalendarAvailabilityDebugEnabled()) {
-          roomBusyTimesForDebug.push(...roomBusyTimes.map(bt => ({
-            start: bt.start,
-            end: bt.end,
-          })));
-        }
-
-        // ✅ 외부(비가입) 면접관 이메일도 바쁨 충돌 계산에 포함합니다.
-        // - 정책: 외부 면접관 캘린더를 조회할 수 없으면 자동화를 중단합니다.
-        if (externalInterviewerEmails.length > 0) {
-          try {
-            const externalBusyTimes = await getBusyTimes(
-              organizerToken,
-              externalInterviewerEmails,
-              currentStartDate,
-              currentEndDate
-            );
-
-            allBusyTimes.push(...externalBusyTimes.map(bt => ({
-              start: bt.start,
-              end: bt.end,
-            })));
-
-            if (isCalendarAvailabilityDebugEnabled()) {
-              externalBusyTimesForDebug.push(...externalBusyTimes.map(bt => ({
-                start: bt.start,
-                end: bt.end,
-              })));
-            }
-          } catch (e) {
-            console.error(`외부 면접관 캘린더 조회 실패:`, e);
-            const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
-            throw new Error(
-              `외부 면접관의 캘린더를 조회할 수 없습니다. (${externalInterviewerEmails.join(', ')}) ` +
-              `${errorMessage} ` +
-              `해결: (1) 외부 면접관이 채용담당자(주최자) 구글 계정에 캘린더를 공유하거나, (2) 플랫폼에 가입 후 구글 캘린더를 연동해주세요.`
-            );
-          }
-        }
       } catch (error) {
-        console.error(`인터뷰룸 캘린더(${roomCalendarId}) 조회 실패:`, error);
         const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
-        throw new Error(
-          `인터뷰룸(회의실) 캘린더를 조회할 수 없습니다. ${errorMessage} ` +
-          `인터뷰룸 캘린더 접근 권한/공유 설정을 확인하거나, 구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)`
-        );
+        throw new Error(errorMessage);
       }
 
       if (isCalendarAvailabilityDebugEnabled()) {
@@ -1557,13 +1499,13 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         start: slot.scheduledAt.toISOString(),
         end: endTime.toISOString(),
         attendeesCount:
-          interviewersWithCalendar.filter(inv => !slot.missingInterviewers?.includes(inv.id)).length +
+          interviewers.filter(inv => !slot.missingInterviewers?.includes(inv.id)).length +
           externalInterviewerEmails.length,
       });
 
       // 부분적 충돌 정보 처리
       const missingInterviewerEmails = slot.missingInterviewers 
-        ? interviewersWithCalendar
+        ? interviewers
             .filter(inv => slot.missingInterviewers?.includes(inv.id))
             .map(inv => inv.email)
         : [];
@@ -1589,9 +1531,9 @@ export async function scheduleInterviewAutomated(formData: FormData) {
             timeZone: 'Asia/Seoul',
           },
           attendees: [
-            ...interviewersWithCalendar
-            .filter(inv => !slot.missingInterviewers?.includes(inv.id))
-            .map(inv => ({ email: inv.email })),
+            ...interviewers
+              .filter(inv => !slot.missingInterviewers?.includes(inv.id))
+              .map(inv => ({ email: inv.email })),
             ...externalInterviewerEmails.map((email) => ({ email })),
           ],
           transparency: 'opaque', // block 일정이므로 불투명
@@ -1728,7 +1670,7 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         (primaryOption.interviewer_responses as any)?._metadata?.googleEventHtmlLink || '#';
 
       // 모든 면접관에게 안내 메일 발송
-      for (const interviewer of interviewersWithCalendar) {
+      for (const interviewer of interviewers) {
         if (interviewer.email) {
           try {
             const html = await render(
@@ -1863,10 +1805,11 @@ async function regenerateScheduleOptions(
         id,
         name,
         email,
-        job_posts (
-          id,
-          title
-        )
+    job_posts (
+      id,
+      title,
+      organization_id
+    )
       )
     `)
     .eq('id', scheduleId)
@@ -1882,8 +1825,35 @@ async function regenerateScheduleOptions(
   }
 
   const candidate = schedule.candidates as any;
-  const jobPost = candidate.job_posts as { id: string; title: string } | null | undefined;
+  const jobPost = candidate.job_posts as { id: string; title: string; organization_id?: string | null } | null | undefined;
   const positionName = jobPost?.title || '포지션 미지정';
+  const organizationId = jobPost?.organization_id || null;
+
+  // ✅ 재생성(웹훅/백그라운드) 경로에서는 세션이 없을 수 있으므로,
+  // 조직 내 “구글 캘린더 연동된 관리자/리크루터”를 주최자로 선택합니다.
+  if (!organizationId) {
+    throw new Error('조직 정보를 찾을 수 없습니다. (job_posts.organization_id 누락)');
+  }
+
+  const { data: organizerCandidates, error: organizerCandidatesError } = await supabase
+    .from('users')
+    .select('id, email, role, calendar_provider, calendar_access_token, calendar_refresh_token')
+    .eq('organization_id', organizationId)
+    .in('role', ['admin', 'recruiter']);
+
+  if (organizerCandidatesError || !organizerCandidates || organizerCandidates.length === 0) {
+    throw new Error('조직의 관리자/리크루터 사용자를 찾을 수 없습니다.');
+  }
+
+  const organizer =
+    organizerCandidates.find(u => u.role === 'admin' && u.calendar_provider === 'google' && u.calendar_access_token && u.calendar_refresh_token) ||
+    organizerCandidates.find(u => u.calendar_provider === 'google' && u.calendar_access_token && u.calendar_refresh_token);
+
+  if (!organizer || organizer.calendar_provider !== 'google' || !organizer.calendar_access_token || !organizer.calendar_refresh_token) {
+    throw new Error(
+      '일정 재생성을 위해 조직의 관리자(또는 리크루터) 계정이 구글 캘린더에 연동되어 있어야 합니다. (/dashboard/connect-calendar)'
+    );
+  }
 
   // 면접관 정보 조회 (구글 캘린더 연동 정보 포함)
   const { data: interviewers, error: interviewersError } = await supabase
@@ -1895,20 +1865,10 @@ async function regenerateScheduleOptions(
     throw new Error('일부 면접관을 찾을 수 없습니다.');
   }
 
-  // 구글 캘린더 연동 확인
-  const interviewersWithCalendar = interviewers.filter(
-    inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
-  );
-
-  if (interviewersWithCalendar.length !== schedule.interviewer_ids.length) {
-    const interviewersWithoutCalendar = interviewers.filter(
-      inv => !(inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token)
-    );
-    const missingEmails = interviewersWithoutCalendar.map(inv => inv.email).join(', ');
-    throw new Error(
-      `모든 면접관이 구글 캘린더에 연동되어 있어야 합니다. 연동되지 않은 면접관: ${missingEmails}`
-    );
-  }
+  // ✅ 정책 변경: 면접관 개인 OAuth(우리 서비스의 ‘구글 연동’)은 필수가 아닙니다.
+  // - 바쁨 조회(FreeBusy)와 초대 발송은 organizer(관리자/리크루터) 구글 계정 권한으로 수행합니다.
+  // - 단, 면접관 캘린더(이메일)를 조회하려면 organizer 계정에 캘린더 공유가 되어 있어야 합니다.
+  const internalInterviewerEmails = interviewers.map((inv) => inv.email);
 
   // 기존 거절된 일정 옵션 조회 (새로운 일정을 찾을 때 제외하기 위해)
   const { data: existingOptions } = await supabase
@@ -1957,19 +1917,26 @@ async function regenerateScheduleOptions(
     // 면접관들의 바쁜 시간 조회
     const allBusyTimes: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
     const interviewerBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
-    
-    for (const interviewer of interviewersWithCalendar) {
+
+    // 인터뷰룸(회의실) + 내부 면접관(이메일) + 외부 면접관(이메일) 캘린더의 바쁜 시간을 organizer 토큰으로 조회합니다.
+    // - 특정 캘린더가 공유/권한 문제로 조회 불가하면 재생성도 중단하고 “공유 설정 필요”로 안내합니다.
+    const roomCalendarId = getRoomCalendarId();
+    const externalInterviewerEmails = schedule.external_interviewer_emails || [];
+    const calendarIdsToCheck = Array.from(
+      new Set([roomCalendarId, ...internalInterviewerEmails, ...externalInterviewerEmails].filter(Boolean))
+    );
+
+    try {
+      const organizerToken = await refreshAccessTokenIfNeeded(
+        organizer.calendar_access_token,
+        organizer.calendar_refresh_token,
+        organizer.id
+      );
+
       try {
-        // userId를 전달하여 갱신된 토큰을 DB에 자동 저장
-        const token = await refreshAccessTokenIfNeeded(
-          interviewer.calendar_access_token!,
-          interviewer.calendar_refresh_token!,
-          interviewer.id
-        );
-        
         const busyTimes = await getBusyTimes(
-          token,
-          ['primary'],
+          organizerToken,
+          calendarIdsToCheck,
           currentStartDate,
           currentEndDate
         );
@@ -1985,95 +1952,30 @@ async function regenerateScheduleOptions(
             end: bt.end,
           })));
         }
-      } catch (error) {
-        console.error(`면접관 ${interviewer.email}의 캘린더 조회 실패:`, error);
-        const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+      } catch (e) {
+        const failingCalendarIds: string[] = [];
+        for (const cid of calendarIdsToCheck) {
+          try {
+            await getBusyTimes(organizerToken, [cid], currentStartDate, currentEndDate);
+          } catch {
+            failingCalendarIds.push(cid);
+          }
+        }
+
+        const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
+        const failingText = failingCalendarIds.length > 0
+          ? `연동/공유 확인이 필요한 캘린더: ${failingCalendarIds.join(', ')}`
+          : '연동/공유 확인이 필요한 캘린더가 있습니다.';
+
         throw new Error(
-          `면접관 ${interviewer.email}의 캘린더를 조회할 수 없습니다. ` +
+          `면접관/회의실 캘린더의 바쁨 시간을 조회할 수 없습니다. ${failingText} ` +
           `${errorMessage} ` +
-          `면접관이 구글 캘린더를 재연동해야 할 수 있습니다. (/dashboard/connect-calendar)`
+          `해결: (1) 해당 면접관이 자신의 캘린더를 채용담당자(주최자) 구글 계정에 공유하거나, (2) Google Workspace 정책/권한을 확인해주세요.`
         );
       }
-    }
-
-    // 인터뷰룸(회의실) 캘린더도 충돌 계산에 포함합니다.
-    // - 재생성(regenerate)에서도 룸/면접관 중 하나라도 바쁘면 슬롯 생성 금지
-    const roomCalendarId = getRoomCalendarId();
-    const roomBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
-    const externalBusyTimesForDebug: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }> = [];
-    try {
-      // 재생성(regenerate)은 웹훅(세션 없음)에서도 호출될 수 있어,
-      // "현재 로그인 사용자"를 전제로 하지 않고, 구글 연동된 면접관 토큰으로 룸 캘린더를 조회합니다.
-      const organizerForRoom = interviewersWithCalendar[0];
-      if (!organizerForRoom?.calendar_access_token || !organizerForRoom?.calendar_refresh_token) {
-        throw new Error('구글 캘린더에 연동된 면접관(Organizer)을 찾을 수 없습니다.');
-      }
-
-      const organizerToken = await refreshAccessTokenIfNeeded(
-        organizerForRoom.calendar_access_token,
-        organizerForRoom.calendar_refresh_token,
-        organizerForRoom.id
-      );
-
-      const roomBusyTimes = await getBusyTimes(
-        organizerToken,
-        [roomCalendarId],
-        currentStartDate,
-        currentEndDate
-      );
-
-      allBusyTimes.push(...roomBusyTimes.map(bt => ({
-        start: bt.start,
-        end: bt.end,
-      })));
-
-      if (isCalendarAvailabilityDebugEnabled()) {
-        roomBusyTimesForDebug.push(...roomBusyTimes.map(bt => ({
-          start: bt.start,
-          end: bt.end,
-        })));
-      }
-
-      // ✅ 외부(비가입) 면접관 이메일도 바쁨 충돌 계산에 포함합니다.
-      // - 정책: 외부 면접관 캘린더를 조회할 수 없으면 재조율도 중단합니다.
-      const externalInterviewerEmails = schedule.external_interviewer_emails || [];
-      if (externalInterviewerEmails.length > 0) {
-        try {
-          const externalBusyTimes = await getBusyTimes(
-            organizerToken,
-            externalInterviewerEmails,
-            currentStartDate,
-            currentEndDate
-          );
-
-          allBusyTimes.push(...externalBusyTimes.map(bt => ({
-            start: bt.start,
-            end: bt.end,
-          })));
-
-          if (isCalendarAvailabilityDebugEnabled()) {
-            externalBusyTimesForDebug.push(...externalBusyTimes.map(bt => ({
-              start: bt.start,
-              end: bt.end,
-            })));
-          }
-        } catch (e) {
-          console.error(`외부 면접관 캘린더 조회 실패(regenerate):`, e);
-          const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
-          throw new Error(
-            `외부 면접관의 캘린더를 조회할 수 없습니다. (${externalInterviewerEmails.join(', ')}) ` +
-            `${errorMessage} ` +
-            `해결: (1) 외부 면접관이 채용담당자(주최자) 구글 계정에 캘린더를 공유하거나, (2) 플랫폼에 가입 후 구글 캘린더를 연동해주세요.`
-          );
-        }
-      }
     } catch (error) {
-      console.error(`인터뷰룸 캘린더(${roomCalendarId}) 조회 실패:`, error);
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
-      throw new Error(
-        `인터뷰룸(회의실) 캘린더를 조회할 수 없습니다. ${errorMessage} ` +
-        `인터뷰룸 캘린더 접근 권한/공유 설정을 확인하거나, 구글 캘린더를 재연동해주세요. (/dashboard/connect-calendar)`
-      );
+      throw new Error(errorMessage);
     }
 
     if (isCalendarAvailabilityDebugEnabled()) {
@@ -2084,12 +1986,12 @@ async function regenerateScheduleOptions(
         },
         roomCalendarId,
         interviewerBusyCount: interviewerBusyTimesForDebug.length,
-        roomBusyCount: roomBusyTimesForDebug.length,
-        externalBusyCount: externalBusyTimesForDebug.length,
+        roomBusyCount: 0,
+        externalBusyCount: 0,
         totalBusyCount: allBusyTimes.length,
         interviewerBusySample: formatBusySampleForLog(interviewerBusyTimesForDebug),
-        roomBusySample: formatBusySampleForLog(roomBusyTimesForDebug),
-        externalBusySample: formatBusySampleForLog(externalBusyTimesForDebug),
+        roomBusySample: [],
+        externalBusySample: [],
       });
     }
 
@@ -2203,7 +2105,7 @@ async function regenerateScheduleOptions(
           timeZone: 'Asia/Seoul',
         },
         attendees: [
-          ...interviewersWithCalendar.map(inv => ({ email: inv.email })),
+          ...interviewers.map(inv => ({ email: inv.email })),
           ...externalInterviewerEmails.map((email: string) => ({ email })),
         ],
         transparency: 'opaque',
@@ -2311,7 +2213,6 @@ async function regenerateScheduleOptions(
   }
 
   // 면접관들에게 새로운 일정 확인 안내 메일 발송
-  const organizer = interviewersWithCalendar[0];
   if (organizer.calendar_access_token && organizer.calendar_refresh_token && organizer.email) {
     // ✅ 새 이메일 컴포넌트(첨부 디자인) 기준으로 “첫 번째 일정 옵션”만 표시합니다.
     const primaryOption = scheduleOptions[0];
@@ -2325,7 +2226,7 @@ async function regenerateScheduleOptions(
       (primaryOption.interviewer_responses as any)?._metadata?.googleEventHtmlLink || '#';
 
     // 모든 면접관에게 안내 메일 발송
-    for (const interviewer of interviewersWithCalendar) {
+    for (const interviewer of interviewers) {
       if (interviewer.email) {
         try {
           const html = await render(
@@ -4518,19 +4419,29 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
       throw new Error('면접관 정보를 찾을 수 없습니다.');
     }
 
-    const interviewersWithCalendar = interviewers.filter(
-      inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
-    );
+    // ✅ 정책 변경: 면접관 개인 OAuth 연동은 필수가 아닙니다.
+    // - 수동 옵션 추가(이벤트 생성/초대 발송)는 현재 사용자(관리자/리크루터) 구글 계정 권한으로 수행합니다.
+    const { data: organizer, error: organizerError } = await supabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .eq('id', user.userId)
+      .single();
 
-    if (interviewersWithCalendar.length === 0) {
-      throw new Error('구글 캘린더에 연동된 면접관이 없습니다.');
+    if (organizerError || !organizer) {
+      throw new Error('현재 사용자 정보를 찾을 수 없습니다.');
+    }
+
+    if (
+      organizer.calendar_provider !== 'google' ||
+      !organizer.calendar_access_token ||
+      !organizer.calendar_refresh_token
+    ) {
+      throw new Error('일정 생성을 위해 먼저 구글 캘린더를 연동해주세요. (/dashboard/connect-calendar)');
     }
 
     const endTime = new Date(scheduledAt);
     endTime.setMinutes(endTime.getMinutes() + durationMinutes);
 
-    // 첫 번째 면접관의 토큰을 사용하여 이벤트 생성 (주최자)
-    const organizer = interviewersWithCalendar[0];
     const organizerToken = await refreshAccessTokenIfNeeded(
       organizer.calendar_access_token!,
       organizer.calendar_refresh_token!,
@@ -4554,7 +4465,7 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
           timeZone: 'Asia/Seoul',
         },
         attendees: [
-          ...interviewersWithCalendar.map(inv => ({ email: inv.email })),
+          ...interviewers.map(inv => ({ email: inv.email })),
           ...externalInterviewerEmails.map((email: string) => ({ email })),
         ],
         transparency: 'opaque',
