@@ -77,6 +77,10 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 OPENAI_API_KEY=your_openai_api_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
 
+# Gemini — 후보자 JD 매칭(AI Insight)·대시보드 Quick Summary 등 (서버 전용)
+# 로컬: .env.local 권장. 배포: Cloud Run/Vercel 등 환경 변수·시크릿에 반드시 추가 후 재배포.
+GOOGLE_GEMINI_API_KEY=your_google_gemini_api_key
+
 # Google Calendar API & Gmail API
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
@@ -90,6 +94,7 @@ CRON_SECRET_KEY=your_cron_secret_key
 ```
 
 **참고**: 
+- **로컬(`http://localhost:3000`)에서 구글 로그인**을 쓰려면 Supabase **Authentication → URL Configuration → Redirect URLs**에 최소 `http://localhost:3000/auth/callback`, `http://localhost:3000/api/auth/callback/google`을 넣으세요. 개발 편의를 위해 `http://localhost:3000/**` 한 줄만 추가해도 됩니다. `redirect_to`가 목록에 없으면 **Site URL(배포)**로만 돌아갈 수 있습니다.
 - 구글 OAuth 로그인을 사용하려면 Supabase 대시보드에서 구글 프로바이더를 설정해야 합니다. 자세한 내용은 [구글 OAuth 설정 가이드](docs/setup-guide.md)를 참조하세요.
 - 이메일 발송 기능은 Google Workspace의 Gmail API를 사용합니다. Google Cloud Console에서 Gmail API를 활성화하고, 구글 캘린더 연동 시 Gmail 발송 권한도 함께 승인해야 합니다. 자세한 내용은 [Gmail API 설정 가이드](docs/gmail-api-setup.md)를 참조하세요.
 - 리마인드 메일 발송 기능을 사용하려면 외부 cron 서비스(예: [cron-job.org](https://cron-job.org))에서 매일 `https://your-domain.com/api/cron/send-reminder-emails`를 호출하도록 설정하세요. Authorization 헤더에 `Bearer {CRON_SECRET_KEY}`를 포함해야 합니다.

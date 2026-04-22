@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
+import { sanitizeNextPath } from '@/lib/url/sanitize-next-path';
 
 /**
  * OAuth 콜백 처리 라우트
@@ -9,7 +10,7 @@ import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  const next = requestUrl.searchParams.get('next') || '/dashboard';
+  const next = sanitizeNextPath(requestUrl.searchParams.get('next'), '/dashboard');
   const appBaseUrl = getAppBaseUrl(request);
 
   // 코드가 없으면 에러

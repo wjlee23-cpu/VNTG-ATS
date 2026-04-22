@@ -13,6 +13,7 @@ import {
   Link2,
   MoreHorizontal,
   Trash2,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getFileName } from '@/lib/candidate-detail-utils';
@@ -37,6 +38,8 @@ interface CandidateProfileTabProps {
   onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
   onFileUpload?: () => void;
   onFileDelete?: (fileId: string) => void;
+  /** 이력서 업로드 직후·Gemini 분석 중 */
+  isResumeAiAnalyzing?: boolean;
 }
 
 function totalExperienceLabel(c: Candidate): string {
@@ -71,6 +74,7 @@ export function CandidateProfileTab({
   onOpenProfileSectionEdit,
   onFileUpload,
   onFileDelete,
+  isResumeAiAnalyzing = false,
 }: CandidateProfileTabProps) {
   const [selectedFile, setSelectedFile] = useState<ResumeFile | null>(null);
   const [revealCurrentSalary, setRevealCurrentSalary] = useState(false);
@@ -90,6 +94,9 @@ export function CandidateProfileTab({
       setSelectedFile(resumeFiles[0]);
     }
   }, [resumeFiles, selectedFile]);
+
+  const aiSummaryLoading =
+    isResumeAiAnalyzing || candidate.ai_analysis_status === 'processing';
 
   const summaryText =
     candidate.ai_summary?.trim() ||
@@ -114,13 +121,29 @@ export function CandidateProfileTab({
     <div className="flex-1 flex flex-col bg-white relative min-h-0">
       <div className="flex-1 overflow-y-auto p-8 min-h-0">
         {/* Gemini Quick Summary */}
-        <div className="mb-8 p-4 bg-gradient-to-r from-indigo-50/50 to-blue-50/50 border border-indigo-100/50 rounded-xl flex gap-3 items-start">
-          <Sparkles className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
-          <div>
+        <div
+          className={`mb-8 p-4 rounded-xl flex gap-3 items-start border transition-shadow ${
+            aiSummaryLoading
+              ? 'border-indigo-200/80 bg-gradient-to-r from-indigo-50/80 to-blue-50/80 shadow-[0_8px_30px_-10px_rgba(37,99,235,0.15)]'
+              : 'bg-gradient-to-r from-indigo-50/50 to-blue-50/50 border-indigo-100/50'
+          }`}
+        >
+          {aiSummaryLoading ? (
+            <Loader2 className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 animate-spin" aria-hidden />
+          ) : (
+            <Sparkles className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" aria-hidden />
+          )}
+          <div className="min-w-0">
             <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider mb-1">
               Gemini Quick Summary
             </p>
-            <p className="text-sm text-neutral-700 leading-relaxed">{summaryText}</p>
+            {aiSummaryLoading ? (
+              <p className="text-sm text-indigo-900/85 leading-relaxed">
+                Gemini가 이력서와 채용 공고(JD)를 비교·분석하는 중입니다. 잠시만 기다려 주세요.
+              </p>
+            ) : (
+              <p className="text-sm text-neutral-700 leading-relaxed">{summaryText}</p>
+            )}
           </div>
         </div>
 

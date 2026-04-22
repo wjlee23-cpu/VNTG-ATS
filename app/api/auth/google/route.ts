@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
+import { sanitizeNextPath } from '@/lib/url/sanitize-next-path';
 
 /**
  * 구글 로그인 / 캘린더 연동 시작점 (모든 권한 포함)
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
     // Cloud Run에서는 request.origin이 0.0.0.0:8080처럼 내부 주소로 잡힐 수 있으므로,
     // NEXT_PUBLIC_APP_URL을 우선 사용하고 없을 때만 헤더 기반으로 보정합니다.
     const resolvedAppOrigin = getAppBaseUrl(request);
-    const next = requestUrl.searchParams.get('next') || '/dashboard';
+    const next = sanitizeNextPath(requestUrl.searchParams.get('next'), '/dashboard');
     // login / connect 플로우 구분
     const type = requestUrl.searchParams.get('type') || 'login';
     // 콜백에서 재시도 요청이 올 수 있음 (refresh_token 미발급 시)

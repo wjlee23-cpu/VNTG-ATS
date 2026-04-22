@@ -1,6 +1,7 @@
 'use server';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getServerGeminiApiKey } from '@/lib/ai/gemini-env';
 
 /**
  * Gemini API를 사용하여 대시보드 인사이트 메시지를 생성합니다.
@@ -22,19 +23,14 @@ export async function generateDashboardInsight(dashboardData: {
   try {
     // 환경변수 확인 (강화)
     console.log('🔑 [generateDashboardInsight] 환경변수 확인 중...');
-    const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      console.error('❌ [generateDashboardInsight] GOOGLE_GEMINI_API_KEY가 설정되지 않았습니다.');
-      console.error('   - process.env.GOOGLE_GEMINI_API_KEY:', process.env.GOOGLE_GEMINI_API_KEY);
-      console.error('   - 사용 가능한 환경변수 키:', Object.keys(process.env).filter(key => key.includes('GEMINI') || key.includes('GOOGLE')));
-      console.warn('⚠️ 기본 메시지를 반환합니다.');
-      return getDefaultMessage(dashboardData);
-    }
+    const apiKey = getServerGeminiApiKey();
 
-    // API 키 유효성 검증 (최소 길이 확인)
-    if (apiKey.length < 20) {
-      console.error('❌ [generateDashboardInsight] API 키가 너무 짧습니다. 길이:', apiKey.length);
+    if (!apiKey) {
+      console.error('❌ [generateDashboardInsight] GOOGLE_GEMINI_API_KEY / GEMINI_API_KEY가 없거나 너무 짧습니다.');
+      console.error(
+        '   - 사용 가능한 환경변수 키:',
+        Object.keys(process.env).filter((key) => key.includes('GEMINI') || key.includes('GOOGLE')),
+      );
       console.warn('⚠️ 기본 메시지를 반환합니다.');
       return getDefaultMessage(dashboardData);
     }

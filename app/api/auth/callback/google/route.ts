@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
+import { sanitizeNextPath } from '@/lib/url/sanitize-next-path';
 
 /**
  * 구글 OAuth 콜백 처리
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
   if (state) {
     try {
       const stateData = JSON.parse(decodeURIComponent(state));
-      next = stateData.next || '/dashboard';
+      next = sanitizeNextPath(stateData.next, '/dashboard');
       flowType = stateData.type || 'connect';
     } catch {
       // state 파싱 실패 시 기본값 사용
@@ -227,9 +228,17 @@ export async function GET(request: Request) {
       }
 
       // Supabase Auth 세션 생성 (매직 링크 방식)
+      const publicBase = (appBaseUrl || requestUrl.origin).replace(/\/$/, '');
+      // redirectTo는 Redirect URLs에 정확히 등록된 경로와 맞아야 합니다.
+      // `/dashboard`만 넣으면 목록에 없을 때 Site URL(배포)로 폴백되는 경우가 있습니다.
+      const postLoginTarget = `${publicBase}/auth/callback?next=${encodeURIComponent(next)}`;
+
       const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
         type: 'magiclink',
         email: userInfo.email,
+        options: {
+          redirectTo: postLoginTarget,
+        },
       });
 
       if (linkError || !linkData) {

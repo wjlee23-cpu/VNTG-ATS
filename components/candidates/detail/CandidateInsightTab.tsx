@@ -1,6 +1,6 @@
 'use client';
 
-import { Sparkles, ThumbsUp, AlertTriangle, MessageSquareText } from 'lucide-react';
+import { Sparkles, ThumbsUp, AlertTriangle, MessageSquareText, Loader2 } from 'lucide-react';
 import type { Candidate, AiInterviewQuestionItem } from '@/types/candidates';
 import { getScoreBadge } from './candidate-ai-badge';
 
@@ -8,6 +8,8 @@ interface CandidateInsightTabProps {
   candidate: Candidate;
   /** 프로필 탭 첨부 개수 — 공고 없음/대기 상태 안내에 사용 */
   resumeFileCount?: number;
+  /** 이력서 업로드 직후·Gemini 분석 중 */
+  isResumeAiAnalyzing?: boolean;
 }
 
 function normalizeInterviewQuestions(raw: Candidate['ai_interview_questions']): AiInterviewQuestionItem[] {
@@ -62,7 +64,11 @@ function resolveJdMatchFallbackText(
 }
 
 /** AI Insight 탭 — JD 매칭, 강약점, Gemini 추천 면접 질문 */
-export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateInsightTabProps) {
+export function CandidateInsightTab({
+  candidate,
+  resumeFileCount,
+  isResumeAiAnalyzing = false,
+}: CandidateInsightTabProps) {
   const score = candidate.ai_score ?? null;
   const summaryTrimmed = (candidate.ai_summary || '').trim();
   const strengths = candidate.ai_strengths || [];
@@ -70,6 +76,7 @@ export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateIns
   const badge = getScoreBadge(score);
   const interviewQs = normalizeInterviewQuestions(candidate.ai_interview_questions);
   const status = candidate.ai_analysis_status ?? null;
+  const insightLoading = isResumeAiAnalyzing || status === 'processing';
 
   const hasSummary = summaryTrimmed.length > 0;
   const jdBody = hasSummary ? summaryTrimmed : resolveJdMatchFallbackText(candidate, resumeFileCount);
@@ -86,18 +93,44 @@ export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateIns
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white relative">
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-8">
+        {insightLoading ? (
+          <div
+            className="mb-6 flex items-center gap-3 rounded-xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/70 to-blue-50/60 px-4 py-3 text-sm text-indigo-900/90 shadow-[0_8px_28px_-12px_rgba(37,99,235,0.18)]"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-indigo-600" aria-hidden />
+            <span>Gemini가 JD 매칭 분석을 진행 중입니다. 완료되면 점수·요약·강약점이 표시됩니다.</span>
+          </div>
+        ) : null}
+
         {/* Grid: flex 대신 1열이 남은 폭을 확실히 가져가도록 minmax(0,1fr) 사용 */}
-        <div className="mb-8 grid grid-cols-1 gap-6 rounded-xl border border-neutral-200 bg-[#FCFCFC] p-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-8">
+        <div
+          className={`mb-8 grid grid-cols-1 gap-6 rounded-xl border bg-[#FCFCFC] p-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-8 ${
+            insightLoading
+              ? 'border-indigo-100/90 shadow-[0_8px_30px_-10px_rgba(37,99,235,0.12)]'
+              : 'border-neutral-200'
+          }`}
+        >
           <div className="flex flex-col items-center justify-center border-b border-neutral-200 pb-6 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-8">
-            <div className="flex items-baseline gap-1">
-              <span className="text-5xl font-bold tracking-tighter text-neutral-900">{score ?? '—'}</span>
-              {score !== null && <span className="text-lg font-medium text-neutral-400">/100</span>}
-            </div>
-            {badge && (
-              <div className={`mt-3 ${badge.className}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${badge.dotColor}`} />
-                {badge.text}
+            {insightLoading ? (
+              <div className="flex flex-col items-center gap-2 py-2">
+                <Loader2 className="h-10 w-10 animate-spin text-indigo-500" aria-hidden />
+                <span className="text-xs font-medium text-indigo-600/90">분석 중</span>
               </div>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-5xl font-bold tracking-tighter text-neutral-900">{score ?? '—'}</span>
+                  {score !== null && <span className="text-lg font-medium text-neutral-400">/100</span>}
+                </div>
+                {badge && (
+                  <div className={`mt-3 ${badge.className}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${badge.dotColor}`} />
+                    {badge.text}
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className="min-w-0 max-w-full">
@@ -105,7 +138,13 @@ export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateIns
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#2563eb]" aria-hidden />
               <span className="text-sm font-semibold leading-snug text-neutral-900">AI JD Match Analysis</span>
             </div>
-            <p className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${jdToneClass}`}>{jdBody}</p>
+            <p
+              className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${insightLoading ? 'animate-pulse text-indigo-800/70' : jdToneClass}`}
+            >
+              {insightLoading
+                ? '분석이 끝나면 JD 대비 적합도 요약이 이곳에 표시됩니다.'
+                : jdBody}
+            </p>
           </div>
         </div>
 
@@ -115,7 +154,13 @@ export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateIns
               <ThumbsUp className="w-4 h-4 text-emerald-500" />
               강점 (Strengths)
             </h4>
-            {strengths.length > 0 ? (
+            {insightLoading ? (
+              <ul className="space-y-3" aria-hidden>
+                {[1, 2, 3].map((i) => (
+                  <li key={i} className="h-4 rounded-md bg-indigo-100/50 animate-pulse" style={{ width: `${88 - i * 12}%` }} />
+                ))}
+              </ul>
+            ) : strengths.length > 0 ? (
               <ul className="space-y-4">
                 {strengths.map((strength, index) => (
                   <li key={index} className="flex items-start gap-3">
@@ -133,7 +178,13 @@ export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateIns
               <AlertTriangle className="w-4 h-4 text-amber-500" />
               보완점 (Gaps)
             </h4>
-            {weaknesses.length > 0 ? (
+            {insightLoading ? (
+              <ul className="space-y-3" aria-hidden>
+                {[1, 2, 3].map((i) => (
+                  <li key={i} className="h-4 rounded-md bg-blue-100/50 animate-pulse" style={{ width: `${82 - i * 10}%` }} />
+                ))}
+              </ul>
+            ) : weaknesses.length > 0 ? (
               <ul className="space-y-4">
                 {weaknesses.map((weakness, index) => (
                   <li key={index} className="flex items-start gap-3">
@@ -163,10 +214,23 @@ export function CandidateInsightTab({ candidate, resumeFileCount }: CandidateIns
               ))}
             </div>
           ) : (
-            <div className="p-4 rounded-lg border border-amber-100 bg-amber-50/50 text-sm text-amber-900/80">
-              {status === 'processing'
-                ? '면접 질문은 분석이 완료되면 표시됩니다.'
-                : '아직 추천 면접 질문이 없습니다. AI 분석이 완료되면 Gemini가 질문을 제안합니다.'}
+            <div
+              className={`p-4 rounded-lg border text-sm ${
+                insightLoading
+                  ? 'border-indigo-100 bg-indigo-50/40 flex items-center gap-2 text-indigo-900/85'
+                  : 'border-amber-100 bg-amber-50/50 text-amber-900/80'
+              }`}
+            >
+              {insightLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-600" aria-hidden />
+                  면접 질문은 분석이 완료되면 표시됩니다.
+                </>
+              ) : status === 'processing' ? (
+                '면접 질문은 분석이 완료되면 표시됩니다.'
+              ) : (
+                '아직 추천 면접 질문이 없습니다. AI 분석이 완료되면 Gemini가 질문을 제안합니다.'
+              )}
             </div>
           )}
         </div>

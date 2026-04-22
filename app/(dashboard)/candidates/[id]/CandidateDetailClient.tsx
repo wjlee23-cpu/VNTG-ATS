@@ -386,23 +386,26 @@ export function CandidateDetailClient({
     profileEditMode,
   ]);
 
+  // 이력서 업로드 직후(서버 액션 대기)와 ai_analysis_status=processing 동안 DB를 주기적으로 읽어 UI를 맞춥니다.
   useEffect(() => {
-    if (candidate.ai_analysis_status !== 'processing') return;
-    const intervalId = setInterval(async () => {
+    const aiBusy = isUploadingFile || candidate.ai_analysis_status === 'processing';
+    if (!aiBusy) return;
+
+    const poll = async () => {
       try {
         const result = await getCandidateById(candidate.id);
         const data = result.data as Candidate | undefined;
-        if (data) {
-          setCandidate(data);
-          if (data.ai_analysis_status === 'completed' || data.ai_analysis_status === 'failed')
-            clearInterval(intervalId);
-        }
+        if (data) setCandidate(data);
       } catch {
         /* keep polling */
       }
-    }, 3000);
+    };
+
+    void poll();
+    const intervalMs = isUploadingFile ? 2000 : 3000;
+    const intervalId = setInterval(() => void poll(), intervalMs);
     return () => clearInterval(intervalId);
-  }, [candidate.ai_analysis_status, candidate.id]);
+  }, [isUploadingFile, candidate.ai_analysis_status, candidate.id]);
 
   const loadEvaluations = async () => {
     setIsLoadingEvaluations(true);
@@ -744,19 +747,32 @@ export function CandidateDetailClient({
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploadingFile(true);
+    // 서버 액션이 끝날 때까지 오래 걸리므로, 즉시 분석 중 상태로 보이게 낙관적 반영합니다.
+    setCandidate((prev) => ({
+      ...prev,
+      ai_analysis_status: 'processing',
+      ai_summary: null,
+      ai_score: null,
+      ai_strengths: null,
+      ai_weaknesses: null,
+      ai_interview_questions: null,
+    }));
     try {
       const formData = new FormData();
       formData.append('file', file);
       const result = await uploadResumeFile(candidate.id, formData);
-      if (result.error) toast.error(result.error);
-      else {
-        toast.success('파일이 업로드되었습니다.');
+      if (result.error) {
+        toast.error(result.error);
+        await refreshCandidateData().catch(() => {});
+      } else {
+        toast.success('파일이 업로드되었습니다. AI 분석이 반영되었습니다.');
         aiTriggerStartedRef.current = false;
         loadResumeFiles();
-        refreshCandidateData().catch(() => {});
+        await refreshCandidateData().catch(() => {});
       }
     } catch (err) {
       toast.error((err as Error).message || '파일 업로드 중 오류가 발생했습니다.');
+      await refreshCandidateData().catch(() => {});
     } finally {
       setIsUploadingFile(false);
       e.target.value = '';
@@ -907,6 +923,8 @@ export function CandidateDetailClient({
   const canViewCompensation = ['admin', 'recruiter', 'hiring_manager'].includes(userRole);
   const canManageCandidate = userRole === 'admin' || userRole === 'recruiter';
   const skills = candidate.parsed_data?.skills || candidate.skills || [];
+  const isResumeAiAnalyzing =
+    isUploadingFile || candidate.ai_analysis_status === 'processing';
 
   const toggleEmailExpand = (eventId: string) => {
     setExpandedEmails((prev) => {
@@ -957,6 +975,7 @@ export function CandidateDetailClient({
           resumeFiles={resumeFiles}
           canViewCompensation={canViewCompensation}
           onOpenProfileSectionEdit={openProfileSectionEdit}
+          isResumeAiAnalyzing={isResumeAiAnalyzing}
           activeTab={detailInitialTab}
           onActiveTabChange={setDetailInitialTab}
           onFileUpload={() => {

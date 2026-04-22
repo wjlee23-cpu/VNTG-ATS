@@ -60,6 +60,8 @@ interface CandidateDetailLayoutProps {
   onOpenProfileSectionEdit?: (section: 'basic' | 'compensation') => void;
   onFileUpload?: () => void;
   onFileDelete?: (fileId: string) => void;
+  /** 이력서 업로드 후 Gemini 분석이 진행 중일 때 Profile/Insight 탭에 로딩 표시 */
+  isResumeAiAnalyzing?: boolean;
   initialActiveTab?: TabType;
   activeTab?: TabType;
   onActiveTabChange?: (tab: TabType) => void;
@@ -99,6 +101,7 @@ export function CandidateDetailLayout({
   onOpenProfileSectionEdit,
   onFileUpload,
   onFileDelete,
+  isResumeAiAnalyzing = false,
   initialActiveTab = 'profile',
   activeTab,
   onActiveTabChange,
@@ -170,10 +173,15 @@ export function CandidateDetailLayout({
             onOpenProfileSectionEdit={onOpenProfileSectionEdit}
             onFileUpload={onFileUpload}
             onFileDelete={onFileDelete}
+            isResumeAiAnalyzing={isResumeAiAnalyzing}
           />
         )}
         {resolvedActiveTab === 'insight' && (
-          <CandidateInsightTab candidate={candidate} resumeFileCount={resumeFiles.length} />
+          <CandidateInsightTab
+            candidate={candidate}
+            resumeFileCount={resumeFiles.length}
+            isResumeAiAnalyzing={isResumeAiAnalyzing}
+          />
         )}
         {resolvedActiveTab === 'timeline' && (
           <CandidateTimelineView

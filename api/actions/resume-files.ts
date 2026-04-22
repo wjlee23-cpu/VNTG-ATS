@@ -7,6 +7,7 @@ import { getCurrentUser, verifyCandidateAccess, requireRecruiterOrAdmin } from '
 import { validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { analyzeCandidateMatch } from '@/lib/ai/candidate-matching';
+import { updateCandidatesResilient } from '@/lib/supabase/update-candidates-resilient';
 
 /**
  * 첨부파일 업로드
@@ -138,17 +139,17 @@ export async function uploadResumeFile(candidateId: string, formData: FormData) 
 
     // 파일 업로드 성공 후 AI 인사이트 초기화 및 상태를 pending으로 설정
     // 기존 AI 분석 결과를 초기화하여 새 파일에 맞는 새로운 분석이 시작되도록 함
-    await supabase
-      .from('candidates')
-      .update({
-        ai_score: null,
-        ai_summary: null,
-        ai_strengths: null,
-        ai_weaknesses: null,
-        ai_interview_questions: [],
-        ai_analysis_status: 'pending',
-      })
-      .eq('id', candidateId);
+    const { error: resetAiError } = await updateCandidatesResilient(supabase, candidateId, {
+      ai_score: null,
+      ai_summary: null,
+      ai_strengths: null,
+      ai_weaknesses: null,
+      ai_interview_questions: [],
+      ai_analysis_status: 'pending',
+    });
+    if (resetAiError && process.env.NODE_ENV === 'development') {
+      console.warn('[uploadResumeFile] 후보자 AI 필드 초기화 경고:', resetAiError);
+    }
 
     // 이력서 업로드 성공 후 AI 분석 시작 (비동기, 백그라운드 실행)
     // 후보자의 job_post_id 조회
@@ -247,17 +248,17 @@ export async function deleteResumeFile(fileId: string) {
 
     // 모든 파일이 삭제된 경우 AI 인사이트 초기화
     if (!countError && (!remainingFiles || remainingFiles.length === 0)) {
-      await supabase
-        .from('candidates')
-        .update({
-          ai_score: null,
-          ai_summary: null,
-          ai_strengths: null,
-          ai_weaknesses: null,
-          ai_interview_questions: [],
-          ai_analysis_status: null,
-        })
-        .eq('id', candidate.id);
+      const { error: clearAiError } = await updateCandidatesResilient(supabase, candidate.id, {
+        ai_score: null,
+        ai_summary: null,
+        ai_strengths: null,
+        ai_weaknesses: null,
+        ai_interview_questions: [],
+        ai_analysis_status: null,
+      });
+      if (clearAiError && process.env.NODE_ENV === 'development') {
+        console.warn('[deleteResumeFile] AI 인사이트 초기화 경고:', clearAiError);
+      }
       
       console.log('[deleteResumeFile] 모든 파일이 삭제되어 AI 인사이트를 초기화했습니다.');
     }
