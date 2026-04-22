@@ -40,6 +40,12 @@ type EmailHtmlEditorProps = {
   disabled?: boolean;
   placeholder?: string;
   minEditorHeightPx?: number;
+  /**
+   * 상단 탭/툴바/도움말을 숨기고 “본문 작성 영역”만 보여주는 모드입니다.
+   * - 기존 사용처 영향 방지를 위해 기본값은 false입니다.
+   * - 외부 컨테이너(모달)에서 하단 얇은 바/액션을 구성할 때 사용합니다.
+   */
+  chromeLess?: boolean;
   className?: string;
 };
 
@@ -54,6 +60,7 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
     disabled = false,
     placeholder = '메일 본문을 작성하세요…',
     minEditorHeightPx = 220,
+    chromeLess = false,
     className,
   },
   ref
@@ -379,36 +386,40 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
         }}
         className="gap-3"
       >
-        <div className="flex items-center justify-between gap-3">
-          <TabsList className="h-9 rounded-xl border border-neutral-200 bg-neutral-100/70">
-            <TabsTrigger value="editor" className="text-sm">
-              <Eye className="h-4 w-4" />
-              Editor
-            </TabsTrigger>
-            <TabsTrigger value="html" className="text-sm">
-              <Code2 className="h-4 w-4" />
-              HTML
-            </TabsTrigger>
-          </TabsList>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
-            저장 포맷: HTML
+        {!chromeLess ? (
+          <div className="flex items-center justify-between gap-3">
+            <TabsList className="h-9 rounded-xl border border-neutral-200 bg-neutral-100/70">
+              <TabsTrigger value="editor" className="text-sm">
+                <Eye className="h-4 w-4" />
+                Editor
+              </TabsTrigger>
+              <TabsTrigger value="html" className="text-sm">
+                <Code2 className="h-4 w-4" />
+                HTML
+              </TabsTrigger>
+            </TabsList>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+              저장 포맷: HTML
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <TabsContent value="editor" className="space-y-3">
-          {toolbar}
+        <TabsContent value="editor" className={chromeLess ? 'space-y-0' : 'space-y-3'}>
+          {!chromeLess ? toolbar : null}
           <div
-            className="rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm"
+            className={chromeLess ? 'bg-transparent' : 'rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm'}
             style={{ minHeight: minEditorHeightPx }}
           >
             <EditorContent editor={editor} />
           </div>
-          <p className="text-[11px] font-medium text-neutral-400">
-            이메일 클라이언트는 일부 스타일/태그를 제거할 수 있어요. 최종 화면은 ‘미리보기’에서 확인하세요.
-          </p>
+          {!chromeLess ? (
+            <p className="text-[11px] font-medium text-neutral-400">
+              이메일 클라이언트는 일부 스타일/태그를 제거할 수 있어요. 최종 화면은 ‘미리보기’에서 확인하세요.
+            </p>
+          ) : null}
         </TabsContent>
 
-        <TabsContent value="html" className="space-y-3">
+        <TabsContent value="html" className={chromeLess ? 'space-y-0' : 'space-y-3'}>
           <Textarea
             value={htmlValue}
             onChange={(e) => {
@@ -420,12 +431,18 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
             ref={(node) => {
               htmlTextareaRef.current = node;
             }}
-            className="min-h-[260px] rounded-xl border-neutral-200 bg-white font-mono text-xs leading-relaxed text-neutral-800 shadow-sm"
+            className={
+              chromeLess
+                ? 'min-h-[260px] rounded-xl border-neutral-200 bg-transparent font-mono text-xs leading-relaxed text-neutral-800'
+                : 'min-h-[260px] rounded-xl border-neutral-200 bg-white font-mono text-xs leading-relaxed text-neutral-800 shadow-sm'
+            }
             placeholder="<p>안녕하세요…</p>"
           />
-          <p className="text-[11px] font-medium text-neutral-400">
-            HTML 탭에서 수정한 내용은 Editor 탭으로 돌아가면 자동 반영됩니다.
-          </p>
+          {!chromeLess ? (
+            <p className="text-[11px] font-medium text-neutral-400">
+              HTML 탭에서 수정한 내용은 Editor 탭으로 돌아가면 자동 반영됩니다.
+            </p>
+          ) : null}
         </TabsContent>
       </Tabs>
     </div>
