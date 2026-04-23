@@ -6,6 +6,8 @@ import {
   Paperclip,
   Send,
   ThumbsUp,
+  ThumbsDown,
+  PauseCircle,
   MessageSquare,
   GitMerge,
   CalendarPlus,
@@ -74,6 +76,14 @@ function rowEvalResult(r: string | undefined | null): 'pass' | 'fail' | 'pending
 const timelineNodeBase =
   'absolute -left-[13px] top-0 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-sm';
 
+function isEditedTimelineEvent(event: TimelineEvent): boolean {
+  const c: any = event.content;
+  if (!c) return false;
+  if (c.edited === true) return true;
+  if (typeof c.edited_at === 'string' && c.edited_at.trim()) return true;
+  return false;
+}
+
 function getTimelineNodeVisual(event: TimelineEvent): {
   wrapClass: string;
   Icon: LucideIcon;
@@ -86,14 +96,14 @@ function getTimelineNodeVisual(event: TimelineEvent): {
       if (r === 'fail') {
         return {
           wrapClass: `${timelineNodeBase} bg-red-100`,
-          Icon: ThumbsUp,
+          Icon: ThumbsDown,
           iconClass: 'w-3 h-3 text-red-600',
         };
       }
       if (r === 'pending') {
         return {
           wrapClass: `${timelineNodeBase} bg-amber-100`,
-          Icon: ThumbsUp,
+          Icon: PauseCircle,
           iconClass: 'w-3 h-3 text-amber-700',
         };
       }
@@ -635,6 +645,7 @@ export function CandidateTimelineView({
               const author = getAuthorDisplay(event);
               const showCommentEdit = canEditTimelineComment(event);
               const showEvalEdit = canEditTimelineEvaluation(event);
+              const showEditedLabel = isEditedTimelineEvent(event);
 
               return (
                 <div key={event.id} className="group relative min-w-0 max-w-full pl-8">
@@ -679,6 +690,7 @@ export function CandidateTimelineView({
                         </button>
                       )}
                       <span className="text-[11px] text-neutral-400 whitespace-nowrap">
+                        {showEditedLabel ? <span className="mr-1">(수정)</span> : null}
                         {formatTimeForDisplay(event.created_at)}
                       </span>
                     </div>

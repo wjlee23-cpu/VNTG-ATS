@@ -151,23 +151,62 @@ export async function updateComment(commentId: string, content: string) {
       throw new Error(`코멘트 수정 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트 생성
-    const { error: timelineError } = await supabase.from('timeline_events').insert({
-      candidate_id: existingComment.candidate_id,
-      type: 'comment_updated',
-      content: {
-        message: '코멘트가 수정되었습니다.',
-        comment_id: validatedCommentId,
-        previous_content: existingComment.content,
-        new_content: validatedContent,
-      },
-      created_by: user.userId,
-    });
+    // 타임라인 이벤트 갱신(중복 방지)
+    // - 기존에는 수정할 때마다 comment_updated를 insert해서 “기존 메모 + 수정 메모”가 같이 보였습니다.
+    // - 이제는 최초 comment_created 이벤트를 찾아 content만 업데이트합니다(시간은 기존 created_at 유지).
+    const editedAt = new Date().toISOString();
 
-    if (timelineError) {
-      console.error('[타임라인] 이벤트 생성 실패 (코멘트 수정):', timelineError);
-      if (timelineError.code === '23514') {
-        console.error('[타임라인] DB 스키마 제약 조건 위반 - comment_updated 타입이 허용되지 않음.');
+    const { data: existingTimeline, error: existingTimelineError } = await supabase
+      .from('timeline_events')
+      .select('id, content, created_at')
+      .eq('candidate_id', existingComment.candidate_id)
+      .eq('type', 'comment_created')
+      .eq('content->>comment_id', validatedCommentId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingTimelineError) {
+      throw new Error(`코멘트 타임라인 조회 실패: ${existingTimelineError.message}`);
+    }
+
+    if (existingTimeline?.id) {
+      const mergedContent = {
+        ...(typeof existingTimeline.content === 'object' && existingTimeline.content ? existingTimeline.content : {}),
+        message: '코멘트가 작성되었습니다.',
+        comment_id: validatedCommentId,
+        content: validatedContent,
+        edited: true,
+        edited_at: editedAt,
+      };
+
+      const { error: timelineUpdateError } = await supabase
+        .from('timeline_events')
+        .update({
+          content: mergedContent,
+        })
+        .eq('id', existingTimeline.id);
+
+      if (timelineUpdateError) {
+        throw new Error(`코멘트 타임라인 갱신 실패: ${timelineUpdateError.message}`);
+      }
+    } else {
+      // 레거시/예외 케이스: 최초 생성 이벤트가 없다면 1개는 남깁니다.
+      const { error: timelineInsertError } = await supabase.from('timeline_events').insert({
+        candidate_id: existingComment.candidate_id,
+        type: 'comment_created',
+        content: {
+          message: '코멘트가 작성되었습니다.',
+          comment_id: validatedCommentId,
+          content: validatedContent,
+          edited: true,
+          edited_at: editedAt,
+        },
+        created_by: user.userId,
+      });
+
+      if (timelineInsertError) {
+        console.error('[타임라인] 이벤트 생성 실패 (코멘트 수정 fallback):', timelineInsertError);
       }
     }
 

@@ -228,92 +228,63 @@ export async function updateStageEvaluation(
       throw new Error(`평가 수정 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트 생성
+    // 타임라인 이벤트 갱신(중복 방지)
+    // - 기존에는 수정할 때마다 insert되어 타임라인에 평가 카드가 계속 쌓였습니다.
+    // - 이제는 evaluation_id 기준으로 기존 이벤트를 찾아 content만 업데이트합니다.
     const stageName = STAGE_ID_TO_NAME_MAP[evaluation.stage_id] || evaluation.stage_id;
-    await supabase.from('timeline_events').insert({
-      candidate_id: evaluation.candidate_id,
-      type: 'stage_evaluation',
-      content: {
-        message: `${stageName} 전형 평가가 수정되었습니다.`,
-        stage_id: evaluation.stage_id,
-        stage_name: stageName,
-        result,
-        notes,
-        evaluation_id: evaluationId,
-      },
-      created_by: user.userId,
-    });
+    const editedAt = new Date().toISOString();
+    const updatedContent = {
+      message: `${stageName} 전형 평가가 수정되었습니다.`,
+      stage_id: evaluation.stage_id,
+      stage_name: stageName,
+      result,
+      notes,
+      evaluation_id: evaluationId,
+      edited: true,
+      edited_at: editedAt,
+    };
 
-    // 관리자/리크루터/하이어링 매니저가 합격 평가로 "수정"한 경우에도 자동으로 다음 전형으로 이동
-    if (result === 'pass' && (user.role === 'admin' || user.role === 'recruiter' || user.role === 'hiring_manager')) {
-      try {
-        // 후보자 현재 단계/채용공고 ID 조회
-        const { data: candidateRow, error: candidateError } = await supabase
-          .from('candidates')
-          .select('id, job_post_id, current_stage_id')
-          .eq('id', evaluation.candidate_id)
-          .single();
+    const { data: existingTimeline } = await supabase
+      .from('timeline_events')
+      .select('id, content, created_at')
+      .eq('candidate_id', evaluation.candidate_id)
+      .eq('type', 'stage_evaluation')
+      .eq('content->>evaluation_id', evaluationId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-        if (!candidateError && candidateRow) {
-          // 이미 다른 단계로 이동된 경우에는 중복 자동 이동을 하지 않습니다.
-          if (candidateRow.current_stage_id === evaluation.stage_id) {
-            // 커스텀 단계 정보 조회는 Service Role로 안전하게 수행
-            const { customStages } = await getJobProcessInfo(candidateRow.job_post_id, true);
-            const nextStageId = getNextStageId(evaluation.stage_id, customStages);
+    if (existingTimeline?.id) {
+      const mergedContent = {
+        ...(typeof existingTimeline.content === 'object' && existingTimeline.content ? existingTimeline.content : {}),
+        ...updatedContent,
+      };
+      const { error: timelineUpdateError } = await supabase
+        .from('timeline_events')
+        .update({
+          content: mergedContent,
+        })
+        .eq('id', existingTimeline.id);
 
-            if (nextStageId) {
-              // 다음 단계 이름 찾기
-              let nextStageName: string;
-              if (STAGE_ID_TO_NAME_MAP[nextStageId]) {
-                nextStageName = STAGE_ID_TO_NAME_MAP[nextStageId];
-              } else if (customStages) {
-                const nextStage = customStages.find(s => s.id === nextStageId);
-                nextStageName = nextStage?.name || nextStageId;
-              } else {
-                nextStageName = nextStageId;
-              }
-
-              // 현재 단계 이름 찾기
-              let currentStageName: string;
-              if (STAGE_ID_TO_NAME_MAP[evaluation.stage_id]) {
-                currentStageName = STAGE_ID_TO_NAME_MAP[evaluation.stage_id];
-              } else if (customStages) {
-                const currentStage = customStages.find(s => s.id === evaluation.stage_id);
-                currentStageName = currentStage?.name || evaluation.stage_id;
-              } else {
-                currentStageName = evaluation.stage_id;
-              }
-
-              // 후보자 전형 업데이트
-              const { error: updateError } = await supabase
-                .from('candidates')
-                .update({
-                  current_stage_id: nextStageId,
-                  status: 'in_progress',
-                })
-                .eq('id', evaluation.candidate_id);
-
-              if (!updateError) {
-                await supabase.from('timeline_events').insert({
-                  candidate_id: evaluation.candidate_id,
-                  type: 'stage_changed',
-                  content: {
-                    message: `${user.role === 'admin' ? '관리자' : user.role === 'recruiter' ? '리크루터' : '하이어링 매니저'}의 합격 평가로 인해 ${currentStageName}에서 ${nextStageName}로 자동 이동했습니다.`,
-                    from_stage: currentStageName,
-                    to_stage: nextStageName,
-                    stage_id: nextStageId,
-                    auto_advanced: true,
-                  },
-                  created_by: user.userId,
-                });
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error('자동 전형 이동 실패(평가 수정):', error);
+      if (timelineUpdateError) {
+        throw new Error(`평가 타임라인 갱신 실패: ${timelineUpdateError.message}`);
+      }
+    } else {
+      // 레거시/예외 케이스: 기존 이벤트를 못 찾으면 최소한 1개 이벤트는 남깁니다.
+      const { error: timelineInsertError } = await supabase.from('timeline_events').insert({
+        candidate_id: evaluation.candidate_id,
+        type: 'stage_evaluation',
+        content: updatedContent,
+        created_by: user.userId,
+      });
+      if (timelineInsertError) {
+        throw new Error(`평가 타임라인 생성 실패: ${timelineInsertError.message}`);
       }
     }
+
+    // 평가 “수정”은 전형 이동을 유발하지 않습니다.
+    // - 합격으로 수정할 때 자동 전형 이동 로그가 생성되면, 사용자가 의도한 “평가 수정” 흐름을 방해합니다.
+    // - 자동 전형 이동은 평가 “등록(createStageEvaluation)” 시점에만 수행합니다.
 
     // 캐시 무효화
     revalidatePath('/dashboard/candidates');
