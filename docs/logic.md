@@ -3,6 +3,10 @@
 - **멘션**: 본문에 `@[사용자UUID]` 형태로 저장하고, 화면에서는 조직 사용자 목록으로 표시 이름을 치환합니다. `comments.mentioned_user_ids`에 UUID를 함께 저장합니다.
 - **스레드(답장)**: `comments`에 `activity_thread_root_timeline_event_id` 또는 `activity_thread_root_email_id`가 설정되면 해당 코멘트는 **메인 타임라인에 새 `timeline_events` 행을 만들지 않습니다.** (합성 이메일 행은 `emails.id`를 루트로 사용)
 - **인용**: `createQuotedActivityTimelineEntry`가 `timeline_events`에 `type = activity_quote`만 추가하며, `content.quoted_snapshot`에 원문 요약을 넣습니다.
+  - UI 정책: 인용 버튼 클릭 시 별도 모달을 띄우지 않고, **메모 작성 입력창 상단에 인용 프리뷰를 붙여** 같은 입력창에서 메시지를 작성/전송합니다.
+- **리액션(이모지)**: 타임라인 항목에 이모지 반응을 달 수 있습니다.
+  - 정책: 이벤트(타임라인 행)당 이모지 종류/개수 제한은 없지만, **같은 계정은 같은 이모지를 1번만** 누를 수 있습니다. 다시 누르면 취소(토글)됩니다.
+  - 저장: `timeline_event_reactions`에 `(timeline_event_id, user_id, emoji)` 유니크로 저장합니다.
 
 # 스케줄링 비즈니스 로직
 

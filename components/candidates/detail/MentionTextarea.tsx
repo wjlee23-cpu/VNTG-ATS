@@ -56,6 +56,7 @@ export function MentionTextarea({
   const [menuOpen, setMenuOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const [mentionAnchor, setMentionAnchor] = useState<{ at: number; query: string } | null>(null);
+  const composingRef = useRef(false);
 
   const filtered = useMemo(() => {
     const q = (mentionAnchor?.query ?? '').trim().toLowerCase();
@@ -76,6 +77,9 @@ export function MentionTextarea({
       setMentionAnchor(null);
       return;
     }
+    // ✅ 한글 IME 조합 중에는 caret/텍스트가 계속 변하면서 메뉴가 깜빡일 수 있어
+    //    조합이 끝난 뒤에 한 번만 동기화합니다.
+    if (composingRef.current) return;
     const caret = el.selectionStart ?? 0;
     const anchor = findMentionQuery(value, caret);
     if (anchor) {
@@ -132,6 +136,13 @@ export function MentionTextarea({
         disabled={disabled}
         rows={rows}
         placeholder={placeholder}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+          requestAnimationFrame(syncMentionMenu);
+        }}
         onChange={(e) => {
           onChange(e.target.value);
           requestAnimationFrame(syncMentionMenu);

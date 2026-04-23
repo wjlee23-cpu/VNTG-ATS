@@ -31,14 +31,10 @@ import { cn } from '@/lib/utils';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { normalizeStageEvalResult } from './timeline-utils';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { createQuotedActivityTimelineEntry } from '@/api/actions/activity-quotes';
+import { toggleTimelineEventReaction } from '@/api/actions/timeline-reactions';
+import { getTimelineReactionSummariesForCandidate } from '@/api/queries/timeline-reactions';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 
 /** 타임라인에서 평가 수정 시 매칭용 (getStageEvaluations 결과) */
 export type StageEvaluationRow = {
@@ -88,6 +84,22 @@ function buildActivityThreadRoot(event: TimelineEvent): ActivityCommentThreadRoo
     return { kind: 'email', id: eid };
   }
   return { kind: 'timeline_event', id: event.id };
+}
+
+function excerptFromEventForQuotePreview(event: TimelineEvent): string {
+  const c: any = event.content;
+  const raw =
+    (typeof c?.message === 'string' ? c.message : '') ||
+    (typeof c?.content === 'string' ? c.content : '') ||
+    (typeof c?.new_content === 'string' ? c.new_content : '') ||
+    (typeof c?.subject === 'string' ? c.subject : '') ||
+    (typeof c?.latest_message === 'string' ? c.latest_message : '') ||
+    '';
+
+  const t = String(raw).replace(/\s+/g, ' ').trim();
+  if (!t) return '내용 없음';
+  if (t.length <= 160) return t;
+  return `${t.slice(0, 159)}…`;
 }
 
 type ComposerTab = 'memo' | 'evaluation';
@@ -235,12 +247,13 @@ export function CandidateTimelineView({
     byTimelineEventId: Record<string, ActivityThreadSummary>;
     byEmailId: Record<string, ActivityThreadSummary>;
   }>({ byTimelineEventId: {}, byEmailId: {} });
-  /** 스레드 없이 UI만: 이벤트별 이모지 반응 카운트(로컬) */
-  const [reactionMap, setReactionMap] = useState<Record<string, Record<string, number>>>({});
-  const [quoteOpen, setQuoteOpen] = useState(false);
-  const [quoteText, setQuoteText] = useState('');
+  /** 이벤트별 리액션 집계(서버) */
+  const [reactionSummaries, setReactionSummaries] = useState<{
+    byTimelineEventId: Record<string, Array<{ emoji: string; count: number; reactedByMe: boolean }>>;
+  }>({ byTimelineEventId: {} });
+  /** 이모지 피커가 열려있는 타임라인 이벤트 ID */
+  const [emojiPickerEventId, setEmojiPickerEventId] = useState<string | null>(null);
   const [quoteTargetEvent, setQuoteTargetEvent] = useState<TimelineEvent | null>(null);
-  const [quoting, setQuoting] = useState(false);
 
   const refreshThreadSummaries = useCallback(async () => {
     const res = await getActivityThreadSummariesForCandidate(candidateId);
@@ -248,9 +261,19 @@ export function CandidateTimelineView({
     if (res.data) setThreadSummaries(res.data);
   }, [candidateId]);
 
+  const refreshReactionSummaries = useCallback(async () => {
+    const ids = (events || [])
+      .map((e) => e.id)
+      .filter((id) => typeof id === 'string' && id.length > 0);
+    const res = await getTimelineReactionSummariesForCandidate(candidateId, ids);
+    if (res.error) return;
+    if (res.data) setReactionSummaries(res.data);
+  }, [candidateId, events]);
+
   useEffect(() => {
     if (!hasLoaded || !candidateId) return;
     void refreshThreadSummaries();
+    void refreshReactionSummaries();
   }, [hasLoaded, candidateId, events, refreshThreadSummaries]);
 
   const getAuthorDisplay = (event: TimelineEvent) => {
@@ -341,6 +364,7 @@ export function CandidateTimelineView({
     if (onRefreshTimeline) await onRefreshTimeline();
     else router.refresh();
     await refreshThreadSummaries();
+    await refreshReactionSummaries();
   };
 
   const threadSummaryFor = (event: TimelineEvent): ActivityThreadSummary | null => {
@@ -498,13 +522,27 @@ export function CandidateTimelineView({
     }
     setIsSubmitting(true);
     try {
-      const result = await createComment(
-        candidateId,
-        commentText.trim(),
-        undefined,
-        undefined,
-        true
-      );
+      const trimmed = commentText.trim();
+      // ✅ 인용 기능: 인용 모달 없이, 기존 메모 입력창에서 바로 인용 코멘트를 작성/전송합니다.
+      if (quoteTargetEvent) {
+        const root = buildActivityThreadRoot(quoteTargetEvent);
+        if (!root) {
+          toast.error('인용할 수 없는 항목입니다.');
+          return;
+        }
+        const res = await createQuotedActivityTimelineEntry(candidateId, trimmed, root);
+        if (res.error) {
+          toast.error(res.error);
+        } else {
+          toast.success('타임라인에 인용이 등록되었습니다.');
+          setCommentText('');
+          setQuoteTargetEvent(null);
+          await refreshAfterMutation();
+        }
+        return;
+      }
+
+      const result = await createComment(candidateId, trimmed, undefined, undefined, true);
       if (result.error) {
         toast.error(result.error);
       } else {
@@ -557,45 +595,52 @@ export function CandidateTimelineView({
 
   const memoSendDisabled = isSubmitting || !commentText.trim();
 
-  const getReactionPillsForEvent = (eventId: string) => {
-    const m = reactionMap[eventId] ?? {};
-    return [
-      { emoji: '👍', count: m['👍'] ?? 0 },
-      { emoji: '👀', count: m['👀'] ?? 0 },
-    ];
-  };
+  const reactionPillsForEvent = (eventId: string) =>
+    reactionSummaries.byTimelineEventId[eventId] ?? [];
 
-  const bumpReaction = (eventId: string, emoji: string) => {
-    setReactionMap((prev) => ({
-      ...prev,
-      [eventId]: {
-        ...(prev[eventId] ?? {}),
-        [emoji]: ((prev[eventId] ?? {})[emoji] ?? 0) + 1,
-      },
-    }));
+  const canReactForEvent = (event: TimelineEvent) => {
+    // 합성 이메일 이벤트(email-*)는 timeline_events에 없어서 리액션 저장이 불가합니다.
+    if (event.id.startsWith('email-')) return false;
+    return true;
   };
 
   const buildTimelineChromeFor = (event: TimelineEvent): TimelineEventChrome | undefined => {
     const root = buildActivityThreadRoot(event);
     if (!root) return undefined;
     const s = threadSummaryFor(event);
+    const canEditEvaluation = event.type === 'stage_evaluation' && canEditTimelineEvaluation(event);
     return {
       interaction: {
         onOpenThread: () => openThreadSheet(event),
-        onEdit: canEditTimelineComment(event) ? () => openInlineCommentEditor(event) : undefined,
+        onEdit: canEditTimelineComment(event)
+          ? () => openInlineCommentEditor(event)
+          : canEditEvaluation
+            ? () => openInlineEvaluationEditor(event)
+            : undefined,
         onQuote: () => {
           setQuoteTargetEvent(event);
-          setQuoteText('');
-          setQuoteOpen(true);
+          setComposerTab('memo');
         },
         onEmojiPicker: () => {
-          toast.message('이모지', { description: '곧 지원할 예정입니다.' });
+          if (!canReactForEvent(event)) {
+            toast.error('이 항목에는 이모지 반응을 추가할 수 없습니다.');
+            return;
+          }
+          setEmojiPickerEventId(event.id);
         },
-        canEdit: canEditTimelineComment(event),
+        canEdit: canEditTimelineComment(event) || canEditEvaluation,
         threadDisabled: !onActivityThreadOpen,
       },
-      reactions: getReactionPillsForEvent(event.id),
-      onToggleReaction: (emoji: string) => bumpReaction(event.id, emoji),
+      reactions: reactionPillsForEvent(event.id),
+      onToggleReaction: async (emoji: string) => {
+        if (!canReactForEvent(event)) return;
+        const res = await toggleTimelineEventReaction(event.id, emoji);
+        if (res.error) {
+          toast.error(res.error);
+          return;
+        }
+        await refreshReactionSummaries();
+      },
       threadPreview:
         onActivityThreadOpen && s && s.count >= 1
           ? { count: s.count, onOpen: () => openThreadSheet(event) }
@@ -603,35 +648,32 @@ export function CandidateTimelineView({
     };
   };
 
-  const handleQuoteSubmit = async () => {
-    if (!quoteTargetEvent) return;
-    const root = buildActivityThreadRoot(quoteTargetEvent);
-    if (!root) {
-      toast.error('인용할 수 없는 항목입니다.');
-      return;
-    }
-    if (!quoteText.trim()) {
-      toast.error('인용 코멘트를 입력해주세요.');
-      return;
-    }
-    setQuoting(true);
-    try {
-      const res = await createQuotedActivityTimelineEntry(candidateId, quoteText.trim(), root);
-      if (res.error) {
-        toast.error(res.error);
-      } else {
-        toast.success('타임라인에 인용이 등록되었습니다.');
-        setQuoteOpen(false);
-        setQuoteText('');
-        setQuoteTargetEvent(null);
-        await refreshAfterMutation();
-      }
-    } catch {
-      toast.error('인용 저장 중 오류가 발생했습니다.');
-    } finally {
-      setQuoting(false);
-    }
-  };
+  const COMMON_EMOJIS = [
+    '👍',
+    '❤️',
+    '👏',
+    '😂',
+    '🔥',
+    '🎉',
+    '🙏',
+    '✅',
+    '👀',
+    '💡',
+    '😮',
+    '😢',
+    '😡',
+    '🙌',
+    '⭐',
+    '👎',
+    '📝',
+    '📌',
+    '🚀',
+    '🤝',
+    '🫡',
+    '💯',
+    '🤔',
+    '⚠️',
+  ];
 
   return (
     <>
@@ -675,14 +717,40 @@ export function CandidateTimelineView({
 
             <div className="p-4 bg-white space-y-3">
               {composerTab === 'memo' ? (
-                <MentionTextarea
-                  value={commentText}
-                  onChange={setCommentText}
-                  users={mentionUsers}
-                  disabled={isSubmitting}
-                  rows={3}
-                  placeholder={`${candidateName}님에 대한 메모를 남겨주세요. @로 동료를 멘션할 수 있습니다.`}
-                />
+                <div className="space-y-3">
+                  {quoteTargetEvent ? (
+                    <div className="w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-3 py-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                            인용
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-700 [overflow-wrap:anywhere]">
+                            {excerptFromEventForQuotePreview(quoteTargetEvent)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setQuoteTargetEvent(null)}
+                          className="shrink-0 rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-900"
+                          aria-label="인용 취소"
+                          title="인용 취소"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <MentionTextarea
+                    value={commentText}
+                    onChange={setCommentText}
+                    users={mentionUsers}
+                    disabled={isSubmitting}
+                    rows={3}
+                    placeholder={`${candidateName}님에 대한 메모를 남겨주세요. @로 동료를 멘션할 수 있습니다.`}
+                  />
+                </div>
               ) : (
                 <>
                   {!currentStageId || !canManageCandidate ? (
@@ -811,7 +879,6 @@ export function CandidateTimelineView({
               const node = getTimelineNodeVisual(event);
               const NodeIcon = node.Icon;
               const author = getAuthorDisplay(event);
-              const showEvalEdit = canEditTimelineEvaluation(event);
               const showEditedLabel = isEditedTimelineEvent(event);
 
               return (
@@ -834,17 +901,6 @@ export function CandidateTimelineView({
                       <span className={eventTypeBadgeClass}>{getEventBadgeText(event)}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {showEvalEdit && (
-                        <button
-                          type="button"
-                          onClick={() => openInlineEvaluationEditor(event)}
-                          className="p-1 rounded-md text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
-                          title="평가 수정"
-                          aria-label="평가 수정"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                       <span className="text-[11px] text-neutral-400 whitespace-nowrap">
                         {showEditedLabel ? <span className="mr-1">(수정)</span> : null}
                         {formatTimeForDisplay(event.created_at)}
@@ -958,14 +1014,42 @@ export function CandidateTimelineView({
                         </div>
                       </div>
                     ) : (
-                      <TimelineEventContent
-                        event={event}
-                        expandedEmails={expandedEmails}
-                        onToggleEmailExpand={onToggleEmailExpand}
-                        candidateId={candidateId}
-                        mentionUserMap={mentionUserMap}
-                        timelineChrome={buildTimelineChromeFor(event)}
-                      />
+                      <Popover
+                        open={emojiPickerEventId === event.id}
+                        onOpenChange={(o) => setEmojiPickerEventId(o ? event.id : null)}
+                      >
+                        <PopoverAnchor asChild>
+                          <div className="w-full min-w-0 max-w-full">
+                            <TimelineEventContent
+                              event={event}
+                              expandedEmails={expandedEmails}
+                              onToggleEmailExpand={onToggleEmailExpand}
+                              candidateId={candidateId}
+                              mentionUserMap={mentionUserMap}
+                              timelineChrome={buildTimelineChromeFor(event)}
+                            />
+                          </div>
+                        </PopoverAnchor>
+                        <PopoverContent className="w-64 p-2" align="end" side="top">
+                          <div className="grid grid-cols-8 gap-1">
+                            {COMMON_EMOJIS.map((e) => (
+                              <button
+                                key={e}
+                                type="button"
+                                className="h-8 w-8 rounded-md hover:bg-neutral-100"
+                                onClick={async () => {
+                                  const res = await toggleTimelineEventReaction(event.id, e);
+                                  if (res.error) toast.error(res.error);
+                                  else await refreshReactionSummaries();
+                                  setEmojiPickerEventId(null);
+                                }}
+                              >
+                                {e}
+                              </button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     )}
                   </div>
                 </div>
@@ -977,38 +1061,6 @@ export function CandidateTimelineView({
         </div>
       </div>
 
-      <Dialog
-        open={quoteOpen}
-        onOpenChange={(o) => {
-          setQuoteOpen(o);
-          if (!o) {
-            setQuoteText('');
-            setQuoteTargetEvent(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>인용하여 타임라인에 남기기</DialogTitle>
-          </DialogHeader>
-          <MentionTextarea
-            value={quoteText}
-            onChange={setQuoteText}
-            users={mentionUsers}
-            disabled={quoting}
-            rows={4}
-            placeholder="인용과 함께 올릴 메시지를 작성하세요."
-          />
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => setQuoteOpen(false)} disabled={quoting}>
-              취소
-            </Button>
-            <Button type="button" onClick={() => void handleQuoteSubmit()} disabled={quoting || !quoteText.trim()}>
-              {quoting ? '저장 중…' : '타임라인에 등록'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

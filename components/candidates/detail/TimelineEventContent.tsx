@@ -107,7 +107,7 @@ export type TimelineEventInteraction = {
 
 export type TimelineEventChrome = {
   interaction: TimelineEventInteraction;
-  reactions: { emoji: string; count: number }[];
+  reactions: { emoji: string; count: number; reactedByMe?: boolean }[];
   onToggleReaction?: (emoji: string) => void;
   threadPreview?: { count: number; onOpen: () => void };
 };
@@ -124,7 +124,7 @@ function TimelineChromeShell({
   const { interaction, reactions, onToggleReaction, threadPreview } = chrome;
   const outerClass =
     layout === 'memo'
-      ? 'relative w-fit max-w-[85%] min-w-0 group'
+      ? 'relative w-full min-w-0 max-w-full group'
       : 'relative w-full min-w-0 max-w-full group';
 
   return (
@@ -182,6 +182,7 @@ function TimelineChromeShell({
         <div className="ml-1 mt-2 flex flex-wrap items-center gap-1.5">
           {reactions.map((r, idx) => {
             const primary = idx === 0;
+            const mine = !!r.reactedByMe;
             return (
               <button
                 key={r.emoji}
@@ -189,9 +190,12 @@ function TimelineChromeShell({
                 onClick={() => onToggleReaction?.(r.emoji)}
                 className={cn(
                   'flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors',
-                  primary
-                    ? 'border-indigo-100 bg-indigo-50 hover:bg-indigo-100'
-                    : 'border-neutral-200 bg-white shadow-sm hover:bg-neutral-50'
+                  mine && primary && 'border-indigo-300 bg-indigo-100 hover:bg-indigo-100',
+                  mine && !primary && 'border-neutral-400 bg-neutral-100 hover:bg-neutral-100',
+                  !mine &&
+                    (primary
+                      ? 'border-indigo-100 bg-indigo-50 hover:bg-indigo-100'
+                      : 'border-neutral-200 bg-white shadow-sm hover:bg-neutral-50')
                 )}
               >
                 <span className="text-[12px]">{r.emoji}</span>
@@ -360,7 +364,7 @@ export function TimelineEventContent({
     }
     case 'comment':
       return wrap(
-        <div className="rounded-2xl rounded-tl-sm border border-neutral-100 bg-[#FCFCFC] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-colors group-hover:border-neutral-200">
+        <div className="w-full min-w-0 max-w-full rounded-2xl rounded-tl-sm border border-neutral-100 bg-[#FCFCFC] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-colors group-hover:border-neutral-200">
           <p className="text-[13px] leading-relaxed text-neutral-700">
             {renderMemoBody(getCommentTimelineBody(event.content), mentionUserMap)}
           </p>
@@ -636,7 +640,7 @@ export function TimelineEventContent({
     case 'comment_created':
     case 'comment_updated':
       return wrap(
-        <div className="max-w-full min-w-0 space-y-2 rounded-2xl rounded-tl-sm border border-neutral-100 bg-[#FCFCFC] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-colors group-hover:border-neutral-200">
+        <div className="w-full min-w-0 max-w-full space-y-2 rounded-2xl rounded-tl-sm border border-neutral-100 bg-[#FCFCFC] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-colors group-hover:border-neutral-200">
           <p className="text-[13px] leading-relaxed text-neutral-700 [overflow-wrap:anywhere]">
             {renderMemoBody(getCommentTimelineBody(event.content), mentionUserMap)}
           </p>

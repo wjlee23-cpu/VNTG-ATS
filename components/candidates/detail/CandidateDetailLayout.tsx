@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { CandidateSidebar } from './CandidateSidebar';
 import { CandidateProfileTab } from './CandidateProfileTab';
 import { CandidateInsightTab } from './CandidateInsightTab';
+import { ActivityThreadSheet } from './ActivityThreadSheet';
 import {
   CandidateTimelineView,
   type ActivityThreadSession,
@@ -51,6 +52,10 @@ interface CandidateDetailLayoutProps {
   mentionUsers?: MentionableUser[];
   /** Activity 스레드 패널은 모달 밖 포털에서 열리므로, 세션은 상위에서 받아 타임라인에 전달합니다. */
   onActivityThreadOpen?: (session: ActivityThreadSession) => void;
+  /** 현재 열려있는 스레드 세션(있으면 우측 패널 표시) */
+  activityThreadSession?: ActivityThreadSession | null;
+  /** 스레드 패널 닫기 */
+  onActivityThreadClose?: () => void;
   // 사이드바 컨트롤러로 이동한 스케줄 제어
   currentActiveSchedule?: {
     id: string;
@@ -115,6 +120,8 @@ export function CandidateDetailLayout({
   stageEvaluations = [],
   mentionUsers = [],
   onActivityThreadOpen,
+  activityThreadSession = null,
+  onActivityThreadClose,
   onDeleteSchedule,
   onCheckSchedule,
   currentActiveSchedule = null,
@@ -131,6 +138,7 @@ export function CandidateDetailLayout({
 }: CandidateDetailLayoutProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<TabType>(initialActiveTab);
   const resolvedActiveTab = activeTab ?? internalActiveTab;
+  const threadOpen = resolvedActiveTab === 'timeline' && !!activityThreadSession;
 
   const setTab = (tab: TabType) => {
     if (activeTab === undefined) setInternalActiveTab(tab);
@@ -156,7 +164,16 @@ export function CandidateDetailLayout({
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 max-w-[1280px] bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans">
+    <div className="flex h-full min-h-0 w-full min-w-0 justify-center">
+      <div
+        className={[
+          'flex h-full min-h-0 w-full min-w-0 bg-white rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.05)] border border-neutral-200 overflow-hidden font-sans',
+          // ✅ 상세 모달은 기본/스레드 열림 상태에서 가로폭을 더 넉넉하게 사용합니다.
+          // - 기본: 1440px
+          // - 스레드 열림: 1920px
+          threadOpen ? 'max-w-[1920px]' : 'max-w-[1440px]',
+        ].join(' ')}
+      >
       <CandidateSidebar
         candidate={candidate}
         currentStageName={currentStageName}
@@ -228,6 +245,22 @@ export function CandidateDetailLayout({
             />
           </div>
         )}
+      </div>
+      {threadOpen && activityThreadSession ? (
+        <ActivityThreadSheet
+          open
+          onOpenChange={(open) => {
+            if (!open) onActivityThreadClose?.();
+          }}
+          candidateId={candidate.id}
+          threadRoot={activityThreadSession.root}
+          previewEvent={activityThreadSession.preview}
+          mentionUsers={mentionUsers}
+          onAfterPost={async () => {
+            await onRefreshTimeline?.();
+          }}
+        />
+      ) : null}
       </div>
     </div>
   );

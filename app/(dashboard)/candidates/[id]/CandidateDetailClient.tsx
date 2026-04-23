@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import type { Candidate } from '@/types/candidates';
@@ -28,7 +27,6 @@ import { StageEvaluationModal } from '@/components/candidates/StageEvaluationMod
 import { CommentModal } from '@/components/candidates/CommentModal';
 import { CandidateDetailLayout } from '@/components/candidates/detail/CandidateDetailLayout';
 import type { MentionableUser } from '@/components/candidates/detail/MentionTextarea';
-import { ActivityThreadSheet } from '@/components/candidates/detail/ActivityThreadSheet';
 import type { ActivityThreadSession, StageEvaluationRow } from '@/components/candidates/detail/CandidateTimelineView';
 import { CandidateProfileEditDialog } from '@/components/candidates/detail/CandidateProfileEditDialog';
 import { CandidateScheduleForm } from '@/components/candidates/detail/CandidateScheduleForm';
@@ -76,6 +74,7 @@ export function CandidateDetailClient({
     Array<{ id: string; email: string; display_name: string | null }>
   >([]);
   const [mentionUsers, setMentionUsers] = useState<MentionableUser[]>([]);
+  const mentionUsersLoadedRef = useRef(false);
   const initialScheduleStageId =
     initialCandidate.current_stage_id && initialCandidate.current_stage_id.trim() !== ''
       ? initialCandidate.current_stage_id
@@ -272,9 +271,8 @@ export function CandidateDetailClient({
     return 'profile';
   });
 
-  /** 스레드 패널은 document.body 포털로 렌더해 상세 모달 레이아웃과 분리합니다. */
+  /** 스레드 패널은 상세 모달 내부 우측 컬럼으로 붙여서 렌더합니다. */
   const [activityThreadSession, setActivityThreadSession] = useState<ActivityThreadSession | null>(null);
-  const [portalReady, setPortalReady] = useState(false);
 
   const getDetailTabStorageKey = () => `candidate-detail-active-tab:${candidate.id}`;
 
@@ -324,6 +322,63 @@ export function CandidateDetailClient({
     }
   }, [candidate.id]);
 
+  // ✅ @멘션 자동완성은 “타이핑 즉시”가 UX의 핵심이므로, 모달 오픈 직후(유휴시간)에
+  //    조직 사용자 목록을 백그라운드로 미리 불러옵니다.
+  // - 스케줄링 화면 전환(viewMode==='scheduling')과 무관하게 동작해야 합니다.
+  // - 후보자 상세 UI 렌더를 막지 않도록 requestIdleCallback(폴백: setTimeout)로 지연 실행합니다.
+  useEffect(() => {
+    if (!candidate.id) return;
+    // 후보자가 바뀌면 다시 로드할 수 있게 초기화합니다.
+    mentionUsersLoadedRef.current = false;
+
+    let cancelled = false;
+    let idleId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const run = async () => {
+      if (cancelled) return;
+      if (mentionUsersLoadedRef.current) return;
+      try {
+        const usersResult = await getUsers();
+        const list = (usersResult.data || []) as Array<{
+          id: string;
+          email: string;
+          role: string;
+          name: string | null;
+          avatar_url: string | null;
+        }>;
+        if (cancelled) return;
+        setMentionUsers(list);
+        mentionUsersLoadedRef.current = true;
+      } catch {
+        // 네트워크/권한 문제 등은 멘션 UX만 영향을 주므로 조용히 무시합니다.
+      }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ric = (typeof window !== 'undefined' ? (window as any).requestIdleCallback : undefined) as
+      | ((cb: () => void, opts?: { timeout: number }) => number)
+      | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cancelRic = (typeof window !== 'undefined' ? (window as any).cancelIdleCallback : undefined) as
+      | ((id: number) => void)
+      | undefined;
+
+    if (typeof ric === 'function') {
+      idleId = ric(() => void run(), { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(() => void run(), 0);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId != null && typeof cancelRic === 'function') cancelRic(idleId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+    // getUsers는 import된 함수로 안정적이므로 deps에서 제외해도 안전합니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate.id]);
+
   // 첨부가 모두 없어지면 AI 자동 트리거 ref를 초기화해, 재업로드 시 4초 폴백이 다시 동작하게 합니다.
   useEffect(() => {
     if (resumeFiles.length === 0) {
@@ -344,10 +399,6 @@ export function CandidateDetailClient({
       schedulesFetchGenRef.current += 1;
     };
   }, [candidate.id, schedulesPropKey]);
-
-  useEffect(() => {
-    setPortalReady(true);
-  }, []);
 
   useEffect(() => {
     setActivityThreadSession(null);
@@ -575,6 +626,12 @@ export function CandidateDetailClient({
   };
 
   const handleClose = () => {
+    // ✅ 스레드(대화) 패널이 열려있을 때는 상세 모달 전체를 닫지 않고
+    //    스레드 패널만 닫아 UX를 일관되게 유지합니다.
+    if (activityThreadSession) {
+      setActivityThreadSession(null);
+      return;
+    }
     setActivityThreadSession(null);
     if (onClose) onClose();
     else router.back();
@@ -1021,6 +1078,8 @@ export function CandidateDetailClient({
           activeTab={detailInitialTab}
           onActiveTabChange={handleDetailTabChange}
           onActivityThreadOpen={setActivityThreadSession}
+          activityThreadSession={activityThreadSession}
+          onActivityThreadClose={() => setActivityThreadSession(null)}
           onFileUpload={() => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -1128,27 +1187,6 @@ export function CandidateDetailClient({
         onCancel={handleCancelEdit}
         isSaving={isSavingProfile}
       />
-
-      {portalReady &&
-        activityThreadSession &&
-        createPortal(
-          <ActivityThreadSheet
-            open
-            onOpenChange={(open) => {
-              if (!open) setActivityThreadSession(null);
-            }}
-            candidateId={candidate.id}
-            threadRoot={activityThreadSession.root}
-            previewEvent={activityThreadSession.preview}
-            mentionUsers={mentionUsers}
-            onAfterPost={async () => {
-              await refreshTimelineEvents();
-              void loadEvaluations();
-            }}
-            className="fixed right-0 top-0 z-[200] h-[100dvh] max-h-[100dvh] shadow-2xl"
-          />,
-          document.body,
-        )}
     </>
   );
 }
