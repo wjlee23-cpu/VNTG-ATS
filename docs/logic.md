@@ -1,3 +1,9 @@
+# Activity Timeline — 멘션·스레드·인용
+
+- **멘션**: 본문에 `@[사용자UUID]` 형태로 저장하고, 화면에서는 조직 사용자 목록으로 표시 이름을 치환합니다. `comments.mentioned_user_ids`에 UUID를 함께 저장합니다.
+- **스레드(답장)**: `comments`에 `activity_thread_root_timeline_event_id` 또는 `activity_thread_root_email_id`가 설정되면 해당 코멘트는 **메인 타임라인에 새 `timeline_events` 행을 만들지 않습니다.** (합성 이메일 행은 `emails.id`를 루트로 사용)
+- **인용**: `createQuotedActivityTimelineEntry`가 `timeline_events`에 `type = activity_quote`만 추가하며, `content.quoted_snapshot`에 원문 요약을 넣습니다.
+
 # 스케줄링 비즈니스 로직
 
 ## 타임존

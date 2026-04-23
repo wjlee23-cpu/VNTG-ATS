@@ -1,10 +1,15 @@
 'use client';
 
-import { Star, Calendar } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Star, Calendar, SmilePlus, Pencil, Quote, MessageSquareText } from 'lucide-react';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { normalizeStageEvalResult } from './timeline-utils';
 import { formatEmailBodyForDisplay, isLongEmail } from '@/lib/candidate-detail-utils';
-import { renderBlockTextWithMentions, renderTextWithMentionBadges } from '@/lib/render-mention-text';
+import {
+  renderBlockTextWithMentions,
+  renderBlockTextWithResolvedMentions,
+  renderTextWithMentionBadges,
+} from '@/lib/render-mention-text';
 import { cn } from '@/lib/utils';
 import type { TimelineEvent } from '@/types/candidate-detail';
 
@@ -90,11 +95,154 @@ function evaluationResultBadge(result: 'pass' | 'fail' | 'pending' | undefined) 
   );
 }
 
+/** 타임라인 행 호버 툴바(스레드·인용 등) */
+export type TimelineEventInteraction = {
+  onOpenThread: () => void;
+  onEdit?: () => void;
+  onQuote?: () => void;
+  onEmojiPicker?: () => void;
+  canEdit?: boolean;
+  threadDisabled?: boolean;
+};
+
+export type TimelineEventChrome = {
+  interaction: TimelineEventInteraction;
+  reactions: { emoji: string; count: number }[];
+  onToggleReaction?: (emoji: string) => void;
+  threadPreview?: { count: number; onOpen: () => void };
+};
+
+function TimelineChromeShell({
+  children,
+  layout,
+  chrome,
+}: {
+  children: ReactNode;
+  layout: 'full' | 'memo';
+  chrome: TimelineEventChrome;
+}) {
+  const { interaction, reactions, onToggleReaction, threadPreview } = chrome;
+  const outerClass =
+    layout === 'memo'
+      ? 'relative w-fit max-w-[85%] min-w-0 group'
+      : 'relative w-full min-w-0 max-w-full group';
+
+  return (
+    <div className={outerClass}>
+      <div
+        className={cn(
+          'absolute -top-3.5 -right-3 z-20 flex translate-y-1 items-center rounded-lg border border-neutral-200 bg-white p-0.5 opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all invisible',
+          'group-hover:translate-y-0 group-hover:opacity-100 group-hover:visible',
+          'group-focus-within:translate-y-0 group-focus-within:opacity-100 group-focus-within:visible'
+        )}
+      >
+        <button
+          type="button"
+          className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+          title="이모지 추가"
+          onClick={() => interaction.onEmojiPicker?.()}
+        >
+          <SmilePlus className="h-3.5 w-3.5" />
+        </button>
+        {interaction.canEdit && interaction.onEdit ? (
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+            title="수정"
+            onClick={() => interaction.onEdit?.()}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        {interaction.onQuote ? (
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+            title="인용"
+            onClick={() => interaction.onQuote?.()}
+          >
+            <Quote className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <div className="mx-0.5 h-3.5 w-px bg-neutral-200" />
+        <button
+          type="button"
+          disabled={interaction.threadDisabled}
+          className="rounded-md p-1.5 text-indigo-500 transition-colors hover:bg-indigo-50 disabled:pointer-events-none disabled:opacity-40"
+          title="스레드 열기"
+          onClick={() => interaction.onOpenThread()}
+        >
+          <MessageSquareText className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {children}
+
+      {reactions.length > 0 ? (
+        <div className="ml-1 mt-2 flex flex-wrap items-center gap-1.5">
+          {reactions.map((r, idx) => {
+            const primary = idx === 0;
+            return (
+              <button
+                key={r.emoji}
+                type="button"
+                onClick={() => onToggleReaction?.(r.emoji)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors',
+                  primary
+                    ? 'border-indigo-100 bg-indigo-50 hover:bg-indigo-100'
+                    : 'border-neutral-200 bg-white shadow-sm hover:bg-neutral-50'
+                )}
+              >
+                <span className="text-[12px]">{r.emoji}</span>
+                <span
+                  className={cn(
+                    'text-[10px] font-bold',
+                    primary ? 'text-indigo-600' : 'text-neutral-500'
+                  )}
+                >
+                  {r.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {threadPreview && threadPreview.count >= 1 ? (
+        <button
+          type="button"
+          onClick={threadPreview.onOpen}
+          className="ml-1 mt-3 flex items-center gap-2 text-[11px] font-semibold text-indigo-600 transition-colors hover:text-indigo-800"
+        >
+          <span>
+            {threadPreview.count}개의 답장
+          </span>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 interface TimelineEventContentProps {
   event: TimelineEvent;
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
   candidateId: string;
+  /** @[userId] 멘션 토큰을 표시용 이름으로 풀 때 사용 */
+  mentionUserMap?: Map<string, { displayLabel: string }>;
+  /** 스레드/인용 호버 UI — 없으면 기존처럼 본문만 */
+  timelineChrome?: TimelineEventChrome;
+}
+
+function renderMemoBody(
+  text: string,
+  mentionUserMap?: Map<string, { displayLabel: string }>,
+) {
+  if (mentionUserMap && mentionUserMap.size > 0) {
+    return renderBlockTextWithResolvedMentions(text, mentionUserMap);
+  }
+  return renderBlockTextWithMentions(text);
 }
 
 /** 타임라인 이벤트 타입별 본문 — V3 카드 레이아웃 */
@@ -103,16 +251,28 @@ export function TimelineEventContent({
   expandedEmails,
   onToggleEmailExpand,
   candidateId: _candidateId,
+  mentionUserMap,
+  timelineChrome,
 }: TimelineEventContentProps) {
+  const wrap = (inner: ReactNode, layout: 'full' | 'memo' = 'full') => {
+    if (!timelineChrome?.interaction) return inner;
+    return (
+      <TimelineChromeShell layout={layout} chrome={timelineChrome}>
+        {inner}
+      </TimelineChromeShell>
+    );
+  };
+
   switch (event.type) {
     case 'scorecard': {
       const rating = event.content?.overall_rating ?? event.content?.rating;
       const body = event.content?.notes || event.content?.message || '평가가 작성되었습니다.';
-      return (
+      return wrap(
         <div className="w-full min-w-0 space-y-2 rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
-          <p className="text-sm leading-relaxed text-neutral-700">{renderBlockTextWithMentions(body)}</p>
+          <p className="text-sm leading-relaxed text-neutral-700">{renderMemoBody(body, mentionUserMap)}</p>
           {rating != null && renderStars(rating)}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'email':
@@ -129,7 +289,7 @@ export function TimelineEventContent({
       const hasMoreLines = emailBodyLines.length > maxLines;
       const directionLabel = emailDirection === 'outbound' ? '발송' : '수신';
 
-      return (
+      return wrap(
         <div className="w-full max-w-full min-w-0 rounded-xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
           <div className="w-full min-w-0 max-w-full border-b border-neutral-100 bg-[#FCFCFC] px-4 py-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -194,16 +354,18 @@ export function TimelineEventContent({
               )}
             </div>
           ) : null}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'comment':
-      return (
-        <div className="w-full min-w-0 rounded-xl rounded-tl-sm border border-neutral-200 bg-[#FCFCFC] p-3.5">
-          <p className="text-sm leading-relaxed text-neutral-700">
-            {renderBlockTextWithMentions(getCommentTimelineBody(event.content))}
+      return wrap(
+        <div className="rounded-2xl rounded-tl-sm border border-neutral-100 bg-[#FCFCFC] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-colors group-hover:border-neutral-200">
+          <p className="text-[13px] leading-relaxed text-neutral-700">
+            {renderMemoBody(getCommentTimelineBody(event.content), mentionUserMap)}
           </p>
-        </div>
+        </div>,
+        'memo'
       );
     case 'stage_changed': {
       const from = event.content?.from_stage?.trim();
@@ -218,29 +380,31 @@ export function TimelineEventContent({
       const newStatus = event.content?.new_status as string | undefined;
 
       if (from && to) {
-        return (
+        return wrap(
           <div className="mt-0 flex w-full min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-2 pb-0.5 sm:gap-x-3">
             <span className="shrink-0 max-w-full">{stageChip(from, false)}</span>
             <span className="shrink-0 text-sm font-medium text-neutral-400" aria-hidden>
-              →
+              ·
             </span>
             <span className="shrink-0 max-w-full">{stageChip(to, true)}</span>
-          </div>
+          </div>,
+          'full'
         );
       }
       if (from || to) {
-        return (
+        return wrap(
           <div className="mt-0 w-full min-w-0 max-w-full space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               {from ? <span className="shrink-0 max-w-full">{stageChip(from, false)}</span> : null}
               {to ? <span className="shrink-0 max-w-full">{stageChip(to, true)}</span> : null}
             </div>
             {msg ? <p className="text-xs text-neutral-600 leading-relaxed [overflow-wrap:anywhere]">{msg}</p> : null}
-          </div>
+          </div>,
+          'full'
         );
       }
 
-      return (
+      return wrap(
         <div className="mt-0 w-full min-w-0 max-w-full space-y-2 rounded-xl border border-neutral-200 bg-[#FCFCFC] p-3.5 text-sm text-neutral-700">
           {msg ? <p className="leading-relaxed [overflow-wrap:anywhere]">{msg}</p> : null}
           {stageHint ? (
@@ -251,29 +415,32 @@ export function TimelineEventContent({
           {prevStatus || newStatus ? (
             <p className="text-xs text-neutral-500">
               {prevStatus ? <span>이전 상태: {prevStatus}</span> : null}
-              {prevStatus && newStatus ? ' → ' : null}
+              {prevStatus && newStatus ? ' · ' : null}
               {newStatus ? <span>변경: {newStatus}</span> : null}
             </p>
           ) : null}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'archive': {
       const reason = event.content?.archive_reason?.trim();
       const message = event.content?.message?.trim();
       if (message) {
-        return (
+        return wrap(
           <div className="mt-0 text-sm text-neutral-600 leading-relaxed">
-            {renderBlockTextWithMentions(message)}
-          </div>
+            {renderMemoBody(message, mentionUserMap)}
+          </div>,
+          'full'
         );
       }
-      return (
+      return wrap(
         <div className="mt-0 flex items-center gap-2 text-sm text-neutral-600 flex-wrap">
           <span>후보자를</span>
           {reason ? <span className="font-semibold text-neutral-900">{reason}</span> : null}
           <span>사유로 아카이브했습니다.</span>
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'stage_evaluation': {
@@ -294,17 +461,18 @@ export function TimelineEventContent({
           : result === 'fail'
             ? 'border-red-200 bg-red-50/60'
             : 'border-amber-200 bg-amber-50/50';
-      return (
+      return wrap(
         <div className={cn('w-full min-w-0 max-w-full space-y-2 rounded-xl rounded-tl-sm border p-4', tone)}>
           <div className="flex items-center gap-2 flex-wrap">
             {evaluationResultBadge(result)}
             <span className="text-[11px] font-semibold text-neutral-500">{stageName}</span>
           </div>
           <p className="text-sm text-neutral-800 leading-relaxed [overflow-wrap:anywhere]">
-            {renderBlockTextWithMentions(notes)}
+            {renderMemoBody(notes, mentionUserMap)}
           </p>
           {event.content?.rating != null && <div className="pt-1">{renderStars(event.content.rating)}</div>}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'schedule_created':
@@ -330,7 +498,7 @@ export function TimelineEventContent({
       const authorName = user?.name || user?.email?.split('@')[0] || '';
       const statusMeta = getAutomationStatusLabel(automationStatus);
 
-      return (
+      return wrap(
         <div className="w-full min-w-0 space-y-3 rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -392,7 +560,8 @@ export function TimelineEventContent({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'interviewer_response': {
@@ -400,7 +569,7 @@ export function TimelineEventContent({
       const interviewerEmail = event.content?.interviewer_email as string | undefined;
       const optionScheduledAt = event.content?.option_scheduled_at as string | undefined;
       const allAccepted = event.content?.all_accepted as boolean | undefined;
-      return (
+      return wrap(
         <div className="w-full min-w-0 space-y-2 rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
           <p className="text-sm text-neutral-700">
             {event.content?.message || '면접관이 일정에 응답했습니다.'}
@@ -439,13 +608,14 @@ export function TimelineEventContent({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'position_changed': {
       const previousJobTitle = event.content?.previous_job_post_title as string | undefined;
       const newJobTitle = event.content?.new_job_post_title as string | undefined;
-      return (
+      return wrap(
         <div className="w-full min-w-0 space-y-2 rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
           <p className="text-sm text-neutral-700">
             {event.content?.message || '포지션이 변경되었습니다.'}
@@ -454,34 +624,72 @@ export function TimelineEventContent({
             <div className="flex items-center gap-2 text-xs flex-wrap">
               {stageChip(previousJobTitle, false)}
               <span className="text-neutral-400 font-medium" aria-hidden>
-                →
+                ·
               </span>
               {stageChip(newJobTitle, true)}
             </div>
           ) : null}
-        </div>
+        </div>,
+        'full'
       );
     }
     case 'comment_created':
     case 'comment_updated':
-      return (
-        <div className="w-full min-w-0 max-w-full space-y-2 rounded-xl rounded-tl-sm border border-neutral-200 bg-[#FCFCFC] p-3.5">
-          <p className="text-sm text-neutral-700 leading-relaxed [overflow-wrap:anywhere]">
-            {renderBlockTextWithMentions(getCommentTimelineBody(event.content))}
+      return wrap(
+        <div className="max-w-full min-w-0 space-y-2 rounded-2xl rounded-tl-sm border border-neutral-100 bg-[#FCFCFC] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-colors group-hover:border-neutral-200">
+          <p className="text-[13px] leading-relaxed text-neutral-700 [overflow-wrap:anywhere]">
+            {renderMemoBody(getCommentTimelineBody(event.content), mentionUserMap)}
           </p>
           {event.content?.previous_content ? (
             <div className="mt-2 p-2 bg-white rounded-lg border border-neutral-200">
               <p className="text-xs text-neutral-500 mb-1">이전 내용:</p>
               <p className="text-xs text-neutral-400 line-through">
-                {renderBlockTextWithMentions(event.content.previous_content)}
+                {renderMemoBody(String(event.content.previous_content), mentionUserMap)}
               </p>
             </div>
           ) : null}
-        </div>
+        </div>,
+        'memo'
       );
+    case 'activity_quote': {
+      const msg = typeof event.content?.message === 'string' ? event.content.message : '';
+      const snap = event.content?.quoted_snapshot as
+        | {
+            excerpt?: string;
+            author_display?: string;
+            source_created_at?: string | null;
+            source_type?: string;
+          }
+        | undefined;
+      return wrap(
+        <div className="w-full min-w-0 space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/30 p-3.5 shadow-sm">
+          <div className="rounded-lg border border-neutral-200 bg-white p-3 border-l-4 border-indigo-400">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 mb-1">인용 원문</p>
+            <p className="text-xs text-neutral-600">
+              {snap?.author_display ? <span className="font-medium text-neutral-800">{snap.author_display}</span> : null}
+              {snap?.source_created_at ? (
+                <span className="text-neutral-400 ml-2">
+                  {new Date(snap.source_created_at).toLocaleString('ko-KR')}
+                </span>
+              ) : null}
+            </p>
+            <p className="text-sm text-neutral-700 mt-2 leading-relaxed [overflow-wrap:anywhere]">
+              {snap?.excerpt?.trim() ? snap.excerpt : '내용 없음'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-white p-3">
+            <p className="text-[11px] font-semibold text-neutral-500 mb-1">코멘트</p>
+            <p className="text-sm text-neutral-800 leading-relaxed [overflow-wrap:anywhere]">
+              {renderMemoBody(msg.trim() ? msg : '인용 메시지', mentionUserMap)}
+            </p>
+          </div>
+        </div>,
+        'full'
+      );
+    }
     case 'scorecard_created': {
       const scorecardRating = event.content?.overall_rating ?? event.content?.rating;
-      return (
+      return wrap(
         <div className="w-full min-w-0 space-y-2 rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
           <p className="text-sm text-neutral-700">
             {event.content?.message || '면접 평가표가 작성되었습니다.'}
@@ -496,14 +704,16 @@ export function TimelineEventContent({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </div>,
+        'full'
       );
     }
     default:
-      return (
+      return wrap(
         <div className="w-full min-w-0 rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
           <p className="text-sm text-neutral-700">{event.content?.message || event.type}</p>
-        </div>
+        </div>,
+        'full'
       );
   }
 }

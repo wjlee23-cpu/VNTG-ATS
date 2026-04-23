@@ -67,6 +67,17 @@ export interface TimelineEventContent {
   new_content?: string;
   /** stage_evaluations.id — 타임라인에서 평가 수정 시 사용 */
   evaluation_id?: string;
+  /** activity_quote: 인용 원문 타임라인 id */
+  quoted_timeline_event_id?: string;
+  /** activity_quote: 인용 원문 이메일 id */
+  quoted_email_id?: string;
+  /** activity_quote: 인용 스냅샷 */
+  quoted_snapshot?: {
+    source_type?: string;
+    excerpt?: string;
+    author_display?: string;
+    source_created_at?: string | null;
+  };
   [key: string]: unknown;
 }
 

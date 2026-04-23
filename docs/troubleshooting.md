@@ -1,3 +1,19 @@
+## Activity Timeline 스레드: `activity_thread_root_* does not exist`
+
+### 증상
+- 답장 시트를 열 때 콘솔/토스트에 `column comments.activity_thread_root_timeline_event_id does not exist` (또는 `activity_thread_root_email_id`) 오류
+
+### 원인
+- 로컬/원격 Supabase DB에 스레드·인용용 마이그레이션이 아직 적용되지 않음
+
+### 해결
+1. 저장소의 [`supabase/migrations/20260423120000_activity_timeline_threads_quotes.sql`](../supabase/migrations/20260423120000_activity_timeline_threads_quotes.sql) 파일을 연다.
+2. Supabase 대시보드 → **SQL Editor** → 내용 전체를 붙여넣고 **Run** 한다.
+3. (CLI 사용 시) 프로젝트 루트에서 `supabase db push` 또는 팀에서 쓰는 배포 파이프라인으로 동일 마이그레이션을 적용한다.
+
+### 참고
+- 적용 후 `comments`에 두 컬럼이 생기고, `timeline_events.type` CHECK에 `activity_quote`가 포함되어야 답장·인용이 정상 동작한다.
+
 ## Candidate 상세 모달 스크롤 가림(줌 배율 이슈)
 
 ### 증상

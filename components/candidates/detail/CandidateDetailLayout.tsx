@@ -5,9 +5,14 @@ import { useState } from 'react';
 import { CandidateSidebar } from './CandidateSidebar';
 import { CandidateProfileTab } from './CandidateProfileTab';
 import { CandidateInsightTab } from './CandidateInsightTab';
-import { CandidateTimelineView, type StageEvaluationRow } from './CandidateTimelineView';
+import {
+  CandidateTimelineView,
+  type ActivityThreadSession,
+  type StageEvaluationRow,
+} from './CandidateTimelineView';
 import type { Candidate } from '@/types/candidates';
 import type { TimelineEvent, ResumeFile } from '@/types/candidate-detail';
+import type { MentionableUser } from './MentionTextarea';
 
 interface StageOption {
   id: string;
@@ -43,6 +48,9 @@ interface CandidateDetailLayoutProps {
   /** 타임라인 메모/평가 수정 버튼 노출용 */
   currentUserId?: string | null;
   stageEvaluations?: StageEvaluationRow[];
+  mentionUsers?: MentionableUser[];
+  /** Activity 스레드 패널은 모달 밖 포털에서 열리므로, 세션은 상위에서 받아 타임라인에 전달합니다. */
+  onActivityThreadOpen?: (session: ActivityThreadSession) => void;
   // 사이드바 컨트롤러로 이동한 스케줄 제어
   currentActiveSchedule?: {
     id: string;
@@ -105,6 +113,8 @@ export function CandidateDetailLayout({
   onSwitchToTimeline,
   currentUserId = null,
   stageEvaluations = [],
+  mentionUsers = [],
+  onActivityThreadOpen,
   onDeleteSchedule,
   onCheckSchedule,
   currentActiveSchedule = null,
@@ -197,22 +207,26 @@ export function CandidateDetailLayout({
           />
         )}
         {resolvedActiveTab === 'timeline' && (
-          <CandidateTimelineView
-            candidateName={candidate.name}
-            events={timelineEvents}
-            isLoading={isTimelineLoading}
-            hasLoaded={hasLoadedTimeline}
-            expandedEmails={expandedEmails}
-            onToggleEmailExpand={onToggleEmailExpand}
-            candidateId={candidate.id}
-            currentStageId={currentStageId}
-            canManageCandidate={canManageCandidate}
-            onAddComment={onAddComment}
-            onRefreshTimeline={onRefreshTimeline}
-            onSwitchToTimeline={handleSwitchToTimeline}
-            currentUserId={currentUserId}
-            stageEvaluations={stageEvaluations}
-          />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <CandidateTimelineView
+              candidateName={candidate.name}
+              events={timelineEvents}
+              isLoading={isTimelineLoading}
+              hasLoaded={hasLoadedTimeline}
+              expandedEmails={expandedEmails}
+              onToggleEmailExpand={onToggleEmailExpand}
+              candidateId={candidate.id}
+              currentStageId={currentStageId}
+              canManageCandidate={canManageCandidate}
+              onAddComment={onAddComment}
+              onRefreshTimeline={onRefreshTimeline}
+              onSwitchToTimeline={handleSwitchToTimeline}
+              currentUserId={currentUserId}
+              stageEvaluations={stageEvaluations}
+              mentionUsers={mentionUsers}
+              onActivityThreadOpen={onActivityThreadOpen}
+            />
+          </div>
         )}
       </div>
     </div>

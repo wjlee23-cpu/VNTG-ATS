@@ -582,6 +582,8 @@ export interface Database {
       }
       comments: {
         Row: {
+          activity_thread_root_email_id: string | null
+          activity_thread_root_timeline_event_id: string | null
           candidate_id: string
           content: string
           created_at: string
@@ -592,6 +594,8 @@ export interface Database {
           updated_at: string
         }
         Insert: {
+          activity_thread_root_email_id?: string | null
+          activity_thread_root_timeline_event_id?: string | null
           candidate_id: string
           content: string
           created_at?: string
@@ -602,6 +606,8 @@ export interface Database {
           updated_at?: string
         }
         Update: {
+          activity_thread_root_email_id?: string | null
+          activity_thread_root_timeline_event_id?: string | null
           candidate_id?: string
           content?: string
           created_at?: string
@@ -631,6 +637,20 @@ export interface Database {
             columns: ["parent_comment_id"]
             isOneToOne: false
             referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_activity_thread_root_timeline_fkey"
+            columns: ["activity_thread_root_timeline_event_id"]
+            isOneToOne: false
+            referencedRelation: "timeline_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_activity_thread_root_email_fkey"
+            columns: ["activity_thread_root_email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
             referencedColumns: ["id"]
           },
         ]
@@ -740,7 +760,7 @@ export interface Database {
         Row: {
           id: string
           candidate_id: string
-          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'schedule_regenerated' | 'schedule_rescheduled' | 'schedule_manually_edited' | 'schedule_option_manually_added' | 'schedule_force_confirmed' | 'stage_changed' | 'email' | 'email_received' | 'comment' | 'comment_created' | 'comment_updated' | 'scorecard' | 'scorecard_created' | 'approval' | 'stage_evaluation' | 'archive' | 'interviewer_response' | 'position_changed'
+          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'schedule_deleted' | 'schedule_regenerated' | 'schedule_rescheduled' | 'schedule_manually_edited' | 'schedule_option_manually_added' | 'schedule_force_confirmed' | 'stage_changed' | 'email' | 'email_received' | 'comment' | 'comment_created' | 'comment_updated' | 'scorecard' | 'scorecard_created' | 'approval' | 'stage_evaluation' | 'archive' | 'interviewer_response' | 'position_changed' | 'activity_quote'
           content: Json
           created_by: string | null
           created_at: string
@@ -748,7 +768,7 @@ export interface Database {
         Insert: {
           id?: string
           candidate_id: string
-          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'schedule_regenerated' | 'schedule_rescheduled' | 'schedule_manually_edited' | 'schedule_option_manually_added' | 'schedule_force_confirmed' | 'stage_changed' | 'email' | 'email_received' | 'comment' | 'comment_created' | 'comment_updated' | 'scorecard' | 'scorecard_created' | 'approval' | 'stage_evaluation' | 'archive' | 'interviewer_response' | 'position_changed'
+          type: 'system_log' | 'schedule_created' | 'schedule_confirmed' | 'schedule_deleted' | 'schedule_regenerated' | 'schedule_rescheduled' | 'schedule_manually_edited' | 'schedule_option_manually_added' | 'schedule_force_confirmed' | 'stage_changed' | 'email' | 'email_received' | 'comment' | 'comment_created' | 'comment_updated' | 'scorecard' | 'scorecard_created' | 'approval' | 'stage_evaluation' | 'archive' | 'interviewer_response' | 'position_changed' | 'activity_quote'
           content: Json
           created_by?: string | null
           created_at?: string

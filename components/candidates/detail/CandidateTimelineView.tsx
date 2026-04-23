@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Paperclip,
-  Send,
   ThumbsUp,
   ThumbsDown,
   PauseCircle,
@@ -14,11 +13,17 @@ import {
   Mail,
   Archive,
   Pencil,
+  Quote,
 } from 'lucide-react';
-import { TimelineEventContent } from './TimelineEventContent';
+import { TimelineEventContent, type TimelineEventChrome } from './TimelineEventContent';
 import type { TimelineEvent } from '@/types/candidate-detail';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { createComment, updateComment } from '@/api/actions/comments';
+import { createComment, updateComment, type ActivityCommentThreadRoot } from '@/api/actions/comments';
+import {
+  getActivityThreadSummariesForCandidate,
+  type ActivityThreadSummary,
+} from '@/api/queries/activity-threads';
+import { MentionTextarea, buildMentionUserMap, type MentionableUser } from './MentionTextarea';
 import { createStageEvaluation, updateStageEvaluation } from '@/api/actions/evaluations';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -26,6 +31,14 @@ import { cn } from '@/lib/utils';
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { normalizeStageEvalResult } from './timeline-utils';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { createQuotedActivityTimelineEntry } from '@/api/actions/activity-quotes';
 
 /** 타임라인에서 평가 수정 시 매칭용 (getStageEvaluations 결과) */
 export type StageEvaluationRow = {
@@ -51,6 +64,30 @@ interface CandidateTimelineViewProps {
   onSwitchToTimeline?: () => void;
   currentUserId?: string | null;
   stageEvaluations?: StageEvaluationRow[];
+  /** @멘션 자동완성용 조직 전체 사용자 */
+  mentionUsers?: MentionableUser[];
+  /** 상위(모달 밖 포털)에서 스레드 패널을 열 때 전달 — 없으면 스레드 열기 비활성 */
+  onActivityThreadOpen?: (session: ActivityThreadSession) => void;
+}
+
+/** 스레드 패널에 넘길 루트 + 미리보기 이벤트 */
+export type ActivityThreadSession = {
+  root: ActivityCommentThreadRoot;
+  preview: TimelineEvent;
+};
+
+function timelineEmailIdFromEvent(event: TimelineEvent): string | null {
+  const raw = event.content?.email_id;
+  return typeof raw === 'string' && raw.length > 0 ? raw : null;
+}
+
+function buildActivityThreadRoot(event: TimelineEvent): ActivityCommentThreadRoot | null {
+  if (event.id.startsWith('email-')) {
+    const eid = timelineEmailIdFromEvent(event);
+    if (!eid) return null;
+    return { kind: 'email', id: eid };
+  }
+  return { kind: 'timeline_event', id: event.id };
 }
 
 type ComposerTab = 'memo' | 'evaluation';
@@ -121,6 +158,12 @@ function getTimelineNodeVisual(event: TimelineEvent): {
         Icon: MessageSquare,
         iconClass: 'w-3 h-3 text-neutral-600',
       };
+    case 'activity_quote':
+      return {
+        wrapClass: `${timelineNodeBase} bg-indigo-100`,
+        Icon: Quote,
+        iconClass: 'w-3 h-3 text-indigo-600',
+      };
     case 'stage_changed':
       return {
         wrapClass: `${timelineNodeBase} bg-indigo-100`,
@@ -174,6 +217,8 @@ export function CandidateTimelineView({
   onSwitchToTimeline,
   currentUserId = null,
   stageEvaluations = [],
+  mentionUsers = [],
+  onActivityThreadOpen,
 }: CandidateTimelineViewProps) {
   const router = useRouter();
   const [composerTab, setComposerTab] = useState<ComposerTab>('memo');
@@ -184,6 +229,29 @@ export function CandidateTimelineView({
   const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
   const currentUserInitial = '나';
+
+  const mentionUserMap = useMemo(() => buildMentionUserMap(mentionUsers), [mentionUsers]);
+  const [threadSummaries, setThreadSummaries] = useState<{
+    byTimelineEventId: Record<string, ActivityThreadSummary>;
+    byEmailId: Record<string, ActivityThreadSummary>;
+  }>({ byTimelineEventId: {}, byEmailId: {} });
+  /** 스레드 없이 UI만: 이벤트별 이모지 반응 카운트(로컬) */
+  const [reactionMap, setReactionMap] = useState<Record<string, Record<string, number>>>({});
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const [quoteText, setQuoteText] = useState('');
+  const [quoteTargetEvent, setQuoteTargetEvent] = useState<TimelineEvent | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  const refreshThreadSummaries = useCallback(async () => {
+    const res = await getActivityThreadSummariesForCandidate(candidateId);
+    if (res.error) return;
+    if (res.data) setThreadSummaries(res.data);
+  }, [candidateId]);
+
+  useEffect(() => {
+    if (!hasLoaded || !candidateId) return;
+    void refreshThreadSummaries();
+  }, [hasLoaded, candidateId, events, refreshThreadSummaries]);
 
   const getAuthorDisplay = (event: TimelineEvent) => {
     const u = event.created_by_user;
@@ -218,6 +286,8 @@ export function CandidateTimelineView({
       case 'comment_created':
       case 'comment_updated':
         return '메모';
+      case 'activity_quote':
+        return '인용';
       case 'stage_changed':
         return '전형 이동';
       case 'schedule_created':
@@ -270,6 +340,26 @@ export function CandidateTimelineView({
     if (onSwitchToTimeline) onSwitchToTimeline();
     if (onRefreshTimeline) await onRefreshTimeline();
     else router.refresh();
+    await refreshThreadSummaries();
+  };
+
+  const threadSummaryFor = (event: TimelineEvent): ActivityThreadSummary | null => {
+    if (event.id.startsWith('email-')) {
+      const eid = timelineEmailIdFromEvent(event);
+      if (!eid) return null;
+      return threadSummaries.byEmailId[eid] ?? null;
+    }
+    return threadSummaries.byTimelineEventId[event.id] ?? null;
+  };
+
+  const openThreadSheet = (event: TimelineEvent) => {
+    const root = buildActivityThreadRoot(event);
+    if (!root) {
+      toast.error('이 항목에는 답장을 달 수 없습니다.');
+      return;
+    }
+    if (!onActivityThreadOpen) return;
+    onActivityThreadOpen({ root, preview: event });
   };
 
   const getCommentBodyForEdit = (event: TimelineEvent) => {
@@ -467,9 +557,87 @@ export function CandidateTimelineView({
 
   const memoSendDisabled = isSubmitting || !commentText.trim();
 
+  const getReactionPillsForEvent = (eventId: string) => {
+    const m = reactionMap[eventId] ?? {};
+    return [
+      { emoji: '👍', count: m['👍'] ?? 0 },
+      { emoji: '👀', count: m['👀'] ?? 0 },
+    ];
+  };
+
+  const bumpReaction = (eventId: string, emoji: string) => {
+    setReactionMap((prev) => ({
+      ...prev,
+      [eventId]: {
+        ...(prev[eventId] ?? {}),
+        [emoji]: ((prev[eventId] ?? {})[emoji] ?? 0) + 1,
+      },
+    }));
+  };
+
+  const buildTimelineChromeFor = (event: TimelineEvent): TimelineEventChrome | undefined => {
+    const root = buildActivityThreadRoot(event);
+    if (!root) return undefined;
+    const s = threadSummaryFor(event);
+    return {
+      interaction: {
+        onOpenThread: () => openThreadSheet(event),
+        onEdit: canEditTimelineComment(event) ? () => openInlineCommentEditor(event) : undefined,
+        onQuote: () => {
+          setQuoteTargetEvent(event);
+          setQuoteText('');
+          setQuoteOpen(true);
+        },
+        onEmojiPicker: () => {
+          toast.message('이모지', { description: '곧 지원할 예정입니다.' });
+        },
+        canEdit: canEditTimelineComment(event),
+        threadDisabled: !onActivityThreadOpen,
+      },
+      reactions: getReactionPillsForEvent(event.id),
+      onToggleReaction: (emoji: string) => bumpReaction(event.id, emoji),
+      threadPreview:
+        onActivityThreadOpen && s && s.count >= 1
+          ? { count: s.count, onOpen: () => openThreadSheet(event) }
+          : undefined,
+    };
+  };
+
+  const handleQuoteSubmit = async () => {
+    if (!quoteTargetEvent) return;
+    const root = buildActivityThreadRoot(quoteTargetEvent);
+    if (!root) {
+      toast.error('인용할 수 없는 항목입니다.');
+      return;
+    }
+    if (!quoteText.trim()) {
+      toast.error('인용 코멘트를 입력해주세요.');
+      return;
+    }
+    setQuoting(true);
+    try {
+      const res = await createQuotedActivityTimelineEntry(candidateId, quoteText.trim(), root);
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success('타임라인에 인용이 등록되었습니다.');
+        setQuoteOpen(false);
+        setQuoteText('');
+        setQuoteTargetEvent(null);
+        await refreshAfterMutation();
+      }
+    } catch {
+      toast.error('인용 저장 중 오류가 발생했습니다.');
+    } finally {
+      setQuoting(false);
+    }
+  };
+
   return (
-    <div className="flex-1 flex flex-col bg-white relative min-h-0 min-w-0">
-      <div className="flex-1 overflow-y-auto p-8 min-h-0 min-w-0">
+    <>
+      <div className="relative flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-x-auto overflow-y-hidden bg-white">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-8">
         <div className="mb-12 flex gap-3 min-w-0">
           <div className="w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-inner">
             {currentUserInitial}
@@ -507,13 +675,13 @@ export function CandidateTimelineView({
 
             <div className="p-4 bg-white space-y-3">
               {composerTab === 'memo' ? (
-                <textarea
+                <MentionTextarea
                   value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
+                  onChange={setCommentText}
+                  users={mentionUsers}
                   disabled={isSubmitting}
                   rows={3}
-                  className="w-full bg-neutral-50/50 border border-neutral-200 rounded-lg px-3 py-2.5 text-sm text-neutral-800 outline-none resize-none placeholder:text-neutral-400 focus:bg-white focus:border-neutral-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder={`${candidateName}님에 대한 메모를 남겨주세요.`}
+                  placeholder={`${candidateName}님에 대한 메모를 남겨주세요. @로 동료를 멘션할 수 있습니다.`}
                 />
               ) : (
                 <>
@@ -607,10 +775,10 @@ export function CandidateTimelineView({
                     type="button"
                     onClick={handleCommentSubmit}
                     disabled={memoSendDisabled}
-                    className="p-1.5 bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 bg-neutral-900 text-white text-xs font-bold rounded-md hover:bg-neutral-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     title={isSubmitting ? '전송 중...' : '전송'}
                   >
-                    <Send className="w-4 h-4" />
+                    {isSubmitting ? '전송 중…' : '전송'}
                   </button>
                 ) : (
                   <button
@@ -643,7 +811,6 @@ export function CandidateTimelineView({
               const node = getTimelineNodeVisual(event);
               const NodeIcon = node.Icon;
               const author = getAuthorDisplay(event);
-              const showCommentEdit = canEditTimelineComment(event);
               const showEvalEdit = canEditTimelineEvaluation(event);
               const showEditedLabel = isEditedTimelineEvent(event);
 
@@ -667,17 +834,6 @@ export function CandidateTimelineView({
                       <span className={eventTypeBadgeClass}>{getEventBadgeText(event)}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {showCommentEdit && (
-                        <button
-                          type="button"
-                          onClick={() => openInlineCommentEditor(event)}
-                          className="p-1 rounded-md text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
-                          title="메모 수정"
-                          aria-label="메모 수정"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                       {showEvalEdit && (
                         <button
                           type="button"
@@ -807,6 +963,8 @@ export function CandidateTimelineView({
                         expandedEmails={expandedEmails}
                         onToggleEmailExpand={onToggleEmailExpand}
                         candidateId={candidateId}
+                        mentionUserMap={mentionUserMap}
+                        timelineChrome={buildTimelineChromeFor(event)}
                       />
                     )}
                   </div>
@@ -815,7 +973,42 @@ export function CandidateTimelineView({
             })}
           </div>
         )}
+          </div>
+        </div>
       </div>
-    </div>
+
+      <Dialog
+        open={quoteOpen}
+        onOpenChange={(o) => {
+          setQuoteOpen(o);
+          if (!o) {
+            setQuoteText('');
+            setQuoteTargetEvent(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>인용하여 타임라인에 남기기</DialogTitle>
+          </DialogHeader>
+          <MentionTextarea
+            value={quoteText}
+            onChange={setQuoteText}
+            users={mentionUsers}
+            disabled={quoting}
+            rows={4}
+            placeholder="인용과 함께 올릴 메시지를 작성하세요."
+          />
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setQuoteOpen(false)} disabled={quoting}>
+              취소
+            </Button>
+            <Button type="button" onClick={() => void handleQuoteSubmit()} disabled={quoting || !quoteText.trim()}>
+              {quoting ? '저장 중…' : '타임라인에 등록'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

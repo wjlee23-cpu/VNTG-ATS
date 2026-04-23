@@ -113,6 +113,7 @@
   - created_by
   - mentioned_user_ids (UUID 배열 - 멘션된 사용자)
   - parent_comment_id (대댓글 지원)
+  - activity_thread_root_timeline_event_id / activity_thread_root_email_id (액티비티 스레드 루트; 설정 시 메인 타임라인에 `comment_created`를 만들지 않음)
 
 ### 5. 평가 (Evaluation) - Phase 2
 

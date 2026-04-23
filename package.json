@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx scripts/seed-dummy-data.ts",
-    "migrate:workflow-status": "tsx scripts/apply-workflow-status-migration.ts"
+    "migrate:workflow-status": "tsx scripts/apply-workflow-status-migration.ts",
+    "migrate:activity-threads": "tsx scripts/apply-activity-timeline-threads-migration.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

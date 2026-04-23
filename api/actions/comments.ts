@@ -1,45 +1,51 @@
 'use server';
 
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateRequired, validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
+import { parseMentionUserIdsFromText } from '@/lib/mention-tokens';
+
+/** 액티비티 타임라인 행 또는 이메일에 매달리는 스레드의 루트 */
+export type ActivityCommentThreadRoot =
+  | { kind: 'timeline_event'; id: string }
+  | { kind: 'email'; id: string };
 
 /**
  * 코멘트 생성
- * @param candidateId 후보자 ID
- * @param content 코멘트 내용
- * @param mentionedUserIds 멘션된 사용자 ID 목록 (선택)
- * @param parentCommentId 부모 코멘트 ID (대댓글인 경우)
- * @param skipRevalidate 캐시 무효화(revalidatePath)를 건너뛸지 여부 (기본값: false)
- * @returns 생성된 코멘트 데이터
+ * @param threadRoot 스레드 답장인 경우: 메인 타임라인에 새 행을 만들지 않습니다.
  */
 export async function createComment(
   candidateId: string,
   content: string,
   mentionedUserIds?: string[],
   parentCommentId?: string,
-  skipRevalidate?: boolean
+  skipRevalidate?: boolean,
+  threadRoot?: ActivityCommentThreadRoot,
 ) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
     await verifyCandidateAccess(candidateId);
-    
-    // RLS 무한 재귀 문제 해결: Service Role Client 사용
-    // verifyCandidateAccess에서 이미 권한 확인을 완료했으므로 안전합니다.
+
     const supabase = createServiceClient();
 
-    // 입력값 검증
     const validatedContent = validateRequired(content, '코멘트 내용');
     const validatedCandidateId = validateUUID(candidateId, '후보자 ID');
 
-    // 부모 코멘트가 있는 경우 존재 여부 확인
+    const fromText = parseMentionUserIdsFromText(validatedContent);
+    const mergedMentions = [...new Set([...(mentionedUserIds || []), ...fromText])];
+
+    let activity_thread_root_timeline_event_id: string | null = null;
+    let activity_thread_root_email_id: string | null = null;
+
     if (parentCommentId) {
       const validatedParentId = validateUUID(parentCommentId, '부모 코멘트 ID');
       const { data: parentComment, error: parentError } = await supabase
         .from('comments')
-        .select('id, candidate_id')
+        .select(
+          'id, candidate_id, activity_thread_root_timeline_event_id, activity_thread_root_email_id',
+        )
         .eq('id', validatedParentId)
         .single();
 
@@ -50,17 +56,54 @@ export async function createComment(
       if (parentComment.candidate_id !== validatedCandidateId) {
         throw new Error('부모 코멘트가 해당 후보자의 코멘트가 아닙니다.');
       }
+
+      if (parentComment.activity_thread_root_timeline_event_id) {
+        activity_thread_root_timeline_event_id = parentComment.activity_thread_root_timeline_event_id;
+      } else if (parentComment.activity_thread_root_email_id) {
+        activity_thread_root_email_id = parentComment.activity_thread_root_email_id;
+      }
     }
 
-    // 코멘트 생성
+    if (!activity_thread_root_timeline_event_id && !activity_thread_root_email_id && threadRoot) {
+      if (threadRoot.kind === 'timeline_event') {
+        const teId = validateUUID(threadRoot.id, '타임라인 이벤트 ID');
+        const { data: te, error: teError } = await supabase
+          .from('timeline_events')
+          .select('id, candidate_id')
+          .eq('id', teId)
+          .single();
+        if (teError || !te || te.candidate_id !== validatedCandidateId) {
+          throw new Error('스레드를 달 타임라인 이벤트를 찾을 수 없습니다.');
+        }
+        activity_thread_root_timeline_event_id = teId;
+      } else {
+        const emId = validateUUID(threadRoot.id, '이메일 ID');
+        const { data: em, error: emError } = await supabase
+          .from('emails')
+          .select('id, candidate_id')
+          .eq('id', emId)
+          .single();
+        if (emError || !em || em.candidate_id !== validatedCandidateId) {
+          throw new Error('스레드를 달 이메일을 찾을 수 없습니다.');
+        }
+        activity_thread_root_email_id = emId;
+      }
+    }
+
+    const isActivityThreadReply = !!(
+      activity_thread_root_timeline_event_id || activity_thread_root_email_id
+    );
+
     const { data, error } = await supabase
       .from('comments')
       .insert({
         candidate_id: validatedCandidateId,
         content: validatedContent,
         created_by: user.userId,
-        mentioned_user_ids: mentionedUserIds || [],
+        mentioned_user_ids: mergedMentions,
         parent_comment_id: parentCommentId || null,
+        activity_thread_root_timeline_event_id,
+        activity_thread_root_email_id,
       })
       .select()
       .single();
@@ -69,29 +112,28 @@ export async function createComment(
       throw new Error(`코멘트 생성 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트 생성
-    const { error: timelineError } = await supabase.from('timeline_events').insert({
-      candidate_id: validatedCandidateId,
-      type: parentCommentId ? 'comment_created' : 'comment_created', // 대댓글도 동일한 타입 사용
-      content: {
-        message: parentCommentId ? '대댓글이 작성되었습니다.' : '코멘트가 작성되었습니다.',
-        comment_id: data.id,
-        content: validatedContent,
-        parent_comment_id: parentCommentId || null,
-        mentioned_user_ids: mentionedUserIds || [],
-      },
-      created_by: user.userId,
-    });
+    if (!isActivityThreadReply) {
+      const { error: timelineError } = await supabase.from('timeline_events').insert({
+        candidate_id: validatedCandidateId,
+        type: 'comment_created',
+        content: {
+          message: parentCommentId ? '대댓글이 작성되었습니다.' : '코멘트가 작성되었습니다.',
+          comment_id: data.id,
+          content: validatedContent,
+          parent_comment_id: parentCommentId || null,
+          mentioned_user_ids: mergedMentions,
+        },
+        created_by: user.userId,
+      });
 
-    if (timelineError) {
-      console.error('[타임라인] 이벤트 생성 실패 (코멘트 작성):', timelineError);
-      if (timelineError.code === '23514') {
-        console.error('[타임라인] DB 스키마 제약 조건 위반 - comment_created 타입이 허용되지 않음.');
+      if (timelineError) {
+        console.error('[타임라인] 이벤트 생성 실패 (코멘트 작성):', timelineError);
+        if (timelineError.code === '23514') {
+          console.error('[타임라인] DB 스키마 제약 조건 위반 - comment_created 타입이 허용되지 않음.');
+        }
       }
     }
 
-    // 캐시 무효화 (skipRevalidate가 true이면 건너뜀)
-    // 클라이언트에서 타임라인을 직접 업데이트하는 경우 서버 캐시 무효화가 불필요합니다.
     if (!skipRevalidate) {
       revalidatePath(`/dashboard/candidates/${validatedCandidateId}`);
     }
@@ -102,25 +144,21 @@ export async function createComment(
 
 /**
  * 코멘트 수정
- * @param commentId 코멘트 ID
- * @param content 수정할 코멘트 내용
- * @returns 수정된 코멘트 데이터
  */
 export async function updateComment(commentId: string, content: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    
-    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+
     const supabase = createServiceClient();
 
-    // 입력값 검증
     const validatedCommentId = validateUUID(commentId, '코멘트 ID');
     const validatedContent = validateRequired(content, '코멘트 내용');
 
-    // 기존 코멘트 조회
     const { data: existingComment, error: fetchError } = await supabase
       .from('comments')
-      .select('id, candidate_id, content, created_by')
+      .select(
+        'id, candidate_id, content, created_by, activity_thread_root_timeline_event_id, activity_thread_root_email_id',
+      )
       .eq('id', validatedCommentId)
       .single();
 
@@ -128,15 +166,12 @@ export async function updateComment(commentId: string, content: string) {
       throw new Error('코멘트를 찾을 수 없습니다.');
     }
 
-    // 권한 확인 (작성자만 수정 가능)
     if (existingComment.created_by !== user.userId) {
       throw new Error('코멘트를 수정할 권한이 없습니다.');
     }
 
-    // 후보자 접근 권한 확인
     await verifyCandidateAccess(existingComment.candidate_id);
 
-    // 코멘트 수정
     const { data, error } = await supabase
       .from('comments')
       .update({
@@ -151,66 +186,69 @@ export async function updateComment(commentId: string, content: string) {
       throw new Error(`코멘트 수정 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트 갱신(중복 방지)
-    // - 기존에는 수정할 때마다 comment_updated를 insert해서 “기존 메모 + 수정 메모”가 같이 보였습니다.
-    // - 이제는 최초 comment_created 이벤트를 찾아 content만 업데이트합니다(시간은 기존 created_at 유지).
-    const editedAt = new Date().toISOString();
+    const isThreadOnly =
+      !!existingComment.activity_thread_root_timeline_event_id ||
+      !!existingComment.activity_thread_root_email_id;
 
-    const { data: existingTimeline, error: existingTimelineError } = await supabase
-      .from('timeline_events')
-      .select('id, content, created_at')
-      .eq('candidate_id', existingComment.candidate_id)
-      .eq('type', 'comment_created')
-      .eq('content->>comment_id', validatedCommentId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    if (!isThreadOnly) {
+      const editedAt = new Date().toISOString();
 
-    if (existingTimelineError) {
-      throw new Error(`코멘트 타임라인 조회 실패: ${existingTimelineError.message}`);
-    }
-
-    if (existingTimeline?.id) {
-      const mergedContent = {
-        ...(typeof existingTimeline.content === 'object' && existingTimeline.content ? existingTimeline.content : {}),
-        message: '코멘트가 작성되었습니다.',
-        comment_id: validatedCommentId,
-        content: validatedContent,
-        edited: true,
-        edited_at: editedAt,
-      };
-
-      const { error: timelineUpdateError } = await supabase
+      const { data: existingTimeline, error: existingTimelineError } = await supabase
         .from('timeline_events')
-        .update({
-          content: mergedContent,
-        })
-        .eq('id', existingTimeline.id);
+        .select('id, content, created_at')
+        .eq('candidate_id', existingComment.candidate_id)
+        .eq('type', 'comment_created')
+        .eq('content->>comment_id', validatedCommentId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-      if (timelineUpdateError) {
-        throw new Error(`코멘트 타임라인 갱신 실패: ${timelineUpdateError.message}`);
+      if (existingTimelineError) {
+        throw new Error(`코멘트 타임라인 조회 실패: ${existingTimelineError.message}`);
       }
-    } else {
-      // 레거시/예외 케이스: 최초 생성 이벤트가 없다면 1개는 남깁니다.
-      const { error: timelineInsertError } = await supabase.from('timeline_events').insert({
-        candidate_id: existingComment.candidate_id,
-        type: 'comment_created',
-        content: {
+
+      if (existingTimeline?.id) {
+        const mergedContent = {
+          ...(typeof existingTimeline.content === 'object' && existingTimeline.content
+            ? existingTimeline.content
+            : {}),
           message: '코멘트가 작성되었습니다.',
           comment_id: validatedCommentId,
           content: validatedContent,
           edited: true,
           edited_at: editedAt,
-        },
-        created_by: user.userId,
-      });
+        };
 
-      if (timelineInsertError) {
-        console.error('[타임라인] 이벤트 생성 실패 (코멘트 수정 fallback):', timelineInsertError);
+        const { error: timelineUpdateError } = await supabase
+          .from('timeline_events')
+          .update({
+            content: mergedContent,
+          })
+          .eq('id', existingTimeline.id);
+
+        if (timelineUpdateError) {
+          throw new Error(`코멘트 타임라인 갱신 실패: ${timelineUpdateError.message}`);
+        }
+      } else {
+        const { error: timelineInsertError } = await supabase.from('timeline_events').insert({
+          candidate_id: existingComment.candidate_id,
+          type: 'comment_created',
+          content: {
+            message: '코멘트가 작성되었습니다.',
+            comment_id: validatedCommentId,
+            content: validatedContent,
+            edited: true,
+            edited_at: editedAt,
+          },
+          created_by: user.userId,
+        });
+
+        if (timelineInsertError) {
+          console.error('[타임라인] 이벤트 생성 실패 (코멘트 수정 fallback):', timelineInsertError);
+        }
       }
     }
 
-    // 캐시 무효화
     revalidatePath(`/dashboard/candidates/${existingComment.candidate_id}`);
 
     return data;
@@ -219,19 +257,15 @@ export async function updateComment(commentId: string, content: string) {
 
 /**
  * 코멘트 삭제
- * @param commentId 코멘트 ID
  */
 export async function deleteComment(commentId: string) {
   return withErrorHandling(async () => {
     const user = await getCurrentUser();
-    
-    // RLS 무한 재귀 문제 해결: Service Role Client 사용
+
     const supabase = createServiceClient();
 
-    // 입력값 검증
     const validatedCommentId = validateUUID(commentId, '코멘트 ID');
 
-    // 기존 코멘트 조회
     const { data: existingComment, error: fetchError } = await supabase
       .from('comments')
       .select('id, candidate_id, created_by')
@@ -242,27 +276,18 @@ export async function deleteComment(commentId: string) {
       throw new Error('코멘트를 찾을 수 없습니다.');
     }
 
-    // 권한 확인 (작성자만 삭제 가능)
     if (existingComment.created_by !== user.userId) {
       throw new Error('코멘트를 삭제할 권한이 없습니다.');
     }
 
-    // 후보자 접근 권한 확인
     await verifyCandidateAccess(existingComment.candidate_id);
 
-    // 코멘트 삭제
-    const { error } = await supabase
-      .from('comments')
-      .delete()
-      .eq('id', validatedCommentId);
+    const { error } = await supabase.from('comments').delete().eq('id', validatedCommentId);
 
     if (error) {
       throw new Error(`코멘트 삭제 실패: ${error.message}`);
     }
 
-    // 타임라인 이벤트는 삭제하지 않음 (히스토리 보존)
-
-    // 캐시 무효화
     revalidatePath(`/dashboard/candidates/${existingComment.candidate_id}`);
 
     return { success: true };

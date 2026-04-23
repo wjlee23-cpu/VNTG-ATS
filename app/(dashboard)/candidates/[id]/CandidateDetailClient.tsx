@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import type { Candidate } from '@/types/candidates';
@@ -26,7 +27,9 @@ import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateM
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
 import { CommentModal } from '@/components/candidates/CommentModal';
 import { CandidateDetailLayout } from '@/components/candidates/detail/CandidateDetailLayout';
-import type { StageEvaluationRow } from '@/components/candidates/detail/CandidateTimelineView';
+import type { MentionableUser } from '@/components/candidates/detail/MentionTextarea';
+import { ActivityThreadSheet } from '@/components/candidates/detail/ActivityThreadSheet';
+import type { ActivityThreadSession, StageEvaluationRow } from '@/components/candidates/detail/CandidateTimelineView';
 import { CandidateProfileEditDialog } from '@/components/candidates/detail/CandidateProfileEditDialog';
 import { CandidateScheduleForm } from '@/components/candidates/detail/CandidateScheduleForm';
 import { cn } from '@/components/ui/utils';
@@ -72,6 +75,7 @@ export function CandidateDetailClient({
   const [externalInterviewerPool, setExternalInterviewerPool] = useState<
     Array<{ id: string; email: string; display_name: string | null }>
   >([]);
+  const [mentionUsers, setMentionUsers] = useState<MentionableUser[]>([]);
   const initialScheduleStageId =
     initialCandidate.current_stage_id && initialCandidate.current_stage_id.trim() !== ''
       ? initialCandidate.current_stage_id
@@ -268,7 +272,16 @@ export function CandidateDetailClient({
     return 'profile';
   });
 
+  /** 스레드 패널은 document.body 포털로 렌더해 상세 모달 레이아웃과 분리합니다. */
+  const [activityThreadSession, setActivityThreadSession] = useState<ActivityThreadSession | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+
   const getDetailTabStorageKey = () => `candidate-detail-active-tab:${candidate.id}`;
+
+  const handleDetailTabChange = (tab: DetailTab) => {
+    setDetailInitialTab(tab);
+    if (tab !== 'timeline') setActivityThreadSession(null);
+  };
 
   // 서버에서 내려준 schedules가 갱신되면(router.refresh 등) 로컬 목록 시그니처를 맞춥니다.
   const schedulesPropKey = useMemo(() => {
@@ -331,6 +344,14 @@ export function CandidateDetailClient({
       schedulesFetchGenRef.current += 1;
     };
   }, [candidate.id, schedulesPropKey]);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    setActivityThreadSession(null);
+  }, [candidate.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !candidate.id) return;
@@ -476,6 +497,8 @@ export function CandidateDetailClient({
       // ✅ 내부 면접관 목록(관리자/면접관)만 유지
       const internalInterviewers = list.filter((u) => u.role === 'interviewer' || u.role === 'admin');
 
+      setMentionUsers(list);
+
       // ✅ 안전장치: 내부 사용자 이메일과 겹치는 외부 면접관은 UI에서 제거합니다.
       // (서버에서 삭제/필터링을 하지만, 캐시/동기화 타이밍으로 혹시 남아있을 수 있어 2중 방어)
       const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -552,6 +575,7 @@ export function CandidateDetailClient({
   };
 
   const handleClose = () => {
+    setActivityThreadSession(null);
     if (onClose) onClose();
     else router.back();
   };
@@ -985,6 +1009,7 @@ export function CandidateDetailClient({
           }}
           currentUserId={userId}
           stageEvaluations={evaluations as StageEvaluationRow[]}
+          mentionUsers={mentionUsers}
         onDeleteSchedule={handleDeleteScheduleFromTimeline}
         onCheckSchedule={handleCheckScheduleFromTimeline}
         currentActiveSchedule={currentActiveSchedule}
@@ -994,7 +1019,8 @@ export function CandidateDetailClient({
           onOpenProfileSectionEdit={openProfileSectionEdit}
           isResumeAiAnalyzing={isResumeAiAnalyzing}
           activeTab={detailInitialTab}
-          onActiveTabChange={setDetailInitialTab}
+          onActiveTabChange={handleDetailTabChange}
+          onActivityThreadOpen={setActivityThreadSession}
           onFileUpload={() => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -1102,6 +1128,27 @@ export function CandidateDetailClient({
         onCancel={handleCancelEdit}
         isSaving={isSavingProfile}
       />
+
+      {portalReady &&
+        activityThreadSession &&
+        createPortal(
+          <ActivityThreadSheet
+            open
+            onOpenChange={(open) => {
+              if (!open) setActivityThreadSession(null);
+            }}
+            candidateId={candidate.id}
+            threadRoot={activityThreadSession.root}
+            previewEvent={activityThreadSession.preview}
+            mentionUsers={mentionUsers}
+            onAfterPost={async () => {
+              await refreshTimelineEvents();
+              void loadEvaluations();
+            }}
+            className="fixed right-0 top-0 z-[200] h-[100dvh] max-h-[100dvh] shadow-2xl"
+          />,
+          document.body,
+        )}
     </>
   );
 }
