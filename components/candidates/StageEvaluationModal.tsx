@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Star, FileText } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ interface StageEvaluationModalProps {
   };
   isOpen: boolean;
   onClose: () => void;
+  /** 저장 성공 후 타임라인 갱신 등 (router.refresh 전에 호출) */
+  onSuccess?: () => void | Promise<void>;
 }
 
 export function StageEvaluationModal({
@@ -30,6 +32,7 @@ export function StageEvaluationModal({
   existingEvaluation,
   isOpen,
   onClose,
+  onSuccess,
 }: StageEvaluationModalProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -37,6 +40,12 @@ export function StageEvaluationModal({
     existingEvaluation?.result || 'pending'
   );
   const [notes, setNotes] = useState(existingEvaluation?.notes || '');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setResult(existingEvaluation?.result ?? 'pending');
+    setNotes(existingEvaluation?.notes ?? '');
+  }, [isOpen, existingEvaluation?.id, existingEvaluation?.result, existingEvaluation?.notes]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +65,7 @@ export function StageEvaluationModal({
         toast.success('평가가 저장되었습니다.');
         setResult('pending');
         setNotes('');
+        await onSuccess?.();
         onClose();
         router.refresh();
       }

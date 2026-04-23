@@ -61,6 +61,12 @@ export interface TimelineEventContent {
   previous_job_post_title?: string;
   new_job_post_title?: string;
   previous_rating?: number;
+  /** 타임라인 코멘트 이벤트의 comments.id */
+  comment_id?: string;
+  /** 코멘트 수정 후 본문 (comment_updated) */
+  new_content?: string;
+  /** stage_evaluations.id — 타임라인에서 평가 수정 시 사용 */
+  evaluation_id?: string;
   [key: string]: unknown;
 }
 
@@ -76,5 +82,7 @@ export interface TimelineEvent {
   type: string;
   content: TimelineEventContent;
   created_at: string;
+  /** 타임라인 행의 작성자 UUID (조인 실패 시에도 평가 매칭에 사용) */
+  created_by?: string | null;
   created_by_user?: TimelineEventCreatedBy;
 }

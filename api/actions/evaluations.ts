@@ -100,6 +100,7 @@ export async function createStageEvaluation(
         stage_name: stageName,
         result,
         notes,
+        evaluation_id: data.id,
       },
       created_by: user.userId,
     });
@@ -205,6 +206,10 @@ export async function updateStageEvaluation(
       throw new Error('평가를 찾을 수 없습니다.');
     }
 
+    if (evaluation.evaluator_id !== user.userId) {
+      throw new Error('본인이 작성한 평가만 수정할 수 있습니다.');
+    }
+
     // verifyCandidateAccess에서 권한 확인 (Service Role Client 사용)
     await verifyCandidateAccess(evaluation.candidate_id);
 
@@ -234,6 +239,7 @@ export async function updateStageEvaluation(
         stage_name: stageName,
         result,
         notes,
+        evaluation_id: evaluationId,
       },
       created_by: user.userId,
     });

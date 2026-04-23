@@ -26,6 +26,7 @@ import { ArchiveCandidateModal } from '@/components/candidates/ArchiveCandidateM
 import { StageEvaluationModal } from '@/components/candidates/StageEvaluationModal';
 import { CommentModal } from '@/components/candidates/CommentModal';
 import { CandidateDetailLayout } from '@/components/candidates/detail/CandidateDetailLayout';
+import type { StageEvaluationRow } from '@/components/candidates/detail/CandidateTimelineView';
 import { CandidateProfileEditDialog } from '@/components/candidates/detail/CandidateProfileEditDialog';
 import { CandidateScheduleForm } from '@/components/candidates/detail/CandidateScheduleForm';
 import { cn } from '@/components/ui/utils';
@@ -978,7 +979,12 @@ export function CandidateDetailClient({
           expandedEmails={expandedEmails}
           onToggleEmailExpand={toggleEmailExpand}
           onAddComment={() => setIsCommentModalOpen(true)}
-          onRefreshTimeline={refreshTimelineEvents}
+          onRefreshTimeline={async () => {
+            await refreshTimelineEvents();
+            void loadEvaluations();
+          }}
+          currentUserId={userId}
+          stageEvaluations={evaluations as StageEvaluationRow[]}
         onDeleteSchedule={handleDeleteScheduleFromTimeline}
         onCheckSchedule={handleCheckScheduleFromTimeline}
         currentActiveSchedule={currentActiveSchedule}

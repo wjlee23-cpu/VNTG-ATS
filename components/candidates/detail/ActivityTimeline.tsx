@@ -101,7 +101,7 @@ export function ActivityTimeline({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0">
         {events.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
@@ -114,7 +114,7 @@ export function ActivityTimeline({
             <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-muted via-border to-muted" />
             <div className="space-y-6">
               {events.map((event) => (
-                <div key={event.id} className="relative flex gap-4 group">
+                <div key={event.id} className="relative flex gap-4 group min-w-0">
                   <div className="relative z-10 flex-shrink-0 flex items-center justify-center">
                     {showUserAvatar(event) ? (
                       <Avatar className="w-12 h-12 border-2 shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200">
@@ -139,8 +139,8 @@ export function ActivityTimeline({
                       </div>
                     )}
                   </div>
-                  <div className="flex-1 pb-6">
-                    <div className="bg-white border border-neutral-200 shadow-sm rounded-lg p-3 hover:shadow-md transition-all duration-200">
+                  <div className="flex-1 min-w-0 pb-6">
+                    <div className="bg-white border border-neutral-200 shadow-sm rounded-lg p-3 hover:shadow-md transition-all duration-200 min-w-0">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`text-sm font-semibold ${getTimelineEventColor(event.type)}`}>
                           {getTimelineEventTitle(event)}
@@ -155,7 +155,7 @@ export function ActivityTimeline({
                           ? `${(event.created_by_user as { name?: string })?.name || (event.created_by_user as { email?: string })?.email} • ${formatDate(event.created_at)} ${new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
                           : `${formatDate(event.created_at)} ${new Date(event.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`}
                       </p>
-                      <div className="text-sm text-foreground">
+                      <div className="text-sm text-foreground min-w-0 max-w-full">
                         <TimelineEventContent
                           event={event}
                           expandedEmails={expandedEmails}

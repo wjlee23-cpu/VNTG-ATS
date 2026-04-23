@@ -1,6 +1,18 @@
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import type { TimelineEvent } from '@/types/candidate-detail';
 
+/** DB/레거시 값이 대소문자 혼용일 때 평가 결과를 통일합니다. */
+export function normalizeStageEvalResult(r: unknown): 'pass' | 'fail' | 'pending' | undefined {
+  if (r === 'pass' || r === 'fail' || r === 'pending') return r;
+  if (typeof r === 'string') {
+    const u = r.toLowerCase();
+    if (u === 'pass') return 'pass';
+    if (u === 'fail') return 'fail';
+    if (u === 'pending' || u === 'hold') return 'pending';
+  }
+  return undefined;
+}
+
 /** 타임라인 이벤트 제목 */
 export function getTimelineEventTitle(event: TimelineEvent): string {
   switch (event.type) {

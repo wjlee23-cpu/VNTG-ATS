@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { CandidateSidebar } from './CandidateSidebar';
 import { CandidateProfileTab } from './CandidateProfileTab';
 import { CandidateInsightTab } from './CandidateInsightTab';
-import { CandidateTimelineView } from './CandidateTimelineView';
+import { CandidateTimelineView, type StageEvaluationRow } from './CandidateTimelineView';
 import type { Candidate } from '@/types/candidates';
 import type { TimelineEvent, ResumeFile } from '@/types/candidate-detail';
 
@@ -40,6 +40,9 @@ interface CandidateDetailLayoutProps {
   onAddComment: () => void;
   onRefreshTimeline?: () => void | Promise<void>;
   onSwitchToTimeline?: () => void;
+  /** 타임라인 메모/평가 수정 버튼 노출용 */
+  currentUserId?: string | null;
+  stageEvaluations?: StageEvaluationRow[];
   // 사이드바 컨트롤러로 이동한 스케줄 제어
   currentActiveSchedule?: {
     id: string;
@@ -100,6 +103,8 @@ export function CandidateDetailLayout({
   onAddComment,
   onRefreshTimeline,
   onSwitchToTimeline,
+  currentUserId = null,
+  stageEvaluations = [],
   onDeleteSchedule,
   onCheckSchedule,
   currentActiveSchedule = null,
@@ -205,6 +210,8 @@ export function CandidateDetailLayout({
             onAddComment={onAddComment}
             onRefreshTimeline={onRefreshTimeline}
             onSwitchToTimeline={handleSwitchToTimeline}
+            currentUserId={currentUserId}
+            stageEvaluations={stageEvaluations}
           />
         )}
       </div>

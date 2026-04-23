@@ -1,23 +1,43 @@
 'use client';
 
-// VNTG Design System 2.0 - 후보자 액티비티 타임라인 뷰
-// 샘플화면3.html 기반의 초미니멀리즘 디자인 적용
 import { useState } from 'react';
-import { Paperclip, Send } from 'lucide-react';
-import { getTimelineEventTitle } from './timeline-utils';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Paperclip,
+  Send,
+  ThumbsUp,
+  MessageSquare,
+  GitMerge,
+  CalendarPlus,
+  Mail,
+  Archive,
+  Pencil,
+} from 'lucide-react';
 import { TimelineEventContent } from './TimelineEventContent';
 import type { TimelineEvent } from '@/types/candidate-detail';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { createComment } from '@/api/actions/comments';
+import { createComment, updateComment } from '@/api/actions/comments';
+import { createStageEvaluation, updateStageEvaluation } from '@/api/actions/evaluations';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
+import { normalizeStageEvalResult } from './timeline-utils';
+import { Button } from '@/components/ui/button';
+
+/** 타임라인에서 평가 수정 시 매칭용 (getStageEvaluations 결과) */
+export type StageEvaluationRow = {
+  id: string;
+  result: 'pass' | 'fail' | 'pending';
+  notes?: string | null;
+  stage_id: string;
+  evaluator_id: string;
+};
 
 interface CandidateTimelineViewProps {
   candidateName: string;
   events: TimelineEvent[];
-  /** 타임라인 데이터를 불러오는 중인지(탭 지연 로딩) */
   isLoading?: boolean;
-  /** 타임라인을 한 번이라도 로드해본 적이 있는지(빈 상태 메시지 제어) */
   hasLoaded?: boolean;
   expandedEmails: Set<string>;
   onToggleEmailExpand: (eventId: string) => void;
@@ -27,9 +47,108 @@ interface CandidateTimelineViewProps {
   onAddComment: () => void;
   onRefreshTimeline?: () => void | Promise<void>;
   onSwitchToTimeline?: () => void;
+  currentUserId?: string | null;
+  stageEvaluations?: StageEvaluationRow[];
 }
 
-/** 후보자 액티비티 타임라인 뷰 - VNTG Design System 2.0 */
+type ComposerTab = 'memo' | 'evaluation';
+
+type InlineEditState =
+  | { kind: 'comment'; eventId: string; commentId: string; text: string }
+  | {
+      kind: 'evaluation';
+      eventId: string;
+      evaluationId: string;
+      stageId: string;
+      result: 'pass' | 'fail' | 'pending';
+      notes: string;
+    };
+
+function rowEvalResult(r: string | undefined | null): 'pass' | 'fail' | 'pending' {
+  const u = (r ?? '').toLowerCase();
+  if (u === 'pass') return 'pass';
+  if (u === 'fail') return 'fail';
+  return 'pending';
+}
+
+const timelineNodeBase =
+  'absolute -left-[13px] top-0 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-sm';
+
+function getTimelineNodeVisual(event: TimelineEvent): {
+  wrapClass: string;
+  Icon: LucideIcon;
+  iconClass: string;
+} {
+  const type = event.type;
+  switch (type) {
+    case 'stage_evaluation': {
+      const r = normalizeStageEvalResult(event.content?.result);
+      if (r === 'fail') {
+        return {
+          wrapClass: `${timelineNodeBase} bg-red-100`,
+          Icon: ThumbsUp,
+          iconClass: 'w-3 h-3 text-red-600',
+        };
+      }
+      if (r === 'pending') {
+        return {
+          wrapClass: `${timelineNodeBase} bg-amber-100`,
+          Icon: ThumbsUp,
+          iconClass: 'w-3 h-3 text-amber-700',
+        };
+      }
+      return {
+        wrapClass: `${timelineNodeBase} bg-emerald-100`,
+        Icon: ThumbsUp,
+        iconClass: 'w-3 h-3 text-emerald-600',
+      };
+    }
+    case 'comment':
+    case 'comment_created':
+    case 'comment_updated':
+      return {
+        wrapClass: `${timelineNodeBase} bg-neutral-200`,
+        Icon: MessageSquare,
+        iconClass: 'w-3 h-3 text-neutral-600',
+      };
+    case 'stage_changed':
+      return {
+        wrapClass: `${timelineNodeBase} bg-indigo-100`,
+        Icon: GitMerge,
+        iconClass: 'w-3 h-3 text-indigo-600',
+      };
+    case 'schedule_created':
+    case 'schedule_confirmed':
+    case 'schedule_deleted':
+    case 'schedule_regenerated':
+      return {
+        wrapClass: `${timelineNodeBase} bg-purple-100`,
+        Icon: CalendarPlus,
+        iconClass: 'w-3 h-3 text-purple-600',
+      };
+    case 'email':
+    case 'email_received':
+      return {
+        wrapClass: `${timelineNodeBase} bg-blue-100`,
+        Icon: Mail,
+        iconClass: 'w-3 h-3 text-blue-600',
+      };
+    case 'archive':
+      return {
+        wrapClass: `${timelineNodeBase} bg-neutral-200`,
+        Icon: Archive,
+        iconClass: 'w-3 h-3 text-neutral-600',
+      };
+    default:
+      return {
+        wrapClass: `${timelineNodeBase} bg-neutral-200`,
+        Icon: MessageSquare,
+        iconClass: 'w-3 h-3 text-neutral-600',
+      };
+  }
+}
+
+/** 후보자 액티비티 타임라인 뷰 — 타임라인 V3(HTML) 레이아웃 */
 export function CandidateTimelineView({
   candidateName,
   events,
@@ -40,52 +159,47 @@ export function CandidateTimelineView({
   candidateId,
   currentStageId,
   canManageCandidate,
-  onAddComment,
+  onAddComment: _onAddComment,
   onRefreshTimeline,
   onSwitchToTimeline,
+  currentUserId = null,
+  stageEvaluations = [],
 }: CandidateTimelineViewProps) {
   const router = useRouter();
+  const [composerTab, setComposerTab] = useState<ComposerTab>('memo');
   const [commentText, setCommentText] = useState('');
+  const [evalNotes, setEvalNotes] = useState('');
+  const [evalResult, setEvalResult] = useState<'pass' | 'pending' | 'fail'>('pending');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const currentUserInitial = '나'; // TODO: 실제 사용자 정보에서 가져오기
+  const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const currentUserInitial = '나';
 
-  // 타임라인 이벤트의 작성자 표시용 이름/아바타 정보를 가공합니다.
   const getAuthorDisplay = (event: TimelineEvent) => {
-    const authorName = event.created_by_user?.name?.trim();
-    const authorEmail = event.created_by_user?.email?.trim();
-    const displayName = authorName || authorEmail?.split('@')[0] || 'System';
-    const fallback = displayName.slice(0, 1).toUpperCase();
+    const u = event.created_by_user;
+    if (u) {
+      const authorName = u.name?.trim();
+      const authorEmail = u.email?.trim();
+      const displayName = authorName || authorEmail?.split('@')[0] || '사용자';
+      const fallback = displayName.slice(0, 1).toUpperCase();
+      return {
+        displayName,
+        fallback,
+        avatarUrl: u.avatar_url,
+        hasUser: true as const,
+      };
+    }
     return {
-      displayName,
-      fallback,
-      avatarUrl: event.created_by_user?.avatar_url,
-      hasAuthor: !!event.created_by_user,
+      displayName: '자동',
+      fallback: '?',
+      avatarUrl: undefined as string | undefined,
+      hasUser: false as const,
     };
   };
 
-  // 이벤트 타입에 따른 배지 스타일 결정
-  const getEventBadgeStyle = (event: TimelineEvent) => {
-    switch (event.type) {
-      case 'stage_evaluation':
-        return 'px-2 py-0.5 rounded bg-indigo-50 text-[11px] font-medium text-indigo-600 border border-indigo-100/50';
-      case 'comment':
-      case 'comment_created':
-      case 'comment_updated':
-        return 'px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-600';
-      case 'schedule_created':
-      case 'schedule_confirmed':
-      case 'schedule_deleted':
-      case 'schedule_regenerated':
-        return 'px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200/60 text-[10px] font-bold text-neutral-500 tracking-wider uppercase';
-      case 'email':
-      case 'email_received':
-        return 'px-2 py-0.5 rounded bg-blue-50 text-[11px] font-medium text-blue-600';
-      default:
-        return 'px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200/60 text-[10px] font-bold text-neutral-500 tracking-wider uppercase';
-    }
-  };
+  const eventTypeBadgeClass =
+    'text-[11px] font-bold text-neutral-400 uppercase tracking-wider bg-neutral-100 px-1.5 py-0.5 rounded';
 
-  // 이벤트 타입에 따른 배지 텍스트
   const getEventBadgeText = (event: TimelineEvent) => {
     switch (event.type) {
       case 'stage_evaluation':
@@ -94,6 +208,8 @@ export function CandidateTimelineView({
       case 'comment_created':
       case 'comment_updated':
         return '메모';
+      case 'stage_changed':
+        return '전형 이동';
       case 'schedule_created':
       case 'schedule_confirmed':
       case 'schedule_deleted':
@@ -101,19 +217,20 @@ export function CandidateTimelineView({
         return '일정';
       case 'email':
       case 'email_received':
-        return '발신';
+        return '이메일';
+      case 'archive':
+        return '아카이브';
       default:
         return '이벤트';
     }
   };
 
-  // 상대 시간 포맷 (HTML 샘플 기준: "오늘, 오후 4:30", "어제, 오전 10:20", "2026. 2. 18")
   const formatTimeForDisplay = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / 86400000);
-    
+
     const timeStr = date.toLocaleTimeString('ko-KR', {
       hour: '2-digit',
       minute: '2-digit',
@@ -126,56 +243,174 @@ export function CandidateTimelineView({
       if (hasKoreanPeriod) return `오늘, ${trimmedTime}`;
       const period = date.getHours() < 12 ? '오전' : '오후';
       return `오늘, ${period} ${trimmedTime}`;
-    } else if (diffDays === 1) {
+    }
+    if (diffDays === 1) {
       if (hasKoreanPeriod) return `어제, ${trimmedTime}`;
       const period = date.getHours() < 12 ? '오전' : '오후';
       return `어제, ${period} ${trimmedTime}`;
-    } else {
-      return date.toLocaleDateString('ko-KR', {
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-      });
+    }
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+  };
+
+  const refreshAfterMutation = async () => {
+    if (onSwitchToTimeline) onSwitchToTimeline();
+    if (onRefreshTimeline) await onRefreshTimeline();
+    else router.refresh();
+  };
+
+  const getCommentBodyForEdit = (event: TimelineEvent) => {
+    const c = event.content;
+    return (
+      (typeof c?.content === 'string' ? c.content : undefined) ??
+      (typeof c?.new_content === 'string' ? c.new_content : undefined) ??
+      (typeof c?.message === 'string' ? c.message : undefined) ??
+      ''
+    );
+  };
+
+  const getTimelineCommentId = (event: TimelineEvent): string | null => {
+    const raw = event.content?.comment_id;
+    return typeof raw === 'string' ? raw : null;
+  };
+
+  const canEditTimelineComment = (event: TimelineEvent) => {
+    if (!currentUserId) return false;
+    if (timelineActorId(event) !== currentUserId) return false;
+    const id = getTimelineCommentId(event);
+    return (
+      !!id &&
+      (event.type === 'comment' || event.type === 'comment_created' || event.type === 'comment_updated')
+    );
+  };
+
+  const timelineActorId = (event: TimelineEvent): string | undefined =>
+    event.created_by_user?.id ?? (typeof event.created_by === 'string' ? event.created_by : undefined);
+
+  const resolveEvaluationForTimelineEvent = (event: TimelineEvent): StageEvaluationRow | null => {
+    if (event.type !== 'stage_evaluation') return null;
+    const evalId = event.content?.evaluation_id;
+    if (typeof evalId === 'string') {
+      const byId = stageEvaluations.find((e) => e.id === evalId);
+      if (byId) return byId;
+    }
+    const sid = event.content?.stage_id as string | undefined;
+    if (!sid) return null;
+    const actorId = timelineActorId(event);
+    if (actorId) {
+      const matched = stageEvaluations.find((e) => e.stage_id === sid && e.evaluator_id === actorId);
+      if (matched) return matched;
+    }
+    const sameStage = stageEvaluations.filter((e) => e.stage_id === sid);
+    if (
+      sameStage.length === 1 &&
+      currentUserId &&
+      sameStage[0].evaluator_id === currentUserId
+    ) {
+      return sameStage[0];
+    }
+    return null;
+  };
+
+  const canEditTimelineEvaluation = (event: TimelineEvent) => {
+    if (!currentUserId) return false;
+    const row = resolveEvaluationForTimelineEvent(event);
+    return row?.evaluator_id === currentUserId;
+  };
+
+  const openInlineCommentEditor = (event: TimelineEvent) => {
+    const id = getTimelineCommentId(event);
+    if (!id) return;
+    setInlineEdit({
+      kind: 'comment',
+      eventId: event.id,
+      commentId: id,
+      text: getCommentBodyForEdit(event),
+    });
+  };
+
+  const openInlineEvaluationEditor = (event: TimelineEvent) => {
+    const row = resolveEvaluationForTimelineEvent(event);
+    if (!row) return;
+    setInlineEdit({
+      kind: 'evaluation',
+      eventId: event.id,
+      evaluationId: row.id,
+      stageId: row.stage_id,
+      result: rowEvalResult(row.result),
+      notes: row.notes ?? '',
+    });
+  };
+
+  const handleInlineCommentSave = async () => {
+    if (inlineEdit?.kind !== 'comment') return;
+    if (!inlineEdit.text.trim()) {
+      toast.error('내용을 입력해주세요.');
+      return;
+    }
+    setInlineSaving(true);
+    try {
+      const res = await updateComment(inlineEdit.commentId, inlineEdit.text.trim());
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success('메모가 수정되었습니다.');
+        setInlineEdit(null);
+        await refreshAfterMutation();
+      }
+    } catch {
+      toast.error('수정 중 오류가 발생했습니다.');
+    } finally {
+      setInlineSaving(false);
     }
   };
 
-  // 코멘트 전송 핸들러 - 직접 코멘트를 생성합니다
+  const handleInlineEvaluationSave = async () => {
+    if (inlineEdit?.kind !== 'evaluation') return;
+    setInlineSaving(true);
+    try {
+      const res = await updateStageEvaluation(
+        inlineEdit.evaluationId,
+        inlineEdit.result,
+        inlineEdit.notes.trim() || undefined
+      );
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success('평가가 수정되었습니다.');
+        setInlineEdit(null);
+        await refreshAfterMutation();
+      }
+    } catch {
+      toast.error('평가 수정 중 오류가 발생했습니다.');
+    } finally {
+      setInlineSaving(false);
+    }
+  };
+
   const handleCommentSubmit = async () => {
-    // 내용 검증
     if (!commentText.trim()) {
       toast.error('코멘트 내용을 입력해주세요.');
       return;
     }
-
     setIsSubmitting(true);
-
     try {
-      // skipRevalidate: true로 설정하여 전체 페이지 리프레시 방지
-      // 클라이언트에서 타임라인을 직접 업데이트하므로 서버 캐시 무효화가 불필요합니다.
       const result = await createComment(
         candidateId,
         commentText.trim(),
-        undefined, // mentionedUserIds
-        undefined, // parentCommentId
-        true // skipRevalidate: true - 리프레시 방지
+        undefined,
+        undefined,
+        true
       );
-
       if (result.error) {
         toast.error(result.error);
       } else {
         toast.success('코멘트가 저장되었습니다.');
         setCommentText('');
-        // Activity Timeline 탭으로 전환
-        if (onSwitchToTimeline) {
-          onSwitchToTimeline();
-        }
-        // 타임라인만 새로고침 (전체 페이지 새로고침 방지)
-        if (onRefreshTimeline) {
-          await onRefreshTimeline();
-        } else {
-          // 폴백: 콜백이 없으면 router.refresh() 사용
-          router.refresh();
-        }
+        await refreshAfterMutation();
       }
     } catch (error) {
       toast.error('코멘트 저장 중 오류가 발생했습니다.');
@@ -185,47 +420,203 @@ export function CandidateTimelineView({
     }
   };
 
+  const handleEvaluationSubmit = async () => {
+    if (!currentStageId) {
+      toast.error('전형 단계 정보가 없어 평가를 등록할 수 없습니다.');
+      return;
+    }
+    if (!canManageCandidate) {
+      toast.error('평가를 등록할 권한이 없습니다.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const result = await createStageEvaluation(
+        candidateId,
+        currentStageId,
+        evalResult,
+        evalNotes.trim() || undefined
+      );
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('평가가 저장되었습니다.');
+        setEvalNotes('');
+        setEvalResult('pending');
+        await refreshAfterMutation();
+      }
+    } catch (error) {
+      toast.error('평가 저장 중 오류가 발생했습니다.');
+      console.error('Evaluation error:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const evalSubmitDisabled = isSubmitting || !canManageCandidate || !currentStageId;
+
+  const memoSendDisabled = isSubmitting || !commentText.trim();
+
   return (
-    <div className="flex-1 flex flex-col bg-white relative min-h-0">
-      <div className="flex-1 overflow-y-auto p-8 min-h-0">
-        {/* 코멘트 입력 영역 */}
-        <div className="mb-10">
-          <div className="relative flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-neutral-800 text-white flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5">
-              {currentUserInitial}
+    <div className="flex-1 flex flex-col bg-white relative min-h-0 min-w-0">
+      <div className="flex-1 overflow-y-auto p-8 min-h-0 min-w-0">
+        <div className="mb-12 flex gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-inner">
+            {currentUserInitial}
+          </div>
+
+          <div className="flex-1 min-w-0 bg-white border border-neutral-200 rounded-xl shadow-sm overflow-hidden focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900 transition-all">
+            <div className="flex items-center border-b border-neutral-100 bg-[#FCFCFC] px-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setComposerTab('memo')}
+                className={cn(
+                  'px-4 py-2 text-xs transition-colors border-b-2 border-transparent',
+                  composerTab === 'memo'
+                    ? 'font-bold text-neutral-900 border-neutral-900'
+                    : 'font-semibold text-neutral-400 hover:text-neutral-900'
+                )}
+              >
+                메모 작성
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerTab('evaluation')}
+                disabled={!canManageCandidate || !currentStageId}
+                className={cn(
+                  'px-4 py-2 text-xs transition-colors border-b-2 border-transparent',
+                  composerTab === 'evaluation'
+                    ? 'font-bold text-neutral-900 border-neutral-900'
+                    : 'font-semibold text-neutral-400 hover:text-neutral-900',
+                  (!canManageCandidate || !currentStageId) && 'opacity-50 cursor-not-allowed hover:text-neutral-400'
+                )}
+              >
+                전형 평가
+              </button>
             </div>
-            <div className="flex-1 relative">
-              <textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                disabled={isSubmitting}
-                className="w-full bg-[#FCFCFC] border border-neutral-200 rounded-lg pl-4 pr-20 py-3 text-sm focus:outline-none focus:border-neutral-900 focus:bg-white focus:ring-1 focus:ring-neutral-900 transition-all resize-none placeholder:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                rows={2}
-                placeholder={`${candidateName} 후보자에 대한 평가나 메모를 남겨주세요...`}
-              />
-              <div className="absolute right-2 bottom-2 flex gap-1">
+
+            <div className="p-4 bg-white space-y-3">
+              {composerTab === 'memo' ? (
+                <textarea
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  disabled={isSubmitting}
+                  rows={3}
+                  className="w-full bg-neutral-50/50 border border-neutral-200 rounded-lg px-3 py-2.5 text-sm text-neutral-800 outline-none resize-none placeholder:text-neutral-400 focus:bg-white focus:border-neutral-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder={`${candidateName}님에 대한 메모를 남겨주세요.`}
+                />
+              ) : (
+                <>
+                  {!currentStageId || !canManageCandidate ? (
+                    <p className="text-xs text-neutral-500">
+                      현재 전형에서 평가를 남기려면 단계 정보와 권한이 필요합니다.
+                    </p>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="eval_result"
+                        className="sr-only"
+                        checked={evalResult === 'pass'}
+                        onChange={() => setEvalResult('pass')}
+                      />
+                      <div
+                        className={cn(
+                          'py-2.5 text-center text-xs font-medium rounded-lg border transition-colors',
+                          evalResult === 'pass'
+                            ? 'text-emerald-700 border-emerald-500 bg-emerald-50 font-bold'
+                            : 'text-emerald-600 bg-white border-neutral-200 hover:bg-emerald-50'
+                        )}
+                      >
+                        합격 (Pass)
+                      </div>
+                    </label>
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="eval_result"
+                        className="sr-only"
+                        checked={evalResult === 'pending'}
+                        onChange={() => setEvalResult('pending')}
+                      />
+                      <div
+                        className={cn(
+                          'py-2.5 text-center text-xs font-medium rounded-lg border transition-colors',
+                          evalResult === 'pending'
+                            ? 'text-neutral-800 border-neutral-500 bg-neutral-50 font-bold'
+                            : 'text-neutral-600 bg-white border-neutral-200 hover:bg-neutral-50'
+                        )}
+                      >
+                        보류 (Hold)
+                      </div>
+                    </label>
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="eval_result"
+                        className="sr-only"
+                        checked={evalResult === 'fail'}
+                        onChange={() => setEvalResult('fail')}
+                      />
+                      <div
+                        className={cn(
+                          'py-2.5 text-center text-xs font-medium rounded-lg border transition-colors',
+                          evalResult === 'fail'
+                            ? 'text-red-700 border-red-500 bg-red-50 font-bold'
+                            : 'text-red-600 bg-white border-neutral-200 hover:bg-red-50'
+                        )}
+                      >
+                        불합격 (Fail)
+                      </div>
+                    </label>
+                  </div>
+                  <textarea
+                    value={evalNotes}
+                    onChange={(e) => setEvalNotes(e.target.value)}
+                    disabled={isSubmitting || !canManageCandidate || !currentStageId}
+                    rows={3}
+                    className="w-full bg-neutral-50/50 border border-neutral-200 rounded-lg px-3 py-2.5 text-sm text-neutral-800 outline-none resize-none placeholder:text-neutral-400 focus:bg-white focus:border-neutral-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="면접에서 파악한 장단점 및 종합적인 평가 의견을 작성해주세요."
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="px-4 py-2.5 flex items-center justify-end border-t border-neutral-100 bg-[#FCFCFC]">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="p-1.5 text-neutral-400 hover:text-neutral-900 transition-colors rounded"
+                  className="p-1.5 text-neutral-400 hover:text-neutral-900 hover:bg-neutral-200/60 rounded transition-colors"
                   title="첨부"
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
-                <button
-                  type="button"
-                  onClick={handleCommentSubmit}
-                  disabled={!commentText.trim() || isSubmitting}
-                  className="p-1.5 bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isSubmitting ? '전송 중...' : '전송'}
-                >
-                  <Send className="w-4 h-4" />
-                </button>
+                {composerTab === 'memo' ? (
+                  <button
+                    type="button"
+                    onClick={handleCommentSubmit}
+                    disabled={memoSendDisabled}
+                    className="p-1.5 bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={isSubmitting ? '전송 중...' : '전송'}
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleEvaluationSubmit}
+                    disabled={evalSubmitDisabled}
+                    className="px-4 py-1.5 bg-neutral-900 text-white text-xs font-bold rounded-md hover:bg-neutral-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    평가 등록
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* 타임라인 이벤트 리스트 */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <p className="text-sm text-neutral-500">타임라인을 불러오는 중입니다...</p>
@@ -237,91 +628,166 @@ export function CandidateTimelineView({
             </p>
           </div>
         ) : (
-          <div className="relative border-l border-neutral-200 ml-[15px] pb-8">
-            {events.map((event, index) => {
-              const isLast = index === events.length - 1;
-              
+          <div className="relative border-l-2 border-neutral-100 ml-4 pb-8 space-y-10 min-w-0 max-w-full">
+            {events.map((event) => {
+              const node = getTimelineNodeVisual(event);
+              const NodeIcon = node.Icon;
+              const author = getAuthorDisplay(event);
+              const showCommentEdit = canEditTimelineComment(event);
+              const showEvalEdit = canEditTimelineEvaluation(event);
+
               return (
-                <div key={event.id} className={`relative pl-8 ${isLast ? '' : 'pb-10'} group`}>
-                  {/* 타임라인 점 */}
-                  <div className="absolute -left-[5px] top-1.5 w-[9px] h-[9px] rounded-full bg-neutral-200 ring-4 ring-white group-hover:bg-neutral-900 transition-colors"></div>
-                  
-                  {/* 이벤트 헤더 */}
-                  <div className="flex items-center justify-between mb-2 gap-3">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {(() => {
-                        const author = getAuthorDisplay(event);
-                        if (!author.hasAuthor) {
-                          return (
-                            <span className="px-2 py-0.5 rounded bg-neutral-100 text-[11px] font-medium text-neutral-500">
-                              System
-                            </span>
-                          );
-                        }
-                        return (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="w-6 h-6 border border-neutral-200 shadow-sm">
-                              <AvatarImage src={author.avatarUrl} alt={author.displayName} />
-                              <AvatarFallback className="text-[10px] font-semibold bg-neutral-100 text-neutral-700">
-                                {author.fallback}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-xs font-medium text-neutral-600">{author.displayName}</span>
-                          </div>
-                        );
-                      })()}
-                      <span className="text-sm font-semibold text-neutral-900">
-                        {getTimelineEventTitle(event)}
-                      </span>
-                      <span className={getEventBadgeStyle(event)}>
-                        {getEventBadgeText(event)}
+                <div key={event.id} className="group relative min-w-0 max-w-full pl-8">
+                  <div className={node.wrapClass}>
+                    <NodeIcon className={node.iconClass} />
+                  </div>
+
+                  <div className="flex justify-between items-center mb-1.5 gap-2 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <Avatar className="w-5 h-5 rounded-full border border-neutral-200 shrink-0">
+                        {author.hasUser ? (
+                          <AvatarImage src={author.avatarUrl} alt={author.displayName} />
+                        ) : null}
+                        <AvatarFallback className="text-[9px] font-semibold bg-neutral-100 text-neutral-600 rounded-full">
+                          {author.fallback}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-xs font-semibold text-neutral-900 truncate">{author.displayName}</span>
+                      <span className={eventTypeBadgeClass}>{getEventBadgeText(event)}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {showCommentEdit && (
+                        <button
+                          type="button"
+                          onClick={() => openInlineCommentEditor(event)}
+                          className="p-1 rounded-md text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
+                          title="메모 수정"
+                          aria-label="메모 수정"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {showEvalEdit && (
+                        <button
+                          type="button"
+                          onClick={() => openInlineEvaluationEditor(event)}
+                          className="p-1 rounded-md text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
+                          title="평가 수정"
+                          aria-label="평가 수정"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <span className="text-[11px] text-neutral-400 whitespace-nowrap">
+                        {formatTimeForDisplay(event.created_at)}
                       </span>
                     </div>
-                    <time className="text-xs text-neutral-400 font-medium">
-                      {formatTimeForDisplay(event.created_at)}
-                    </time>
                   </div>
-                  
-                  {/* 이벤트 본문 */}
-                  <div className="text-sm text-neutral-600 leading-relaxed max-w-2xl">
-                    {event.type === 'stage_evaluation' ? (
-                      <div className="p-4 rounded-lg border border-neutral-200 bg-white max-w-2xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-                        <div className="flex items-center gap-2 mb-3">
-                          {event.content?.result === 'pass' && (
-                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[11px] font-bold tracking-wide rounded-md border border-emerald-100">
-                              STRONG HIRE
-                            </span>
-                          )}
-                          {event.content?.rating && (
-                            <span className="text-xs font-medium text-neutral-500">
-                              종합 점수: {event.content.rating} / 5.0
-                            </span>
-                          )}
+
+                  <div className="text-sm text-neutral-600 leading-relaxed w-full max-w-full min-w-0 mt-2">
+                    {inlineEdit?.kind === 'comment' && inlineEdit.eventId === event.id ? (
+                      <div className="w-full min-w-0 max-w-full space-y-3 rounded-xl rounded-tl-sm border border-neutral-300 bg-white p-3.5 shadow-sm">
+                        <textarea
+                          value={inlineEdit.text}
+                          onChange={(e) =>
+                            setInlineEdit((prev) =>
+                              prev?.kind === 'comment' ? { ...prev, text: e.target.value } : prev
+                            )
+                          }
+                          rows={5}
+                          disabled={inlineSaving}
+                          className="w-full min-h-[100px] rounded-lg border border-neutral-200 bg-neutral-50/50 px-3 py-2 text-sm text-neutral-800 outline-none focus:border-neutral-400 focus:bg-white disabled:opacity-60"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setInlineEdit(null)}
+                            disabled={inlineSaving}
+                          >
+                            취소
+                          </Button>
+                          <Button type="button" size="sm" onClick={() => void handleInlineCommentSave()} disabled={inlineSaving}>
+                            {inlineSaving ? '저장 중…' : '저장'}
+                          </Button>
                         </div>
-                        <TimelineEventContent
-                          event={event}
-                          expandedEmails={expandedEmails}
-                          onToggleEmailExpand={onToggleEmailExpand}
-                          candidateId={candidateId}
-                        />
                       </div>
-                    ) : event.type === 'comment' || event.type === 'comment_created' || event.type === 'comment_updated' ? (
-                      <div className="p-3.5 rounded-lg rounded-tl-sm bg-[#FCFCFC] border border-neutral-200 max-w-2xl">
-                        <TimelineEventContent
-                          event={event}
-                          expandedEmails={expandedEmails}
-                          onToggleEmailExpand={onToggleEmailExpand}
-                          candidateId={candidateId}
-                        />
-                      </div>
-                    ) : event.type === 'email' || event.type === 'email_received' ? (
-                      <div className="mt-2 p-4 rounded-lg border border-neutral-100 bg-[#FCFCFC] max-w-2xl">
-                        <TimelineEventContent
-                          event={event}
-                          expandedEmails={expandedEmails}
-                          onToggleEmailExpand={onToggleEmailExpand}
-                          candidateId={candidateId}
-                        />
+                    ) : inlineEdit?.kind === 'evaluation' && inlineEdit.eventId === event.id ? (
+                      <div
+                        className={cn(
+                          'w-full min-w-0 max-w-full space-y-3 rounded-xl rounded-tl-sm border p-4 shadow-sm',
+                          inlineEdit.result === 'pass' && 'border-emerald-200 bg-emerald-50/60',
+                          inlineEdit.result === 'fail' && 'border-red-200 bg-red-50/60',
+                          inlineEdit.result === 'pending' && 'border-amber-200 bg-amber-50/50'
+                        )}
+                      >
+                        <p className="text-xs font-semibold text-neutral-600">평가 결과</p>
+                        <div className="flex gap-2">
+                          {(['pass', 'pending', 'fail'] as const).map((r) => {
+                            const selected = inlineEdit.result === r;
+                            return (
+                              <button
+                                key={r}
+                                type="button"
+                                disabled={inlineSaving}
+                                onClick={() =>
+                                  setInlineEdit((prev) =>
+                                    prev?.kind === 'evaluation' ? { ...prev, result: r } : prev
+                                  )
+                                }
+                                className={cn(
+                                  'flex-1 rounded-lg border py-2 text-xs font-medium transition-colors',
+                                  selected &&
+                                    r === 'pass' &&
+                                    'border-emerald-500 bg-emerald-100 text-emerald-900 font-semibold',
+                                  selected &&
+                                    r === 'fail' &&
+                                    'border-red-500 bg-red-100 text-red-900 font-semibold',
+                                  selected &&
+                                    r === 'pending' &&
+                                    'border-amber-500 bg-amber-100 text-amber-900 font-semibold',
+                                  !selected && 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                                )}
+                              >
+                                {r === 'pass' ? '합격' : r === 'fail' ? '불합격' : '보류'}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-neutral-600">평가 노트</label>
+                          <textarea
+                            value={inlineEdit.notes}
+                            onChange={(e) =>
+                              setInlineEdit((prev) =>
+                                prev?.kind === 'evaluation' ? { ...prev, notes: e.target.value } : prev
+                              )
+                            }
+                            rows={4}
+                            disabled={inlineSaving}
+                            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 outline-none focus:border-neutral-400 disabled:opacity-60"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setInlineEdit(null)}
+                            disabled={inlineSaving}
+                          >
+                            취소
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleInlineEvaluationSave()}
+                            disabled={inlineSaving}
+                          >
+                            {inlineSaving ? '저장 중…' : '저장'}
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <TimelineEventContent

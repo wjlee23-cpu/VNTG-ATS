@@ -7,6 +7,7 @@ import { validateRequired, validateEmail, validatePhone, validateUUID } from '@/
 import { withErrorHandling } from '@/api/utils/errors';
 import { Database } from '@/lib/supabase/types';
 import { analyzeCandidateMatch } from '@/lib/ai/candidate-matching';
+import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 
 type CandidateInsert = Database['public']['Tables']['candidates']['Insert'];
 type CandidateUpdate = Database['public']['Tables']['candidates']['Update'];
@@ -283,15 +284,28 @@ export async function updateCandidateStatus(
       }
     }
 
-    // 타임라인 이벤트 생성
+    const previousStageId = candidate.current_stage_id ?? undefined;
+    const newStageIdAfterUpdate = (data as { current_stage_id?: string }).current_stage_id ?? previousStageId;
+    const stageLabel = (sid: string | undefined) =>
+      sid ? (STAGE_ID_TO_NAME_MAP[sid] || sid) : undefined;
+    const fromStageLabel = stageLabel(previousStageId);
+    const toStageLabel = stageLabel(newStageIdAfterUpdate);
+    const timelineMessage =
+      stageId && fromStageLabel && toStageLabel && fromStageLabel !== toStageLabel
+        ? `${fromStageLabel}에서 ${toStageLabel}로 이동했습니다. (상태: ${status})`
+        : `상태가 ${status}로 변경되었습니다.`;
+
+    // 타임라인 이벤트 생성 (UI는 from_stage/to_stage 칩을 사용하므로 항상 채웁니다)
     const { error: timelineError } = await supabase.from('timeline_events').insert({
       candidate_id: id,
       type: 'stage_changed',
       content: {
-        message: `상태가 ${status}로 변경되었습니다.`,
+        message: timelineMessage,
         previous_status: candidate.status,
         new_status: status,
-        stage_id: stageId,
+        stage_id: stageId ?? newStageIdAfterUpdate,
+        from_stage: fromStageLabel,
+        to_stage: toStageLabel,
       },
       created_by: user.userId,
     });
