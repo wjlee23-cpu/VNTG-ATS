@@ -1,3 +1,7 @@
+# Google OAuth (로그인·캘린더·Gmail)
+
+- 캘린더·Gmail이 필요한 기능은 **반드시 `/api/auth/google` 계열**(로그인 `type` 기본값 또는 `type=connect`)만 사용합니다. 루트 랜딩 등에서 Supabase `signInWithOAuth({ provider: 'google' })`만 쓰면 `users`에 refresh 토큰이 저장되지 않아 일정 자동화가 동작하지 않습니다.
+
 # Activity Timeline — 멘션·스레드·인용
 
 - **멘션**: 본문에 `@[사용자UUID]` 형태로 저장하고, 화면에서는 조직 사용자 목록으로 표시 이름을 치환합니다. `comments.mentioned_user_ids`에 UUID를 함께 저장합니다.

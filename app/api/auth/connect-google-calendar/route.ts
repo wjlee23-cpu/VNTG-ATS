@@ -1,25 +1,26 @@
 import { NextResponse } from 'next/server';
-import { getGoogleAuthUrl } from '@/lib/calendar/google';
+import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
+import { sanitizeNextPath } from '@/lib/url/sanitize-next-path';
 
 /**
- * 구글 캘린더 연동 URL 생성
+ * 구글 캘린더 연동 시작 (래퍼)
  * GET /api/auth/connect-google-calendar?next=/dashboard
+ *
+ * 실제 OAuth URL·스코프·prompt 로직은 /api/auth/google 한곳에만 두고,
+ * 여기서는 type=connect 로 위임합니다.
  */
 export async function GET(request: Request) {
   try {
     const requestUrl = new URL(request.url);
-    const next = requestUrl.searchParams.get('next') || '/dashboard';
+    const appBase = getAppBaseUrl(request);
+    const next = sanitizeNextPath(requestUrl.searchParams.get('next'), '/dashboard');
 
-    // 구글 OAuth URL 생성
-    const authUrl = getGoogleAuthUrl();
-    
-    // next/type 파라미터를 state에 포함하여 콜백에서 사용
-    // - callback 라우트는 state.type이 없으면 기본값을 connect로 두고 있지만,
-    //   향후 혼동 방지 및 디버깅을 위해 명시적으로 type을 포함합니다.
-    const urlWithState = `${authUrl}&state=${encodeURIComponent(JSON.stringify({ next, type: 'connect' }))}`;
+    const target = new URL('/api/auth/google', appBase || requestUrl.origin);
+    target.searchParams.set('type', 'connect');
+    target.searchParams.set('next', next);
 
-    return NextResponse.redirect(urlWithState);
-  } catch (error: any) {
+    return NextResponse.redirect(target);
+  } catch (error: unknown) {
     console.error('구글 캘린더 연동 URL 생성 실패:', error);
     return NextResponse.json(
       { error: '구글 캘린더 연동 URL 생성에 실패했습니다.' },

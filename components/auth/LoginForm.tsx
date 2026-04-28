@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { sanitizeNextPath } from '@/lib/url/sanitize-next-path';
 
 interface LoginFormProps {
   redirectTo?: string;
@@ -55,28 +56,12 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
     }
   };
 
-  // 구글 OAuth 로그인 시작 (성공 시 Supabase가 콜백으로 리다이렉트합니다.)
-  const handleGoogleLogin = async () => {
+  // 구글 로그인: Supabase OAuth가 아닌 커스텀 플로우로 캘린더·Gmail 스코프까지 한 번에 받습니다.
+  const handleGoogleLogin = () => {
     setLoading(true);
     setError(null);
-
-    try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-        },
-      });
-
-      if (oauthError) {
-        setError(oauthError.message);
-        setLoading(false);
-      }
-      // 성공 시 리다이렉트되므로 여기서는 아무것도 하지 않음
-    } catch (err) {
-      setError('구글 로그인 중 오류가 발생했습니다.');
-      setLoading(false);
-    }
+    const next = sanitizeNextPath(redirectTo, '/dashboard');
+    window.location.href = `/api/auth/google?next=${encodeURIComponent(next)}`;
   };
 
   return (

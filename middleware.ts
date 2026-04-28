@@ -78,6 +78,27 @@ export async function middleware(request: NextRequest) {
       data: { user: authUser },
     } = await supabase.auth.getUser()
     user = authUser
+
+    // Google 캘린더 refresh_token 없으면 대시보드(연동 페이지 제외) 접근 시 연동으로 유도
+    const path = request.nextUrl.pathname
+    const isDashboardConnectCalendar = path.startsWith('/dashboard/connect-calendar')
+    if (
+      authUser &&
+      path.startsWith('/dashboard') &&
+      !isDashboardConnectCalendar
+    ) {
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('calendar_refresh_token')
+        .eq('id', authUser.id)
+        .maybeSingle()
+
+      if (!userRow?.calendar_refresh_token) {
+        return NextResponse.redirect(
+          new URL('/dashboard/connect-calendar?from=session_gate', request.url)
+        )
+      }
+    }
   }
   
   // 프로덕션 모드에서만 대시보드 경로 보호
