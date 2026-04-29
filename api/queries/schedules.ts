@@ -52,7 +52,12 @@ export async function getSchedulesByCandidate(candidateId: string) {
     }
 
     if (allInterviewerIds.size === 0) {
-      return schedules;
+      return schedules.map((s) => ({
+        ...s,
+        workflow_status:
+          (s as any)?.workflow_status ??
+          ((s as any)?.status === 'confirmed' ? 'confirmed' : null),
+      }));
     }
 
     const { data: interviewerData, error: interviewerError } = await supabase
@@ -76,8 +81,14 @@ export async function getSchedulesByCandidate(candidateId: string) {
             .map((id) => interviewerMap.get(String(id)))
             .filter(Boolean)
         : [];
+      // 레거시 스키마/호환 insert로 workflow_status가 비어도
+      // status 기반으로 최소한의 상태를 복원해 상세 사이드바/위젯에서 동일하게 보이게 합니다.
+      const normalizedWorkflowStatus =
+        (s as any)?.workflow_status ??
+        ((s as any)?.status === 'confirmed' ? 'confirmed' : null);
       return {
         ...s,
+        workflow_status: normalizedWorkflowStatus,
         interviewers,
       };
     });

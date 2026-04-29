@@ -113,7 +113,9 @@ export async function getCandidates(jobPostId?: string) {
       .from('schedules')
       .select('candidate_id, stage_id, scheduled_at, duration_minutes')
       .in('candidate_id', candidateIds)
-      .eq('workflow_status', 'confirmed');
+      // 레거시 DB(또는 호환 insert)에서는 workflow_status 컬럼이 없을 수 있어
+      // status='confirmed'도 함께 포함해 파이프라인 확정 표시가 누락되지 않게 합니다.
+      .or('workflow_status.eq.confirmed,status.eq.confirmed');
 
     // 스케줄 조회 실패는 치명적이지 않으므로, 후보자 목록은 그대로 반환합니다.
     if (confirmedError || !confirmedSchedules || confirmedSchedules.length === 0) {

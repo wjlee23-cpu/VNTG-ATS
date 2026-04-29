@@ -4993,3 +4993,343 @@ export async function updateScheduleWithManualOverride(scheduleId: string, formD
     return data;
   });
 }
+
+/**
+ * 면접 일시 문자열을 Date로 변환합니다.
+ * - `datetime-local` 등 타임존 없는 값은 KST(Asia/Seoul) 달력으로 해석합니다.
+ * - ISO(Z/오프셋 포함)는 표준 Date 파싱을 사용합니다.
+ */
+function parseInterviewDateTimeInput(raw: string): Date {
+  const trimmed = validateRequired(raw, '면접 일시');
+  if (/[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed)) {
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) {
+      throw new Error('면접 일시가 올바르지 않습니다.');
+    }
+    return d;
+  }
+  return fromZonedTime(trimmed, KST_TIMEZONE);
+}
+
+/**
+ * 채용담당자(관리자·리크루터)가 자동 조율 없이 확정된 면접 일정을 DB에 직접 등록합니다.
+ * - workflow/status를 즉시 확정으로 맞추고, manual_override 플래그를 켭니다.
+ * - 구글 캘린더·안내 메일은 현재 사용자 연동이 있을 때만 시도하며, 실패해도 등록은 유지합니다.
+ */
+export async function createManualConfirmedSchedule(formData: FormData) {
+  return withErrorHandling(async () => {
+    const user = await getCurrentUser();
+    if (user.role !== 'admin' && user.role !== 'recruiter') {
+      throw new Error('확정 일정 직접 등록은 관리자 또는 리크루터만 가능합니다.');
+    }
+
+    const isAdmin = user.role === 'admin';
+    const supabase = isAdmin ? createServiceClient() : await createClient();
+
+    const candidateId = validateUUID(
+      validateRequired(formData.get('candidate_id'), '후보자'),
+      '후보자',
+    );
+    await verifyCandidateAccess(candidateId);
+
+    const stageId = validateRequired(formData.get('stage_id'), '면접 단계');
+    const scheduledAtRaw = validateRequired(formData.get('scheduled_at'), '면접 일시');
+    const scheduledAt = validateFutureDate(
+      parseInterviewDateTimeInput(scheduledAtRaw),
+      '면접 일시',
+    );
+
+    const durationMinutes = validateNumberRange(
+      parseInt(validateRequired(formData.get('duration_minutes'), '면접 시간'), 10),
+      15,
+      480,
+      '면접 시간',
+    );
+
+    const interviewerIdsRaw = formData.get('interviewer_ids');
+    const interviewerIdsParsed = interviewerIdsRaw ? JSON.parse(String(interviewerIdsRaw)) : [];
+    if (!Array.isArray(interviewerIdsParsed)) {
+      throw new Error('면접관 목록 형식이 올바르지 않습니다.');
+    }
+    const interviewerIds = Array.from(
+      new Set(
+        interviewerIdsParsed.map((id: unknown) => {
+          if (typeof id !== 'string') throw new Error('면접관 ID 형식이 올바르지 않습니다.');
+          return validateUUID(id, '면접관');
+        }),
+      ),
+    );
+    const externalInterviewerEmails = readExternalInterviewerEmails(formData);
+    if (interviewerIds.length === 0 && externalInterviewerEmails.length === 0) {
+      throw new Error('면접관 또는 외부 면접관을 한 명 이상 선택해주세요.');
+    }
+
+    if (interviewerIds.length > 0) {
+      const { data: interviewers } = await supabase
+        .from('users')
+        .select('id, organization_id')
+        .in('id', interviewerIds);
+
+      if (!interviewers || interviewers.length !== interviewerIds.length) {
+        throw new Error('일부 면접관을 찾을 수 없습니다.');
+      }
+      const invalidInterviewers = interviewers.filter((inv) => inv.organization_id !== user.organizationId);
+      if (invalidInterviewers.length > 0) {
+        throw new Error('다른 조직의 면접관은 추가할 수 없습니다.');
+      }
+    }
+
+    const notifyRaw = formData.get('notify_candidate');
+    const notifyCandidate =
+      typeof notifyRaw === 'string' ? notifyRaw !== 'false' && notifyRaw !== '0' : true;
+
+    const { data: candidateRow, error: candidateError } = await supabase
+      .from('candidates')
+      .select(
+        `
+        id,
+        name,
+        email,
+        token,
+        job_posts (
+          id,
+          title
+        )
+      `,
+      )
+      .eq('id', candidateId)
+      .single();
+
+    if (candidateError || !candidateRow) {
+      throw new Error('후보자를 찾을 수 없습니다.');
+    }
+
+    const candidate = candidateRow as {
+      id: string;
+      name: string;
+      email: string;
+      token: string;
+      job_posts: { id: string; title: string } | { id: string; title: string }[] | null;
+    };
+    const jp = candidate.job_posts;
+    const jobPost = Array.isArray(jp) ? jp[0] : jp;
+    const positionName = jobPost?.title || '포지션 미지정';
+
+    if (externalInterviewerEmails.length > 0) {
+      const { error: upsertExternalError } = await supabase.from('external_interviewers').upsert(
+        externalInterviewerEmails.map((email) => ({
+          user_id: user.userId,
+          email,
+        })),
+        { onConflict: 'user_id,email', ignoreDuplicates: false },
+      );
+      if (upsertExternalError) {
+        console.error('[수동 확정 등록] 비가입 면접관 저장 실패(계속 진행):', upsertExternalError);
+      }
+    }
+
+    const insertPayload: ScheduleInsert = {
+      candidate_id: candidateId,
+      stage_id: stageId,
+      scheduled_at: scheduledAt.toISOString(),
+      duration_minutes: durationMinutes,
+      status: 'confirmed',
+      interviewer_ids: interviewerIds,
+      external_interviewer_emails: externalInterviewerEmails,
+      candidate_response: 'accepted',
+      workflow_status: 'confirmed',
+      manual_override: true,
+      manual_override_by: user.userId,
+      needs_rescheduling: false,
+      interviewer_responses: {},
+    };
+
+    const shouldRetryInsertWithLegacyCompatiblePayload = (message: string | undefined) => {
+      const m = (message || '').toLowerCase();
+      return (
+        m.includes('manual_override') ||
+        m.includes('needs_rescheduling') ||
+        m.includes('interviewer_responses') ||
+        m.includes('workflow_status') ||
+        (m.includes('schema cache') && m.includes('schedules'))
+      );
+    };
+
+    let first = await supabase.from('schedules').insert(insertPayload).select().single();
+    let schedule = first.data;
+    let insertError = first.error;
+
+    if (insertError || !schedule) {
+      if (shouldRetryInsertWithLegacyCompatiblePayload(insertError?.message)) {
+        const {
+          manual_override: _mo,
+          manual_override_by: _mob,
+          needs_rescheduling: _nr,
+          interviewer_responses: _ir,
+          workflow_status: _ws,
+          ...insertWithoutNewColumns
+        } = insertPayload as ScheduleInsert & {
+          manual_override?: boolean;
+          manual_override_by?: string;
+          needs_rescheduling?: boolean;
+          interviewer_responses?: Record<string, unknown>;
+          workflow_status?: 'pending_interviewers' | 'pending_candidate' | 'confirmed' | 'cancelled' | 'needs_rescheduling' | null;
+        };
+        const second = await supabase
+          .from('schedules')
+          .insert(insertWithoutNewColumns as ScheduleInsert)
+          .select()
+          .single();
+        schedule = second.data;
+        insertError = second.error;
+        if (!insertError && schedule) {
+          console.warn(
+            '[수동 확정 등록] schedules 일부 최신 컬럼이 없어 레거시 호환 payload로 저장했습니다. 마이그레이션 적용 후 수동/재조율 플래그를 DB에도 저장할 수 있습니다.',
+          );
+        }
+      }
+    }
+
+    if (insertError || !schedule) {
+      throw new Error(`면접 일정 등록 실패: ${insertError?.message || '알 수 없는 오류'}`);
+    }
+
+    let googleEventId: string | null = null;
+
+    const { data: actingUser } = await supabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .eq('id', user.userId)
+      .single();
+
+    if (
+      actingUser?.calendar_provider === 'google' &&
+      actingUser.calendar_access_token &&
+      actingUser.calendar_refresh_token
+    ) {
+      const { data: interviewerUsers } = interviewerIds.length
+        ? await supabase
+            .from('users')
+            .select('id, email')
+            .in('id', interviewerIds)
+        : { data: [] as { id: string; email: string }[] };
+
+      const endTime = new Date(scheduledAt);
+      endTime.setMinutes(endTime.getMinutes() + durationMinutes);
+
+      try {
+        const organizerToken = await refreshAccessTokenIfNeeded(
+          actingUser.calendar_access_token,
+          actingUser.calendar_refresh_token,
+          actingUser.id,
+        );
+        const createdEvent = await createCalendarEvent(
+          organizerToken,
+          actingUser.calendar_refresh_token,
+          {
+            summary: `[확정] ${positionName} - ${candidate.name} 면접`,
+            description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageId}\n\n채용담당자가 확정 일정을 직접 등록했습니다.`,
+            start: {
+              dateTime: scheduledAt.toISOString(),
+              timeZone: 'Asia/Seoul',
+            },
+            end: {
+              dateTime: endTime.toISOString(),
+              timeZone: 'Asia/Seoul',
+            },
+            attendees: [
+              ...(interviewerUsers || []).map((inv) => ({ email: inv.email })),
+              ...externalInterviewerEmails.map((email: string) => ({ email })),
+            ],
+            transparency: 'opaque',
+          },
+          getRoomCalendarId(),
+        );
+        googleEventId = createdEvent.id ?? null;
+      } catch (calErr) {
+        console.error('[수동 확정 등록] 구글 캘린더 이벤트 생성 실패(등록은 유지):', calErr);
+      }
+
+      if (googleEventId) {
+        await supabase.from('schedules').update({ google_event_id: googleEventId }).eq('id', schedule.id);
+      }
+    }
+
+    if (
+      notifyCandidate &&
+      actingUser?.calendar_access_token &&
+      actingUser.calendar_refresh_token &&
+      actingUser.email
+    ) {
+      const organizerToken = await refreshAccessTokenIfNeeded(
+        actingUser.calendar_access_token,
+        actingUser.calendar_refresh_token,
+        actingUser.id,
+      );
+      const confirmedDateKst = toZonedTime(scheduledAt, KST_TIMEZONE);
+      const confirmedAtLabel = format(confirmedDateKst, 'yyyy. MM. dd (EEE) a h:mm', { locale: ko });
+      const stageName = getStageNameByStageId(stageId) || stageId;
+      const scheduleTitle = `${positionName} ${stageName}`;
+      const detailsLink = generateScheduleSelectionUrl(candidate.id, candidate.token);
+
+      const confirmationHtml = await render(
+        React.createElement(CandidateScheduleConfirmedEmail, {
+          candidateName: candidate.name,
+          scheduleTitle,
+          confirmedAtLabel,
+          detailsLink,
+        }),
+      );
+
+      try {
+        await sendEmailViaGmail(organizerToken, actingUser.calendar_refresh_token, {
+          to: candidate.email,
+          from: actingUser.email,
+          subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
+          html: confirmationHtml,
+          replyTo: actingUser.email,
+        });
+      } catch (mailErr) {
+        console.error('[수동 확정 등록] 후보자 메일 발송 실패:', mailErr);
+      }
+
+      if (interviewerIds.length > 0) {
+        const { data: interviewerRows } = await supabase
+          .from('users')
+          .select('id, email')
+          .in('id', interviewerIds);
+        for (const interviewer of interviewerRows || []) {
+          if (interviewer.email && interviewer.id !== actingUser.id) {
+            try {
+              await sendEmailViaGmail(organizerToken, actingUser.calendar_refresh_token, {
+                to: interviewer.email,
+                from: actingUser.email,
+                subject: `[면접 일정 확정] ${candidate.name}님의 면접 일정이 확정되었습니다`,
+                html: confirmationHtml,
+                replyTo: actingUser.email,
+              });
+            } catch (e) {
+              console.error('[수동 확정 등록] 면접관 메일 실패:', interviewer.email, e);
+            }
+          }
+        }
+      }
+    }
+
+    await upsertScheduleAutomationTimeline({
+      candidateId,
+      scheduleId: schedule.id,
+      createdBy: user.userId,
+      latestMessage: '채용담당자가 확정 면접 일정을 직접 등록했습니다.',
+      automationStatus: 'confirmed',
+      scheduleOptions: [{ id: schedule.id, scheduled_at: scheduledAt.toISOString() }],
+      extraContent: { manual_registration: true },
+    });
+
+    revalidatePath('/dashboard/calendar');
+    revalidatePath(`/dashboard/candidates/${candidateId}`);
+    revalidatePath('/dashboard/schedules');
+
+    return { scheduleId: schedule.id };
+  });
+}

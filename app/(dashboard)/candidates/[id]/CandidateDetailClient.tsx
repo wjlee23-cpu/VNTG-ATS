@@ -16,7 +16,12 @@ import { confirmHire } from '@/api/actions/offers';
 import { syncCandidateEmails } from '@/api/actions/emails';
 import { updateCandidate, triggerAIAnalysis } from '@/api/actions/candidates';
 import { uploadResumeFile, deleteResumeFile } from '@/api/actions/resume-files';
-import { scheduleInterviewAutomated, deleteSchedule, checkInterviewerResponses } from '@/api/actions/schedules';
+import {
+  scheduleInterviewAutomated,
+  deleteSchedule,
+  checkInterviewerResponses,
+  createManualConfirmedSchedule,
+} from '@/api/actions/schedules';
 import { getExternalInterviewers, getUsers } from '@/api/queries/users';
 import { getSchedulesByCandidate } from '@/api/queries/schedules';
 import { toast } from 'sonner';
@@ -96,6 +101,11 @@ export function CandidateDetailClient({
     exclude_end_minute: '30',
   });
   const [scheduleWarning, setScheduleWarning] = useState<string | null>(null);
+  const [scheduleEntryMode, setScheduleEntryMode] = useState<'automated' | 'manual_confirmed'>('automated');
+  const [manualScheduledAt, setManualScheduledAt] = useState('');
+  const [notifyCandidateOnManual, setNotifyCandidateOnManual] = useState(true);
+  const [manualConfirmedWarning, setManualConfirmedWarning] = useState<string | null>(null);
+  const [isLoadingManualConfirmed, setIsLoadingManualConfirmed] = useState(false);
   const currentStageId =
     candidate.current_stage_id && candidate.current_stage_id.trim() !== ''
       ? candidate.current_stage_id
@@ -155,15 +165,23 @@ export function CandidateDetailClient({
   // - 확정된 일정도 코파일럿에 반드시 반영되어야 합니다.
   const currentActiveSchedule = (() => {
     const list = (Array.isArray(schedulesState) ? schedulesState : []) as any[];
-    // ✅ 코파일럿은 "AI 일정 조율 자동화"의 진행 상태만 표시합니다.
-    // - 수동으로 만든 일정(또는 레거시 데이터)은 workflow_status가 비어있을 수 있는데,
-    //   이를 코파일럿이 잡으면 기본값으로 '면접관 진행중'처럼 보여 혼동이 생깁니다.
-    // - 따라서 workflow_status가 존재하는 스케줄만 코파일럿 상태 계산에 포함합니다.
-    const valid = list.filter((s: any) => s && s.id && s.workflow_status);
+    const getWorkflowStatus = (s: any) => {
+      const ws = s?.workflow_status;
+      if (typeof ws === 'string' && ws.length > 0) return ws;
+      // 레거시/호환 저장으로 workflow_status가 비어도, 확정(status=confirmed)은 동일하게 표시합니다.
+      return s?.status === 'confirmed' ? 'confirmed' : null;
+    };
 
-    // ✅ “면접이 끝났다” 판단(정책: 시간 경과 OR 다음 단계로 이동 시 끝남 처리)
-    // - confirmed 이면서 면접 시각(scheduled_at)이 현재보다 과거면: 더 이상 사이드바에 표시하지 않음(초기화)
-    // - confirmed 이면서 스케줄의 stage_id가 현재 후보 단계보다 과거 단계면: 다음 단계로 넘어간 것으로 보고 숨김
+    // ✅ 코파일럿은 자동화 진행 상태를 기준으로 표시합니다.
+    // - 단, 수동 확정 등록(레거시 스키마)도 확정 카드로 보이도록 status=confirmed를 보정합니다.
+    const valid = list
+      .filter((s: any) => s && s.id)
+      .map((s: any) => ({ ...s, _effectiveWorkflowStatus: getWorkflowStatus(s) }))
+      .filter((s: any) => !!s._effectiveWorkflowStatus);
+
+    // ✅ “면접이 끝났다” 판단(정책: 시간 경과 시 숨김)
+    // - 수동 확정/자동 확정 모두 상세 사이드바에서 동일하게 보이도록
+    //   단계 이동(stage_id 과거 여부)만으로는 숨기지 않습니다.
     const stageOrder = (stageId: string | null | undefined) => {
       const raw = typeof stageId === 'string' ? stageId.trim() : '';
       // stage-5 같은 패턴에서 숫자만 뽑아 비교합니다. (패턴이 깨지면 0으로 처리)
@@ -177,16 +195,13 @@ export function CandidateDetailClient({
     const currentStageOrder = stageOrder(currentStageId);
 
     const isFinishedConfirmed = (s: any) => {
-      if (s?.workflow_status !== 'confirmed') return false;
+      if (s?._effectiveWorkflowStatus !== 'confirmed') return false;
 
       const scheduledAtRaw = s?.scheduled_at;
       const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw).getTime() : NaN;
       const isPastByTime = Number.isFinite(scheduledAt) ? scheduledAt < now : false;
 
-      const scheduleStageOrder = stageOrder(s?.stage_id ?? null);
-      const isPastByStage = scheduleStageOrder > 0 && scheduleStageOrder < currentStageOrder;
-
-      return isPastByTime || isPastByStage;
+      return isPastByTime;
     };
 
     const filtered = valid.filter((s: any) => !isFinishedConfirmed(s));
@@ -220,8 +235,8 @@ export function CandidateDetailClient({
 
     const pickBest = (arr: any[]) => {
       const sorted = [...arr].sort((a: any, b: any) => {
-        const prA = priority(a.workflow_status);
-        const prB = priority(b.workflow_status);
+        const prA = priority(a._effectiveWorkflowStatus);
+        const prB = priority(b._effectiveWorkflowStatus);
         if (prA !== prB) return prB - prA;
 
         const atA = new Date(a.updated_at || a.created_at || a.scheduled_at || 0).getTime();
@@ -238,7 +253,7 @@ export function CandidateDetailClient({
       ? {
           id: String(pick.id),
           stage_id: (pick.stage_id ?? null) as string | null,
-          workflow_status: (pick.workflow_status ||
+          workflow_status: (pick._effectiveWorkflowStatus ||
             null) as
             | 'pending_interviewers'
             | 'pending_candidate'
@@ -321,6 +336,14 @@ export function CandidateDetailClient({
       loadResumeFiles();
     }
   }, [candidate.id]);
+
+  useEffect(() => {
+    if (viewMode !== 'scheduling') return;
+    setScheduleEntryMode('automated');
+    setManualScheduledAt('');
+    setManualConfirmedWarning(null);
+    setNotifyCandidateOnManual(true);
+  }, [viewMode]);
 
   // ✅ @멘션 자동완성은 “타이핑 즉시”가 UX의 핵심이므로, 모달 오픈 직후(유휴시간)에
   //    조직 사용자 목록을 백그라운드로 미리 불러옵니다.
@@ -748,6 +771,48 @@ export function CandidateDetailClient({
     }
   };
 
+  const handleManualConfirmedSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoadingManualConfirmed(true);
+    setManualConfirmedWarning(null);
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('candidate_id', candidate.id);
+      formDataToSend.append('stage_id', scheduleFormData.stage_id);
+      formDataToSend.append('scheduled_at', manualScheduledAt);
+      formDataToSend.append('duration_minutes', scheduleFormData.duration_minutes);
+      formDataToSend.append('interviewer_ids', JSON.stringify(scheduleFormData.interviewer_ids));
+      formDataToSend.append(
+        'external_interviewer_emails',
+        JSON.stringify(scheduleFormData.external_interviewer_emails),
+      );
+      formDataToSend.append('notify_candidate', notifyCandidateOnManual ? 'true' : 'false');
+      const result = await createManualConfirmedSchedule(formDataToSend);
+      if (result.error) {
+        if (result.error.includes('미래') || result.error.includes('일시')) {
+          setManualConfirmedWarning(result.error);
+        } else {
+          toast.error(result.error);
+        }
+      } else {
+        toast.success('확정 면접 일정이 등록되었습니다.');
+        setDetailInitialTab('timeline');
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(getDetailTabStorageKey(), 'timeline');
+        }
+        setViewMode('detail');
+        await applySchedulesFromServer(candidate.id);
+        router.refresh();
+        refreshCandidateData().catch(() => {});
+        refreshTimelineEvents().catch(() => {});
+      }
+    } catch {
+      toast.error('확정 일정 등록에 실패했습니다.');
+    } finally {
+      setIsLoadingManualConfirmed(false);
+    }
+  };
+
   const toggleInterviewer = (uid: string) => {
     setScheduleFormData((prev) => ({
       ...prev,
@@ -1128,6 +1193,20 @@ export function CandidateDetailClient({
           onConfirmHire={handleConfirmHire}
           onEmailClick={() => setIsEmailModalOpen(true)}
           onArchiveClick={() => setIsArchiveModalOpen(true)}
+          showManualConfirmedEntry={userRole === 'admin' || userRole === 'recruiter'}
+          scheduleEntryMode={scheduleEntryMode}
+          onScheduleEntryModeChange={(mode) => {
+            setScheduleEntryMode(mode);
+            setScheduleWarning(null);
+            setManualConfirmedWarning(null);
+          }}
+          manualScheduledAt={manualScheduledAt}
+          onManualScheduledAtChange={setManualScheduledAt}
+          notifyCandidateOnManual={notifyCandidateOnManual}
+          onNotifyCandidateOnManualChange={setNotifyCandidateOnManual}
+          onManualConfirmedSubmit={handleManualConfirmedSubmit}
+          isLoadingManualConfirmed={isLoadingManualConfirmed}
+          manualConfirmedWarning={manualConfirmedWarning}
         />
       )}
 
