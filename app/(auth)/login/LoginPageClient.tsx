@@ -29,7 +29,9 @@ export function LoginPageClient() {
     const messageParam = searchParams.get('message');
 
     if (errorParam && messageParam) {
-      setError(decodeURIComponent(messageParam));
+      const base = decodeURIComponent(messageParam);
+      const hint = searchParams.get('debug_hint');
+      setError(hint ? `${base} (${decodeURIComponent(hint)})` : base);
       // URL에서 에러 파라미터 제거
       router.replace('/login');
     }

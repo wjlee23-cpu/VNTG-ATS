@@ -1,8 +1,60 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAppBaseUrl } from '@/lib/url/getAppBaseUrl';
 import { sanitizeNextPath } from '@/lib/url/sanitize-next-path';
+
+const LIST_USERS_PER_PAGE = 200;
+const LIST_USERS_MAX_PAGES = 50;
+
+/**
+ * @supabase/auth-js Admin API에는 getUserByEmail이 없으므로 listUsers로 이메일을 찾습니다.
+ */
+async function findAuthUserIdByEmail(
+  serviceSupabase: SupabaseClient,
+  email: string
+): Promise<string | null> {
+  const target = email.trim().toLowerCase();
+  for (let page = 1; page <= LIST_USERS_MAX_PAGES; page++) {
+    const { data, error } = await serviceSupabase.auth.admin.listUsers({
+      page,
+      perPage: LIST_USERS_PER_PAGE,
+    });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    const hit = users.find((u) => (u.email ?? '').toLowerCase() === target);
+    if (hit) return hit.id;
+    if (users.length < LIST_USERS_PER_PAGE) break;
+  }
+  return null;
+}
+
+function isLikelyDuplicateAuthUserError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { message?: string; code?: string };
+  const msg = (e.message ?? '').toLowerCase();
+  const code = (e.code ?? '').toLowerCase();
+  return (
+    code === 'email_exists' ||
+    msg.includes('already been registered') ||
+    msg.includes('already registered') ||
+    msg.includes('duplicate')
+  );
+}
+
+function buildOAuthErrorLoginUrl(appBase: string, errorMessage: string, err: unknown): URL {
+  const url = new URL(
+    `/login?error=unknown_error&message=${encodeURIComponent(errorMessage)}`,
+    appBase
+  );
+  if (process.env.NODE_ENV === 'development') {
+    const hint =
+      err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+    if (hint) url.searchParams.set('debug_hint', hint.slice(0, 240));
+  }
+  return url;
+}
 
 /**
  * 구글 OAuth 콜백 처리
@@ -86,34 +138,32 @@ export async function GET(request: Request) {
 
     // 로그인 플로우인 경우: Supabase에 사용자 생성/로그인 처리
     if (flowType === 'login') {
-      // Supabase Auth에 사용자 생성 또는 확인
-      // supabase-js 타입 정의에 getUserByEmail이 없을 수 있으나(버전/타입 불일치),
-      // 실제 런타임에서는 동작하므로 타입만 as any로 느슨하게 처리합니다.
-      const { data: { user: existingAuthUser }, error: getUserError } = await (supabase.auth.admin as any).getUserByEmail(userInfo.email);
-      
-      let authUserId: string;
-      
-      if (existingAuthUser && !getUserError) {
-        // 기존 사용자가 있으면 해당 ID 사용
-        authUserId = existingAuthUser.id;
-      } else {
-        // 새 사용자 생성 (Supabase Auth)
-        const { data: newAuthUser, error: createAuthError } = await supabase.auth.admin.createUser({
-          email: userInfo.email,
-          email_confirm: true,
-          user_metadata: {
-            full_name: userInfo.name || '',
-            avatar_url: userInfo.picture || '',
-            provider: 'google',
-          },
-        });
+      // Auth Admin은 Service Role이 필요합니다 (프로덕션에서 anon으로는 실패함).
+      let authUserId = await findAuthUserIdByEmail(serviceClient, userInfo.email);
+
+      if (!authUserId) {
+        const { data: newAuthUser, error: createAuthError } =
+          await serviceClient.auth.admin.createUser({
+            email: userInfo.email,
+            email_confirm: true,
+            user_metadata: {
+              full_name: userInfo.name || '',
+              avatar_url: userInfo.picture || '',
+              provider: 'google',
+            },
+          });
 
         if (createAuthError || !newAuthUser.user) {
-          console.error('Supabase Auth 사용자 생성 실패:', createAuthError);
-          throw new Error('사용자 생성에 실패했습니다.');
+          if (createAuthError && isLikelyDuplicateAuthUserError(createAuthError)) {
+            authUserId = await findAuthUserIdByEmail(serviceClient, userInfo.email);
+          }
+          if (!authUserId) {
+            console.error('Supabase Auth 사용자 생성 실패:', createAuthError);
+            throw new Error('사용자 생성에 실패했습니다.');
+          }
+        } else {
+          authUserId = newAuthUser.user.id;
         }
-
-        authUserId = newAuthUser.user.id;
       }
 
       // users 테이블에 사용자가 있는지 확인
@@ -233,13 +283,14 @@ export async function GET(request: Request) {
       // `/dashboard`만 넣으면 목록에 없을 때 Site URL(배포)로 폴백되는 경우가 있습니다.
       const postLoginTarget = `${publicBase}/auth/callback?next=${encodeURIComponent(next)}`;
 
-      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: userInfo.email,
-        options: {
-          redirectTo: postLoginTarget,
-        },
-      });
+      const { data: linkData, error: linkError } =
+        await serviceClient.auth.admin.generateLink({
+          type: 'magiclink',
+          email: userInfo.email,
+          options: {
+            redirectTo: postLoginTarget,
+          },
+        });
 
       if (linkError || !linkData) {
         console.error('매직 링크 생성 실패:', linkError);
@@ -363,11 +414,7 @@ export async function GET(request: Request) {
     const errorMessage = flowType === 'login'
       ? '구글 로그인 처리 중 오류가 발생했습니다'
       : '구글 캘린더 연동 처리 중 오류가 발생했습니다';
-    return NextResponse.redirect(
-      new URL(
-        `/login?error=unknown_error&message=${encodeURIComponent(errorMessage)}`,
-        appBaseUrl || requestUrl.origin
-      )
-    );
+    const base = appBaseUrl || requestUrl.origin;
+    return NextResponse.redirect(buildOAuthErrorLoginUrl(base, errorMessage, err));
   }
 }

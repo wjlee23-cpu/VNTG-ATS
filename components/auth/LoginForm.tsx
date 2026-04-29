@@ -26,7 +26,11 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
     const messageParam = searchParams.get('message');
     
     if (errorParam && messageParam) {
-      setError(decodeURIComponent(messageParam));
+      const base = decodeURIComponent(messageParam);
+      const hint = searchParams.get('debug_hint');
+      setError(
+        hint ? `${base} (${decodeURIComponent(hint)})` : base
+      );
     }
   }, [searchParams]);
 
