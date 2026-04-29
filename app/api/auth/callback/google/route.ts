@@ -70,6 +70,7 @@ export async function GET(request: Request) {
   const appBaseUrl = getAppBaseUrl(request);
   const code = requestUrl.searchParams.get('code');
   const error = requestUrl.searchParams.get('error');
+  const errorDescription = requestUrl.searchParams.get('error_description');
   const state = requestUrl.searchParams.get('state');
   
   // state에서 next 파라미터 및 타입 추출
@@ -87,7 +88,11 @@ export async function GET(request: Request) {
 
   // 에러가 있으면 처리
   if (error) {
-    console.error('구글 OAuth 에러:', error);
+    console.error('구글 OAuth 에러:', {
+      error,
+      errorDescription,
+      fullUrl: requestUrl.toString(),
+    });
     const errorMessage = flowType === 'login' 
       ? '구글 로그인에 실패했습니다.'
       : '구글 캘린더 연동에 실패했습니다.';
@@ -98,9 +103,26 @@ export async function GET(request: Request) {
 
   // 코드가 없으면 에러
   if (!code) {
-    const errorMessage = '인증 코드를 받지 못했습니다';
+    const paramsForDebug = Object.fromEntries(requestUrl.searchParams.entries());
+    console.error('구글 OAuth 콜백에 code가 없습니다:', {
+      fullUrl: requestUrl.toString(),
+      params: paramsForDebug,
+      flowType,
+    });
+
+    const errorMessage = errorDescription
+      ? `인증 코드를 받지 못했습니다. (${errorDescription})`
+      : '인증 코드를 받지 못했습니다. 구글 인증이 취소되었거나 Redirect URI 설정을 확인해주세요.';
+    const redirectUrl = new URL(
+      `/login?error=oauth_error&message=${encodeURIComponent(errorMessage)}`,
+      appBaseUrl || requestUrl.origin
+    );
+    if (process.env.NODE_ENV === 'development') {
+      const hint = JSON.stringify(paramsForDebug).slice(0, 240);
+      if (hint) redirectUrl.searchParams.set('debug_hint', hint);
+    }
     return NextResponse.redirect(
-      new URL(`/login?error=oauth_error&message=${encodeURIComponent(errorMessage)}`, appBaseUrl || requestUrl.origin)
+      redirectUrl
     );
   }
 
