@@ -76,6 +76,113 @@ function getRoomCalendarId(): string {
   return value;
 }
 
+type CalendarCapableUser = {
+  id: string;
+  email: string | null;
+  calendar_provider: string | null;
+  calendar_access_token: string | null;
+  calendar_refresh_token: string | null;
+};
+
+function isGoogleOrganizer(user: CalendarCapableUser | null | undefined): user is CalendarCapableUser {
+  return Boolean(
+    user &&
+      user.calendar_provider === 'google' &&
+      user.calendar_access_token &&
+      user.calendar_refresh_token,
+  );
+}
+
+async function resolveScheduleCalendarOrganizer(
+  supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createServiceClient>,
+  userId: string,
+  manualOverrideBy: string | null,
+  interviewerIds: string[] | null | undefined,
+): Promise<CalendarCapableUser | null> {
+  const { data: organizerUser, error: organizerError } = await supabase
+    .from('users')
+    .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (organizerError) {
+    console.error('Organizer 사용자 조회 실패:', organizerError);
+  }
+
+  const { data: manualCreator, error: manualCreatorError } =
+    manualOverrideBy && typeof manualOverrideBy === 'string'
+      ? await supabase
+          .from('users')
+          .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+          .eq('id', manualOverrideBy)
+          .maybeSingle()
+      : { data: null as null, error: null as null };
+
+  if (manualCreatorError) {
+    console.error('수동 등록자 조회 실패:', manualCreatorError);
+  }
+
+  const interviewerIdList = Array.isArray(interviewerIds) ? interviewerIds : [];
+  const { data: interviewers, error: interviewersError } =
+    interviewerIdList.length > 0
+      ? await supabase
+          .from('users')
+          .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+          .in('id', interviewerIdList)
+      : { data: [], error: null };
+
+  if (interviewersError) {
+    console.error('면접관 사용자 조회 실패:', interviewersError);
+  }
+
+  if (isGoogleOrganizer(organizerUser)) return organizerUser;
+  if (isGoogleOrganizer(manualCreator)) return manualCreator;
+
+  const interviewerOrganizer = (interviewers || []).find(isGoogleOrganizer) || null;
+  return interviewerOrganizer;
+}
+
+function collectScheduleCalendarEventTargets(
+  scheduleOptions: Array<{ google_event_id: string | null }> | null | undefined,
+  scheduleGoogleEventId: string | null,
+): Map<string, string> {
+  const eventCalendarMap = new Map<string, string>();
+  const roomCalendarId = getRoomCalendarId();
+
+  for (const option of scheduleOptions || []) {
+    if (typeof option.google_event_id === 'string' && option.google_event_id.trim().length > 0) {
+      eventCalendarMap.set(option.google_event_id, roomCalendarId);
+    }
+  }
+
+  if (typeof scheduleGoogleEventId === 'string' && scheduleGoogleEventId.trim().length > 0) {
+    eventCalendarMap.set(scheduleGoogleEventId, roomCalendarId);
+  }
+
+  return eventCalendarMap;
+}
+
+function upsertEventCalendarTarget(
+  eventCalendarMap: Map<string, string>,
+  eventId: string,
+  calendarId: string,
+) {
+  const normalizedEventId = (eventId || '').trim();
+  if (!normalizedEventId) return;
+
+  const roomCalendarId = getRoomCalendarId();
+  const existingCalendarId = eventCalendarMap.get(normalizedEventId);
+  if (!existingCalendarId) {
+    eventCalendarMap.set(normalizedEventId, calendarId);
+    return;
+  }
+
+  // 같은 이벤트가 room/primary 양쪽에서 발견될 때 room 캘린더 삭제를 우선 보장합니다.
+  if (existingCalendarId !== roomCalendarId && calendarId === roomCalendarId) {
+    eventCalendarMap.set(normalizedEventId, roomCalendarId);
+  }
+}
+
 function formatBusySampleForLog(
   blocks: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }>,
   limit = 3,
@@ -539,12 +646,41 @@ export async function deleteSchedule(id: string) {
     // - 따라서 "존재 여부" 조회도 Service Role로 안정적으로 수행하고, 권한은 verifyCandidateAccess로 보장합니다.
     const { data: schedule, error: scheduleError } = await serviceSupabase
       .from('schedules')
-      .select('id, candidate_id, interviewer_ids')
+      .select(`
+        id,
+        candidate_id,
+        interviewer_ids,
+        scheduled_at,
+        duration_minutes,
+        stage_id,
+        candidates (
+          name
+        )
+      `)
       .eq('id', id)
       .single();
 
     if (scheduleError || !schedule) {
       throw new Error('면접 일정을 찾을 수 없습니다.');
+    }
+
+    // 레거시 스키마 호환: optional 컬럼(google_event_id/manual_override_by)은 별도 조회 실패 시 무시
+    let scheduleGoogleEventId: string | null = null;
+    let scheduleManualOverrideBy: string | null = null;
+    const { data: optionalScheduleCols } = await serviceSupabase
+      .from('schedules')
+      .select('google_event_id, manual_override_by')
+      .eq('id', id)
+      .maybeSingle();
+    if (optionalScheduleCols) {
+      scheduleGoogleEventId =
+        typeof (optionalScheduleCols as any).google_event_id === 'string'
+          ? (optionalScheduleCols as any).google_event_id
+          : null;
+      scheduleManualOverrideBy =
+        typeof (optionalScheduleCols as any).manual_override_by === 'string'
+          ? (optionalScheduleCols as any).manual_override_by
+          : null;
     }
 
     await verifyCandidateAccess(schedule.candidate_id);
@@ -560,42 +696,93 @@ export async function deleteSchedule(id: string) {
       console.error('schedule_options 조회 실패:', optionsError);
     }
 
-    // 구글 캘린더 이벤트 삭제용 Organizer(주최자) 토큰 조회
-    // - 정책: 면접 일정은 "인터뷰룸 전용 캘린더"에 생성하며 Organizer는 채용담당자 계정을 사용합니다.
-    // - 따라서 면접관(interviewer) 토큰이 아니라 "현재 사용자(채용담당자)" 토큰을 우선 사용합니다.
-    const { data: organizerUser, error: organizerError } = await serviceSupabase
-      .from('users')
-      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
-      .eq('id', user.userId)
-      .maybeSingle();
-
-    if (organizerError) {
-      console.error('Organizer 사용자 조회 실패:', organizerError);
-    }
-
-    // (호환) 과거 데이터/권한 구조 때문에 Organizer 토큰이 없는 경우, 면접관 중 토큰이 있는 사용자를 폴백으로 찾습니다.
-    const { data: interviewers } = await serviceSupabase
-      .from('users')
-      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
-      .in('id', schedule.interviewer_ids || []);
+    const organizer = await resolveScheduleCalendarOrganizer(
+      serviceSupabase,
+      user.userId,
+      scheduleManualOverrideBy,
+      schedule.interviewer_ids || [],
+    );
 
     // 구글 캘린더 이벤트 삭제
-    if (scheduleOptions && scheduleOptions.length > 0) {
-      const organizer =
-        organizerUser &&
-        organizerUser.calendar_provider === 'google' &&
-        organizerUser.calendar_access_token &&
-        organizerUser.calendar_refresh_token
-          ? organizerUser
-          : (interviewers || []).find(
-              (inv) =>
-                inv.calendar_provider === 'google' &&
-                inv.calendar_access_token &&
-                inv.calendar_refresh_token,
+    if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
+      const eventCalendarMap = collectScheduleCalendarEventTargets(
+        scheduleOptions,
+        scheduleGoogleEventId,
+      );
+
+      // 수동 확정 + 레거시 스키마 조합에서는 event_id를 DB에 저장하지 못했을 수 있어
+      // 인터뷰룸/primary에서 시간/후보자 기준으로 확정 이벤트를 추가 탐색해 누락 삭제를 보완합니다.
+      try {
+          const scheduledAtIso =
+            typeof (schedule as any).scheduled_at === 'string' ? (schedule as any).scheduled_at : null;
+          const durationMinutes =
+            typeof (schedule as any).duration_minutes === 'number'
+              ? (schedule as any).duration_minutes
+              : 60;
+          const candidateJoin = (schedule as any)?.candidates;
+          const candidateNameRaw = Array.isArray(candidateJoin)
+            ? candidateJoin[0]?.name
+            : candidateJoin?.name;
+          const candidateName =
+            typeof candidateNameRaw === 'string' && candidateNameRaw.trim().length > 0
+              ? candidateNameRaw.trim()
+              : '';
+
+          if (scheduledAtIso && candidateName) {
+            const start = new Date(scheduledAtIso);
+            const end = new Date(start);
+            end.setMinutes(end.getMinutes() + durationMinutes);
+            const lookupMin = new Date(start.getTime() - 20 * 60 * 1000).toISOString();
+            const lookupMax = new Date(end.getTime() + 20 * 60 * 1000).toISOString();
+
+            const refreshedToken = await refreshAccessTokenIfNeeded(
+              organizer.calendar_access_token,
+              organizer.calendar_refresh_token,
+              organizer.id,
             );
-      
-      if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
-        for (const option of scheduleOptions) {
+            const oauth2Client = new google.auth.OAuth2(
+              process.env.GOOGLE_CLIENT_ID,
+              process.env.GOOGLE_CLIENT_SECRET,
+              `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`,
+            );
+            oauth2Client.setCredentials({ access_token: refreshedToken });
+            const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+            const candidateCalendars = Array.from(new Set([getRoomCalendarId(), 'primary']));
+
+            for (const calendarId of candidateCalendars) {
+              const matched = await calendar.events.list({
+                calendarId,
+                timeMin: lookupMin,
+                timeMax: lookupMax,
+                singleEvents: true,
+                orderBy: 'startTime',
+                q: candidateName,
+              });
+
+              for (const evt of matched.data.items || []) {
+                const evtId = evt.id || '';
+                const summary = evt.summary || '';
+                const description = evt.description || '';
+                if (!evtId) continue;
+                // 수동 등록 포맷: [확정] ... - {candidateName} 면접 / description에 "후보자: {name}"
+                const looksLikeTarget =
+                  summary.includes(candidateName) ||
+                  description.includes(`후보자: ${candidateName}`);
+                if (!looksLikeTarget) continue;
+                upsertEventCalendarTarget(eventCalendarMap, evtId, calendarId);
+              }
+            }
+          }
+      } catch (searchError) {
+        console.warn('이벤트 ID fallback 탐색 실패(계속 진행):', searchError);
+      }
+
+      if (eventCalendarMap.size === 0) {
+        console.log('삭제할 구글 캘린더 이벤트를 찾지 못해 DB 삭제만 진행합니다.');
+      }
+
+        for (const option of scheduleOptions || []) {
           if (option.google_event_id) {
             try {
               // 1) 먼저 watch 채널을 중지 (이후 calendar event 삭제)
@@ -625,25 +812,58 @@ export async function deleteSchedule(id: string) {
                 }
               }
 
-              // 2) 구글 캘린더 이벤트 삭제
-              await deleteCalendarEvent(
-                organizer.calendar_access_token,
-                organizer.calendar_refresh_token,
-                option.google_event_id,
-                getRoomCalendarId()
-              );
-              console.log(`구글 캘린더 이벤트 삭제 완료: ${option.google_event_id}`);
             } catch (error) {
-              console.error(`구글 캘린더 이벤트 삭제 실패 (${option.google_event_id}):`, error);
-              // 이벤트 삭제 실패해도 DB 삭제는 계속 진행
+              console.error(`watch 채널 정리 실패 (${option.google_event_id}):`, error);
+              // watch 정리 실패해도 이벤트/DB 삭제는 계속 진행
             }
           }
         }
-      } else {
-        console.warn(
-          '구글 캘린더 연동(Organizer 토큰)을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.',
-        );
-      }
+
+        // schedule_options가 없는 수동 확정 이벤트(메인 이벤트)까지 포함해 삭제
+        for (const [eventId, calendarId] of eventCalendarMap.entries()) {
+          // 위 루프에서 이미 삭제된 옵션 이벤트는 set으로 dedupe되어 한번만 시도됩니다.
+          try {
+            await deleteCalendarEvent(
+              organizer.calendar_access_token,
+              organizer.calendar_refresh_token,
+              eventId,
+              calendarId
+            );
+            console.log(`구글 캘린더 이벤트 삭제 완료(중복제거): ${eventId} @ ${calendarId}`);
+          } catch (error) {
+            // 캘린더 ID가 어긋난 레거시 케이스를 위해 room/primary를 순차 재시도합니다.
+            const fallbackCalendarIds = Array.from(new Set([getRoomCalendarId(), 'primary']))
+              .filter((id) => id !== calendarId);
+            let deleted = false;
+            for (const fallbackCalendarId of fallbackCalendarIds) {
+              try {
+                await deleteCalendarEvent(
+                  organizer.calendar_access_token,
+                  organizer.calendar_refresh_token,
+                  eventId,
+                  fallbackCalendarId,
+                );
+                deleted = true;
+                console.log(
+                  `구글 캘린더 이벤트 삭제 완료(폴백): ${eventId} @ ${fallbackCalendarId}`,
+                );
+                break;
+              } catch (fallbackError) {
+                console.error(
+                  `구글 캘린더 이벤트 삭제 폴백 실패 (${eventId} @ ${fallbackCalendarId}):`,
+                  fallbackError,
+                );
+              }
+            }
+            if (!deleted) {
+              console.error(`구글 캘린더 이벤트 삭제 실패 (${eventId} @ ${calendarId}):`, error);
+            }
+          }
+        }
+    } else {
+      console.warn(
+        '구글 캘린더 연동(Organizer 토큰)을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.',
+      );
     }
 
     // ✅ 타임라인은 새 이벤트를 쌓지 않고, 해당 schedule_id의 자동화 카드 상태를 'deleted'로 갱신합니다.
@@ -713,7 +933,7 @@ export async function cancelSchedule(id: string) {
     // 면접 일정 조회 및 권한 확인
     const { data: schedule, error: scheduleError } = await supabase
       .from('schedules')
-      .select('id, candidate_id, interviewer_ids, workflow_status')
+      .select('id, candidate_id, interviewer_ids, workflow_status, scheduled_at, duration_minutes')
       .eq('id', id)
       .single();
 
@@ -728,6 +948,25 @@ export async function cancelSchedule(id: string) {
       throw new Error('이미 취소된 면접 일정입니다.');
     }
 
+    // 레거시 스키마 호환: optional 컬럼(google_event_id/manual_override_by)은 별도 조회 실패 시 무시
+    let scheduleGoogleEventId: string | null = null;
+    let scheduleManualOverrideBy: string | null = null;
+    const { data: optionalScheduleCols } = await supabase
+      .from('schedules')
+      .select('google_event_id, manual_override_by')
+      .eq('id', id)
+      .maybeSingle();
+    if (optionalScheduleCols) {
+      scheduleGoogleEventId =
+        typeof (optionalScheduleCols as any).google_event_id === 'string'
+          ? (optionalScheduleCols as any).google_event_id
+          : null;
+      scheduleManualOverrideBy =
+        typeof (optionalScheduleCols as any).manual_override_by === 'string'
+          ? (optionalScheduleCols as any).manual_override_by
+          : null;
+    }
+
     // schedule_options 별도 조회 (구글 캘린더 이벤트 ID 포함)
     const { data: scheduleOptions, error: optionsError } = await supabase
       .from('schedule_options')
@@ -739,39 +978,130 @@ export async function cancelSchedule(id: string) {
       console.error('schedule_options 조회 실패:', optionsError);
     }
 
-    // 면접관 정보 조회 (구글 캘린더 이벤트 삭제용)
-    const { data: interviewers } = await supabase
-      .from('users')
-      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
-      .in('id', schedule.interviewer_ids || []);
+    const organizer = await resolveScheduleCalendarOrganizer(
+      supabase,
+      user.userId,
+      scheduleManualOverrideBy,
+      schedule.interviewer_ids || [],
+    );
 
     // 구글 캘린더 이벤트 삭제
-    if (scheduleOptions && scheduleOptions.length > 0 && interviewers && interviewers.length > 0) {
-      // 구글 캘린더에 연동된 면접관 찾기
-      const organizer = interviewers.find(
-        inv => inv.calendar_provider === 'google' && inv.calendar_access_token && inv.calendar_refresh_token
+    if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
+      const eventCalendarMap = collectScheduleCalendarEventTargets(
+        scheduleOptions,
+        scheduleGoogleEventId,
       );
-      
-      if (organizer && organizer.calendar_access_token && organizer.calendar_refresh_token) {
-        for (const option of scheduleOptions) {
-          if (option.google_event_id) {
-            try {
-              await deleteCalendarEvent(
-                organizer.calendar_access_token,
-                organizer.calendar_refresh_token,
-                option.google_event_id,
-                getRoomCalendarId(),
-              );
-              console.log(`구글 캘린더 이벤트 삭제 완료: ${option.google_event_id}`);
-            } catch (error) {
-              console.error(`구글 캘린더 이벤트 삭제 실패 (${option.google_event_id}):`, error);
-              // 이벤트 삭제 실패해도 취소는 계속 진행
+
+      try {
+          const { data: candidateData } = await supabase
+            .from('candidates')
+            .select('name')
+            .eq('id', schedule.candidate_id)
+            .maybeSingle();
+
+          const candidateName = candidateData?.name?.trim();
+          const scheduledAtIso =
+            typeof (schedule as any).scheduled_at === 'string' ? (schedule as any).scheduled_at : null;
+          const durationMinutes =
+            typeof (schedule as any).duration_minutes === 'number'
+              ? (schedule as any).duration_minutes
+              : 60;
+
+          if (scheduledAtIso && candidateName) {
+            const start = new Date(scheduledAtIso);
+            const end = new Date(start);
+            end.setMinutes(end.getMinutes() + durationMinutes);
+            const lookupMin = new Date(start.getTime() - 20 * 60 * 1000).toISOString();
+            const lookupMax = new Date(end.getTime() + 20 * 60 * 1000).toISOString();
+
+            const refreshedToken = await refreshAccessTokenIfNeeded(
+              organizer.calendar_access_token,
+              organizer.calendar_refresh_token,
+              organizer.id,
+            );
+            const oauth2Client = new google.auth.OAuth2(
+              process.env.GOOGLE_CLIENT_ID,
+              process.env.GOOGLE_CLIENT_SECRET,
+              `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`,
+            );
+            oauth2Client.setCredentials({ access_token: refreshedToken });
+            const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+            const candidateCalendars = Array.from(new Set([getRoomCalendarId(), 'primary']));
+            for (const calendarId of candidateCalendars) {
+              const matched = await calendar.events.list({
+                calendarId,
+                timeMin: lookupMin,
+                timeMax: lookupMax,
+                singleEvents: true,
+                orderBy: 'startTime',
+                q: candidateName,
+              });
+
+              for (const evt of matched.data.items || []) {
+                const evtId = evt.id || '';
+                const summary = evt.summary || '';
+                const description = evt.description || '';
+                if (!evtId) continue;
+                const looksLikeTarget =
+                  summary.includes(candidateName) ||
+                  description.includes(`후보자: ${candidateName}`);
+                if (!looksLikeTarget) continue;
+                upsertEventCalendarTarget(eventCalendarMap, evtId, calendarId);
+              }
             }
           }
-        }
-      } else {
-        console.warn('구글 캘린더에 연동된 면접관을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.');
+      } catch (searchError) {
+        console.warn('취소 시 이벤트 ID fallback 탐색 실패(계속 진행):', searchError);
       }
+
+      if (eventCalendarMap.size === 0) {
+        console.log('취소 대상 구글 캘린더 이벤트를 찾지 못해 상태 변경만 진행합니다.');
+      }
+
+        for (const [eventId, calendarId] of eventCalendarMap.entries()) {
+          try {
+            await deleteCalendarEvent(
+              organizer.calendar_access_token,
+              organizer.calendar_refresh_token,
+              eventId,
+              calendarId,
+            );
+            console.log(`구글 캘린더 이벤트 삭제 완료: ${eventId} @ ${calendarId}`);
+          } catch (error) {
+            const fallbackCalendarIds = Array.from(new Set([getRoomCalendarId(), 'primary']))
+              .filter((id) => id !== calendarId);
+            let deleted = false;
+            for (const fallbackCalendarId of fallbackCalendarIds) {
+              try {
+                await deleteCalendarEvent(
+                  organizer.calendar_access_token,
+                  organizer.calendar_refresh_token,
+                  eventId,
+                  fallbackCalendarId,
+                );
+                deleted = true;
+                console.log(
+                  `구글 캘린더 이벤트 삭제 완료(폴백): ${eventId} @ ${fallbackCalendarId}`,
+                );
+                break;
+              } catch (fallbackError) {
+                console.error(
+                  `구글 캘린더 이벤트 삭제 폴백 실패 (${eventId} @ ${fallbackCalendarId}):`,
+                  fallbackError,
+                );
+              }
+            }
+            if (!deleted) {
+              console.error(`구글 캘린더 이벤트 삭제 실패 (${eventId} @ ${calendarId}):`, error);
+            }
+            // 이벤트 삭제 실패해도 취소는 계속 진행
+          }
+        }
+    } else {
+      console.warn(
+        '구글 캘린더 연동(Organizer 토큰)을 찾을 수 없습니다. 이벤트 삭제를 건너뜁니다.',
+      );
     }
 
     // 워크플로우 상태를 'cancelled'로 변경
