@@ -21,6 +21,7 @@ import { ko } from 'date-fns/locale/ko';
 import { cn } from '@/components/ui/utils';
 import { CandidateSidebar } from './CandidateSidebar';
 import type { Candidate } from '@/types/candidates';
+import type { CurrentActiveScheduleLike } from '@/components/candidates/detail/SchedulingStatusWidget';
 
 const DURATION_OPTIONS = [
   { value: '30', label: '30분' },
@@ -89,6 +90,11 @@ interface CandidateScheduleFormProps {
   onConfirmHire?: () => void;
   onEmailClick?: () => void;
   onArchiveClick?: () => void;
+  /** 좌측 '일정 조율 현황'에 표시할 현재 스케줄 */
+  currentActiveSchedule?: CurrentActiveScheduleLike | undefined;
+  onCheckSchedule?: (scheduleId: string) => void;
+  onDeleteSchedule?: (scheduleId: string) => void;
+  scheduleActionLoadingId?: string | null;
   /** 관리자·리크루터: 확정 일정 직접 등록 모드 */
   showManualConfirmedEntry?: boolean;
   scheduleEntryMode?: 'automated' | 'manual_confirmed';
@@ -128,6 +134,10 @@ export function CandidateScheduleForm({
   onConfirmHire,
   onEmailClick,
   onArchiveClick,
+  currentActiveSchedule,
+  onCheckSchedule,
+  onDeleteSchedule,
+  scheduleActionLoadingId = null,
   showManualConfirmedEntry = false,
   scheduleEntryMode = 'automated',
   onScheduleEntryModeChange,
@@ -212,12 +222,16 @@ export function CandidateScheduleForm({
         onConfirmHire={onConfirmHire || (() => {})}
         onEmailClick={onEmailClick || (() => {})}
         onArchiveClick={onArchiveClick || (() => {})}
+        currentActiveSchedule={currentActiveSchedule}
+        onCheckSchedule={onCheckSchedule}
+        onDeleteSchedule={onDeleteSchedule}
+        scheduleActionLoadingId={scheduleActionLoadingId}
       />
 
       {/* 우측 폼 영역 */}
       <div className="flex-1 flex flex-col bg-white relative">
         {/* 헤더 */}
-        <header className="h-16 border-b border-neutral-100 px-8 flex items-center justify-between shrink-0">
+        <header className="h-16 border-b border-neutral-100 px-6 md:px-8 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
@@ -226,10 +240,10 @@ export function CandidateScheduleForm({
               <ArrowLeft className="w-4 h-4" />
             </button>
             <h1 className="text-sm font-semibold text-neutral-900">
-              {isManualConfirmedMode ? '면접 일정 등록' : '면접 일정 자동화'}
+              일정 등록
             </h1>
           </div>
-          <div className="flex items-center gap-2 text-xs font-medium text-neutral-600 bg-neutral-100 px-2.5 py-1.5 rounded-md border border-neutral-200">
+          <div className="flex items-center gap-2 text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1.5 rounded-md border border-neutral-200">
             {isManualConfirmedMode ? (
               <span>수동 확정</span>
             ) : (
@@ -242,13 +256,14 @@ export function CandidateScheduleForm({
         </header>
 
         {showManualConfirmedEntry && onScheduleEntryModeChange ? (
-          <div className="shrink-0 px-8 pt-4 pb-2 border-b border-neutral-100 bg-white">
-            <div className="max-w-3xl mx-auto flex p-1 bg-neutral-100/90 rounded-lg max-w-md">
+          <div className="shrink-0 px-6 md:px-8 pt-4 pb-3 border-b border-neutral-100 bg-white">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex p-1 bg-neutral-100/90 rounded-xl max-w-md border border-neutral-200/60">
               <button
                 type="button"
                 onClick={() => onScheduleEntryModeChange('automated')}
                 className={cn(
-                  'flex-1 py-2 text-xs font-medium rounded-md transition-colors',
+                  'flex-1 py-2 text-xs font-semibold rounded-lg transition-colors',
                   scheduleEntryMode === 'automated'
                     ? 'bg-white text-neutral-900 shadow-sm'
                     : 'text-neutral-500 hover:text-neutral-700',
@@ -260,7 +275,7 @@ export function CandidateScheduleForm({
                 type="button"
                 onClick={() => onScheduleEntryModeChange('manual_confirmed')}
                 className={cn(
-                  'flex-1 py-2 text-xs font-medium rounded-md transition-colors',
+                  'flex-1 py-2 text-xs font-semibold rounded-lg transition-colors',
                   scheduleEntryMode === 'manual_confirmed'
                     ? 'bg-white text-neutral-900 shadow-sm'
                     : 'text-neutral-500 hover:text-neutral-700',
@@ -269,32 +284,16 @@ export function CandidateScheduleForm({
                 수동 등록
               </button>
             </div>
-            <p className="max-w-3xl mx-auto text-xs text-neutral-500 mt-2">
-              {isManualConfirmedMode
-                ? '전화·메일 등으로 이미 합의한 일정을 시스템에 반영합니다. 자동 조율(옵션 제안)은 사용하지 않습니다.'
-                : '참석자 캘린더를 분석해 후보자에게 선택 가능한 일정 옵션을 제안합니다.'}
-            </p>
+            </div>
           </div>
         ) : null}
 
         <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-8 py-10 pb-28">
-            {/* 제목 및 설명 */}
-            <div className="mb-8">
-              <h2 className="text-lg font-semibold tracking-tight text-neutral-900">
-                {isManualConfirmedMode ? '확정 일정 정보' : '스케줄링 설정'}
-              </h2>
-              <p className="text-sm text-neutral-500 mt-1">
-                {isManualConfirmedMode
-                  ? '면접 단계·일시·참석자를 입력한 뒤 등록하면 즉시 확정 상태로 저장됩니다.'
-                  : '참석자들의 캘린더를 분석하여 겹치지 않는 최적의 일정을 후보자에게 제안합니다.'}
-              </p>
-            </div>
-
+          <div className="max-w-3xl mx-auto px-6 md:px-8 py-8 md:py-10 pb-10 md:pb-12">
             {/* 폼 필드들 */}
-            <div className="flex flex-col border-t border-neutral-100">
+            <div className="flex flex-col border border-neutral-100 rounded-2xl overflow-hidden bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
               {/* 면접 단계 */}
-              <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+              <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                 <div>
                   <label className="text-sm font-medium text-neutral-900">면접 단계</label>
                 </div>
@@ -302,7 +301,7 @@ export function CandidateScheduleForm({
                   <select
                     value={formData.stage_id}
                     onChange={(e) => onFormDataChange({ stage_id: e.target.value })}
-                    className="w-full bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 text-neutral-900 text-sm rounded-lg px-3 py-2 focus:border-neutral-900 transition-colors cursor-pointer appearance-none focus:outline-none"
+                    className="w-full bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 text-neutral-900 text-sm rounded-xl px-3 py-2.5 focus:border-neutral-900 transition-colors cursor-pointer appearance-none focus:outline-none"
                   >
                     {Object.entries(STAGE_ID_TO_NAME_MAP).map(([id, name]) => (
                       <option key={id} value={id}>
@@ -315,12 +314,9 @@ export function CandidateScheduleForm({
               </div>
 
               {/* 참석자 (면접관) */}
-              <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-start">
+              <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-start">
                 <div>
                   <label className="text-sm font-medium text-neutral-900">참석자 (면접관)</label>
-                  <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">
-                    현재 단계에 기본 할당된 참석자입니다. 필요시 변경할 수 있습니다.
-                  </p>
                 </div>
                 <div>
                   {isLoadingUsers ? (
@@ -391,8 +387,8 @@ export function CandidateScheduleForm({
                             <span className="text-xs font-medium">추가</span>
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent
-                          className="w-72 p-2"
+                      <PopoverContent
+                          className="w-72 p-2 rounded-xl border border-neutral-200 shadow-lg"
                           align="start"
                           onWheel={(e) => e.stopPropagation()}
                         >
@@ -410,12 +406,12 @@ export function CandidateScheduleForm({
                                   }
                                 }}
                                 placeholder="name@example.com"
-                                className="flex-1 h-8 px-2 text-xs border border-neutral-200 rounded-md focus:outline-none focus:border-neutral-400"
+                                className="flex-1 h-9 px-2.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
                               />
                               <button
                                 type="button"
                                 onClick={addExternalEmailFromInput}
-                                className="h-8 px-2 text-xs rounded-md bg-neutral-900 text-white"
+                                className="h-9 px-3 text-xs rounded-lg bg-neutral-900 text-white font-semibold"
                               >
                                 추가
                               </button>
@@ -432,7 +428,7 @@ export function CandidateScheduleForm({
                                   key={user.id}
                                   type="button"
                                   onClick={() => onToggleInterviewer(user.id)}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-md transition-colors"
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-lg transition-colors"
                                 >
                                   <div className="flex items-center gap-2">
                                     <Avatar className="w-6 h-6">
@@ -460,7 +456,7 @@ export function CandidateScheduleForm({
                                   key={entry.id}
                                   type="button"
                                   onClick={() => onAddExternalInterviewer(entry.email)}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-md transition-colors"
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 rounded-lg transition-colors"
                                 >
                                   <div className="flex items-center gap-2">
                                     <Avatar className="w-6 h-6">
@@ -489,18 +485,18 @@ export function CandidateScheduleForm({
               </div>
 
               {/* 소요 시간 */}
-              <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+              <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                 <div>
                   <label className="text-sm font-medium text-neutral-900">소요 시간</label>
                 </div>
-                <div className="flex p-1 bg-neutral-100/80 rounded-lg max-w-[320px]">
+                <div className="flex p-1 bg-neutral-100/80 rounded-xl max-w-[320px] border border-neutral-200/60">
                   {DURATION_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => onFormDataChange({ duration_minutes: option.value })}
                       className={cn(
-                        'flex-1 py-1.5 text-xs transition-colors',
+                        'flex-1 py-2 text-xs transition-colors rounded-lg',
                         formData.duration_minutes === option.value
                           ? 'font-semibold bg-white text-neutral-900 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
                           : 'font-medium text-neutral-500 hover:text-neutral-700',
@@ -514,24 +510,20 @@ export function CandidateScheduleForm({
 
               {isManualConfirmedMode ? (
                 <>
-                  <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+                  <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
                       <label className="text-sm font-medium text-neutral-900">면접 일시</label>
-                      <p className="text-xs text-neutral-500 mt-1.5">
-                        브라우저에 입력한 시각은 KST(한국 표준시)로 해석되어 저장됩니다.
-                      </p>
                     </div>
                     <input
                       type="datetime-local"
                       value={manualScheduledAt}
                       onChange={(e) => onManualScheduledAtChange?.(e.target.value)}
-                      className="max-w-sm w-full bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 text-neutral-900 text-sm rounded-lg px-3 py-2 focus:border-neutral-900 focus:outline-none"
+                      className="max-w-sm w-full bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 text-neutral-900 text-sm rounded-xl px-3 py-2.5 focus:border-neutral-900 focus:outline-none"
                     />
                   </div>
-                  <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-start">
+                  <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-start">
                     <div>
                       <label className="text-sm font-medium text-neutral-900">안내 발송</label>
-                      <p className="text-xs text-neutral-500 mt-1.5">Gmail·캘린더 연동 계정으로 발송됩니다.</p>
                     </div>
                     <label className="flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer max-w-md">
                       <input
@@ -549,7 +541,7 @@ export function CandidateScheduleForm({
               ) : (
                 <>
                   {/* 일정 검색 기간 */}
-                  <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+                  <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
                       <label className="text-sm font-medium text-neutral-900">일정 검색 기간</label>
                     </div>
@@ -557,7 +549,7 @@ export function CandidateScheduleForm({
                       <PopoverTrigger asChild>
                         <button
                           type="button"
-                          className="max-w-sm w-full flex items-center justify-between bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 text-neutral-900 text-sm rounded-lg px-3 py-2 transition-colors"
+                          className="max-w-sm w-full flex items-center justify-between bg-[#FCFCFC] border border-neutral-200 hover:border-neutral-300 text-neutral-900 text-sm rounded-xl px-3 py-2.5 transition-colors"
                         >
                           <span className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-neutral-400" />
@@ -584,19 +576,18 @@ export function CandidateScheduleForm({
                   </div>
 
                   {/* 제안할 옵션 개수 */}
-                  <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+                  <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
                       <label className="text-sm font-medium text-neutral-900">제안할 옵션 개수</label>
-                      <p className="text-xs text-neutral-500 mt-1.5">후보자에게 보낼 선택지 수</p>
                     </div>
-                    <div className="flex p-1 bg-neutral-100/80 rounded-lg max-w-[320px]">
+                    <div className="flex p-1 bg-neutral-100/80 rounded-xl max-w-[320px] border border-neutral-200/60">
                       {NUM_OPTIONS_LIST.map((num) => (
                         <button
                           key={num}
                           type="button"
                           onClick={() => onFormDataChange({ num_options: num.toString() })}
                           className={cn(
-                            'flex-1 py-1.5 text-xs transition-colors',
+                            'flex-1 py-2 text-xs transition-colors rounded-lg',
                             formData.num_options === num.toString()
                               ? 'font-semibold bg-white text-neutral-900 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
                               : 'font-medium text-neutral-500 hover:text-neutral-700',
@@ -609,13 +600,12 @@ export function CandidateScheduleForm({
                   </div>
 
                   {/* 가능 시간 */}
-                  <div className="py-6 border-b border-neutral-100 grid grid-cols-[200px_1fr] gap-8 items-center">
+                  <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
                       <label className="text-sm font-medium text-neutral-900">가능 시간</label>
-                      <p className="text-xs text-neutral-500 mt-1.5">이 시간 안에서만 제안</p>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-neutral-600">
-                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-md px-2 py-1">
+                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-lg px-2.5 py-1.5">
                         <select
                           value={formData.work_start_hour}
                           onChange={(e) => onFormDataChange({ work_start_hour: e.target.value })}
@@ -641,7 +631,7 @@ export function CandidateScheduleForm({
                         </select>
                       </div>
                       <span>부터</span>
-                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-md px-2 py-1">
+                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-lg px-2.5 py-1.5">
                         <select
                           value={formData.work_end_hour}
                           onChange={(e) => onFormDataChange({ work_end_hour: e.target.value })}
@@ -667,18 +657,16 @@ export function CandidateScheduleForm({
                         </select>
                       </div>
                       <span>까지</span>
-                      <span className="ml-2 text-xs text-neutral-400">KST 기준</span>
                     </div>
                   </div>
 
                   {/* 제외 시간 */}
-                  <div className="py-6 grid grid-cols-[200px_1fr] gap-8 items-center">
+                  <div className="py-5 md:py-6 px-5 md:px-6 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
                       <label className="text-sm font-medium text-neutral-900">제외 시간</label>
-                      <p className="text-xs text-neutral-500 mt-1.5">점심시간 등 스케줄링 제외</p>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-neutral-600">
-                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-md px-2 py-1">
+                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-lg px-2.5 py-1.5">
                         <select
                           value={formData.exclude_start_hour}
                           onChange={(e) => onFormDataChange({ exclude_start_hour: e.target.value })}
@@ -704,7 +692,7 @@ export function CandidateScheduleForm({
                         </select>
                       </div>
                       <span>부터</span>
-                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-md px-2 py-1">
+                      <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-lg px-2.5 py-1.5">
                         <select
                           value={formData.exclude_end_hour}
                           onChange={(e) => onFormDataChange({ exclude_end_hour: e.target.value })}
@@ -738,24 +726,24 @@ export function CandidateScheduleForm({
 
             {/* 경고 메시지 */}
             {scheduleWarning && !isManualConfirmedMode && (
-              <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <p className="text-sm text-amber-800">{scheduleWarning}</p>
               </div>
             )}
             {manualConfirmedWarning && isManualConfirmedMode && (
-              <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <p className="text-sm text-amber-800">{manualConfirmedWarning}</p>
               </div>
             )}
           </div>
 
           {/* 하단 고정 액션 바 */}
-          <div className="absolute bottom-0 left-0 right-0 p-5 bg-white/90 backdrop-blur-md border-t border-neutral-100 flex justify-end gap-3 z-10">
+          <div className="sticky bottom-0 left-0 right-0 p-4 md:p-5 bg-white/90 backdrop-blur-md border-t border-neutral-100 flex justify-end gap-3 z-10">
             <button
               type="button"
               onClick={onBack}
               disabled={isLoadingSchedule || isLoadingManualConfirmed}
-              className="px-5 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors disabled:opacity-50"
+              className="px-5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-100 rounded-xl transition-colors disabled:opacity-50"
             >
               취소
             </button>
@@ -766,7 +754,7 @@ export function CandidateScheduleForm({
                   ? !isManualConfirmedValid || isLoadingManualConfirmed || !onManualConfirmedSubmit
                   : !isValid || isLoadingSchedule
               }
-              className="px-5 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 shadow-[0_4px_14px_0_rgba(0,0,0,0.2)] transition-all active:scale-[0.98] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 text-sm font-semibold bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 shadow-[0_4px_14px_0_rgba(0,0,0,0.2)] transition-all active:scale-[0.98] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isManualConfirmedMode ? (
                 isLoadingManualConfirmed ? (

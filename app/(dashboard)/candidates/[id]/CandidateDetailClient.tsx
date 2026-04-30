@@ -1178,6 +1178,10 @@ export function CandidateDetailClient({
           onToggleInterviewer={toggleInterviewer}
           onAddExternalInterviewer={addExternalInterviewerEmail}
           onRemoveExternalInterviewer={removeExternalInterviewerEmail}
+          currentActiveSchedule={currentActiveSchedule}
+          onDeleteSchedule={handleDeleteScheduleFromTimeline}
+          onCheckSchedule={handleCheckScheduleFromTimeline}
+          scheduleActionLoadingId={scheduleActionLoadingId}
           onBack={() => {
             setDetailInitialTab('profile');
             if (typeof window !== 'undefined') {
