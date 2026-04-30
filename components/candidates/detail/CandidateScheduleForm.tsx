@@ -11,6 +11,13 @@ import {
   X,
   Plus,
   Loader2,
+  Users,
+  Timer,
+  Search,
+  ListChecks,
+  Clock,
+  Ban,
+  Megaphone,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
@@ -22,6 +29,23 @@ import { cn } from '@/components/ui/utils';
 import { CandidateSidebar } from './CandidateSidebar';
 import type { Candidate } from '@/types/candidates';
 import type { CurrentActiveScheduleLike } from '@/components/candidates/detail/SchedulingStatusWidget';
+
+function FieldTitle({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2.5">
+      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-b from-white to-neutral-50 border border-neutral-200/70 shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-blue-600">
+        <Icon className="w-3.5 h-3.5" />
+      </span>
+      <span className="text-[13px] font-semibold text-neutral-900 tracking-tight">{children}</span>
+    </div>
+  );
+}
 
 const DURATION_OPTIONS = [
   { value: '30', label: '30분' },
@@ -295,7 +319,9 @@ export function CandidateScheduleForm({
               {/* 면접 단계 */}
               <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                 <div>
-                  <label className="text-sm font-medium text-neutral-900">면접 단계</label>
+                  <label className="block">
+                    <FieldTitle icon={ListChecks}>면접 단계</FieldTitle>
+                  </label>
                 </div>
                 <div className="relative max-w-sm">
                   <select
@@ -316,7 +342,9 @@ export function CandidateScheduleForm({
               {/* 참석자 (면접관) */}
               <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-start">
                 <div>
-                  <label className="text-sm font-medium text-neutral-900">참석자 (면접관)</label>
+                  <label className="block">
+                    <FieldTitle icon={Users}>참석자 (면접관)</FieldTitle>
+                  </label>
                 </div>
                 <div>
                   {isLoadingUsers ? (
@@ -487,7 +515,9 @@ export function CandidateScheduleForm({
               {/* 소요 시간 */}
               <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                 <div>
-                  <label className="text-sm font-medium text-neutral-900">소요 시간</label>
+                  <label className="block">
+                    <FieldTitle icon={Timer}>소요 시간</FieldTitle>
+                  </label>
                 </div>
                 <div className="flex p-1 bg-neutral-100/80 rounded-xl max-w-[320px] border border-neutral-200/60">
                   {DURATION_OPTIONS.map((option) => (
@@ -512,7 +542,9 @@ export function CandidateScheduleForm({
                 <>
                   <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
-                      <label className="text-sm font-medium text-neutral-900">면접 일시</label>
+                      <label className="block">
+                        <FieldTitle icon={Calendar}>면접 일시</FieldTitle>
+                      </label>
                     </div>
                     <input
                       type="datetime-local"
@@ -523,7 +555,9 @@ export function CandidateScheduleForm({
                   </div>
                   <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-start">
                     <div>
-                      <label className="text-sm font-medium text-neutral-900">안내 발송</label>
+                      <label className="block">
+                        <FieldTitle icon={Megaphone}>안내 발송</FieldTitle>
+                      </label>
                     </div>
                     <label className="flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer max-w-md">
                       <input
@@ -543,7 +577,9 @@ export function CandidateScheduleForm({
                   {/* 일정 검색 기간 */}
                   <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
-                      <label className="text-sm font-medium text-neutral-900">일정 검색 기간</label>
+                      <label className="block">
+                        <FieldTitle icon={Search}>일정 검색 기간</FieldTitle>
+                      </label>
                     </div>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -578,7 +614,9 @@ export function CandidateScheduleForm({
                   {/* 제안할 옵션 개수 */}
                   <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
-                      <label className="text-sm font-medium text-neutral-900">제안할 옵션 개수</label>
+                      <label className="block">
+                        <FieldTitle icon={ListChecks}>제안할 옵션 개수</FieldTitle>
+                      </label>
                     </div>
                     <div className="flex p-1 bg-neutral-100/80 rounded-xl max-w-[320px] border border-neutral-200/60">
                       {NUM_OPTIONS_LIST.map((num) => (
@@ -602,7 +640,9 @@ export function CandidateScheduleForm({
                   {/* 가능 시간 */}
                   <div className="py-5 md:py-6 px-5 md:px-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
-                      <label className="text-sm font-medium text-neutral-900">가능 시간</label>
+                      <label className="block">
+                        <FieldTitle icon={Clock}>가능 시간</FieldTitle>
+                      </label>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-neutral-600">
                       <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-lg px-2.5 py-1.5">
@@ -663,7 +703,9 @@ export function CandidateScheduleForm({
                   {/* 제외 시간 */}
                   <div className="py-5 md:py-6 px-5 md:px-6 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 md:gap-8 items-center">
                     <div>
-                      <label className="text-sm font-medium text-neutral-900">제외 시간</label>
+                      <label className="block">
+                        <FieldTitle icon={Ban}>제외 시간</FieldTitle>
+                      </label>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-neutral-600">
                       <div className="flex items-center gap-1 bg-[#FCFCFC] border border-neutral-200 rounded-lg px-2.5 py-1.5">
