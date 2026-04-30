@@ -291,13 +291,14 @@ export function CandidateTimelineView({
       try {
         const res = await getTimelineReactionUsersForTimelineEvent(candidateId, eventId);
         if (res.error) return;
-        if (!res.data) return;
+        const data = res.data;
+        if (!data) return;
         setReactionUsers((prev) => {
           if (prev.byTimelineEventId[eventId]) return prev;
           return {
             byTimelineEventId: {
               ...prev.byTimelineEventId,
-              [eventId]: res.data.byEmoji ?? {},
+              [eventId]: data.byEmoji ?? {},
             },
           };
         });
