@@ -78,6 +78,30 @@
 4. (디버그) `CALENDAR_AVAILABILITY_DEBUG=true`를 설정 후 자동화를 실행하면,
    - 룸/면접관에서 조회된 busy 개수와 샘플이 서버 로그에 출력됩니다.
 
+## AI 일정 자동화: `403 You need to have writer access to this calendar`
+
+### 증상
+- 면접 일정 자동화 실행 시 토스트/서버 로그에 `You need to have writer access to this calendar.`(403)가 발생합니다.
+- Google Calendar UI에서 공유 권한을 “변경 및 공유 관리”로 줬는데도 잠깐 동안 동일 오류가 반복될 수 있습니다.
+
+### 원인(핵심)
+- OAuth로 “캘린더 API 쓰기 스코프”를 받았다는 것과 별개로, **특정 공유(그룹) 캘린더(`INTERVIEW_ROOM_CALENDAR_ID`)에 대한 ACL 쓰기 권한**이 없으면 Google이 `events.insert`에서 403을 반환합니다.
+- 공유 권한 변경 직후에는 Google 쪽 **전파 지연**으로 잠깐 동안 writer가 아닌 것처럼 보일 수 있습니다.
+
+### 빠른 확인(권장)
+1. `/dashboard/connect-calendar`에서 **“테스트 일정 생성(인터뷰룸 / INTERVIEW_ROOM_CALENDAR_ID)”** 버튼으로 쓰기 테스트를 수행합니다.
+   - 성공하면: 자동화의 `events.insert`도 동일하게 성공할 가능성이 큽니다.
+   - 실패하면: 공유 대상/권한 레벨/캘린더 주소(Calendar address) 불일치부터 다시 확인합니다.
+2. 서버 로그에서 아래를 함께 확인합니다.
+   - `[ScheduleActions] Using INTERVIEW_ROOM_CALENDAR_ID = ...` (앱이 실제로 참조하는 캘린더 ID)
+   - `[Google Calendar][면접 일정 자동화] 토큰 계정 진단`의 `organizerEmail` / `googleEmail` (토큰 소유자)
+
+### 해결 체크리스트
+1. `INTERVIEW_ROOM_CALENDAR_ID`가 Google 캘린더의 **Calendar address**와 정확히 일치하는지 확인합니다.
+2. 자동화를 실행하는 구글 계정(로그의 `googleEmail`)이 해당 캘린더에 **“이벤트 변경(쓰기)” 이상** 권한으로 공유되어 있는지 확인합니다.
+3. 권한을 방금 변경했다면 **5~30분 후 재시도**하거나 `/dashboard/connect-calendar`에서 **재연동** 후 다시 시도합니다.
+4. 그래도 지속되면 Google Workspace **관리자 정책(공유/캘린더 제한)** 가능성을 검토합니다.
+
 ## 외부(비가입) 면접관이 바쁜데도 겹치는 옵션이 생성됨 / 또는 자동화가 중단됨
 
 ### 증상

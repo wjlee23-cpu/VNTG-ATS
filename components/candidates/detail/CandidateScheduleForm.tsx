@@ -254,7 +254,7 @@ export function CandidateScheduleForm({
                     : 'text-neutral-500 hover:text-neutral-700',
                 )}
               >
-                AI 일정 제안
+                자동화
               </button>
               <button
                 type="button"
@@ -266,7 +266,7 @@ export function CandidateScheduleForm({
                     : 'text-neutral-500 hover:text-neutral-700',
                 )}
               >
-                확정 일정 직접 등록
+                수동 등록
               </button>
             </div>
             <p className="max-w-3xl mx-auto text-xs text-neutral-500 mt-2">

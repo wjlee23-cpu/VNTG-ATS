@@ -43,6 +43,19 @@ function isLikelyDuplicateAuthUserError(err: unknown): boolean {
   );
 }
 
+/** Google userinfo 기준으로 users 테이블에 넣을 이름·아바타(비어 있으면 생략) */
+function googleProfileFieldsFromUserInfo(userInfo: {
+  name?: string | null;
+  picture?: string | null;
+}): { name?: string; avatar_url?: string } {
+  const name = (userInfo.name ?? '').trim();
+  const picture = (userInfo.picture ?? '').trim();
+  const out: { name?: string; avatar_url?: string } = {};
+  if (name) out.name = name;
+  if (picture) out.avatar_url = picture;
+  return out;
+}
+
 function buildOAuthErrorLoginUrl(appBase: string, errorMessage: string, err: unknown): URL {
   const url = new URL(
     `/login?error=unknown_error&message=${encodeURIComponent(errorMessage)}`,
@@ -212,6 +225,7 @@ export async function GET(request: Request) {
             .update({
               calendar_provider: 'google',
               calendar_access_token: tokens.access_token,
+              ...googleProfileFieldsFromUserInfo(userInfo),
             })
             .eq('id', authUserId);
         }
@@ -264,6 +278,7 @@ export async function GET(request: Request) {
             calendar_provider: 'google',
             calendar_access_token: tokens.access_token,
             calendar_refresh_token: tokens.refresh_token,
+            ...googleProfileFieldsFromUserInfo(userInfo),
           });
 
         if (createUserError) {
@@ -276,9 +291,12 @@ export async function GET(request: Request) {
           calendar_provider: string;
           calendar_access_token: string;
           calendar_refresh_token?: string;
+          name?: string;
+          avatar_url?: string;
         } = {
           calendar_provider: 'google',
           calendar_access_token: tokens.access_token,
+          ...googleProfileFieldsFromUserInfo(userInfo),
         };
 
         // refresh_token 결정: 새 토큰 우선 → 기존 토큰 유지
@@ -396,9 +414,12 @@ export async function GET(request: Request) {
         calendar_provider: string;
         calendar_access_token: string;
         calendar_refresh_token?: string;
+        name?: string;
+        avatar_url?: string;
       } = {
         calendar_provider: 'google',
         calendar_access_token: tokens.access_token,
+        ...googleProfileFieldsFromUserInfo(userInfo),
       };
 
       // refresh_token 결정: 새 토큰 우선 → 기존 토큰 유지

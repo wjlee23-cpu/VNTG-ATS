@@ -1,6 +1,11 @@
-import { google } from 'googleapis'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// NOTE: Google API 응답/에러 객체는 런타임 형태가 자주 변하고(googleapis 버전/필드),
+// 운영 로그/방어적 파싱을 위해 `any` 기반 접근이 필요한 구간이 있습니다.
+// 신규 코드는 가능한 한 `unknown` + 좁은 타입으로 작성하고, 레거시 구간은 점진적으로 정리합니다.
+import { google, type calendar_v3 } from 'googleapis'
 import { createServiceClient } from '@/lib/supabase/server'
 import { fromZonedTime } from 'date-fns-tz'
+import { getInterviewRoomCalendarId } from '@/lib/calendar/interview-room-calendar'
 
 export interface CalendarEvent {
   id: string
@@ -45,6 +50,25 @@ function formatGoogleCalendarApiError(
 
   // 권한/정책 문제(403)
   if (status === 403) {
+    const isWriterAccessIssue =
+      apiReason === 'requiredAccessLevel' ||
+      (apiMessage?.toLowerCase().includes('writer access') ?? false)
+
+    // 인터뷰룸(공유) 캘린더에 이벤트를 만들 때 자주 발생합니다.
+    // - OAuth 스코프(calendar)는 충분해도, "해당 캘린더에 대한 ACL writer 권한"이 없으면 Google이 403을 반환합니다.
+    // - UI에서 공유 권한을 바꾼 직후에는 전파 지연이 있어 잠깐 동안 동일 403이 반복될 수 있습니다.
+    if (isWriterAccessIssue) {
+      const roomCalendarId = getInterviewRoomCalendarId()
+      const base =
+        '인터뷰룸(공유) 캘린더에 일정을 생성할 권한이 없습니다. ' +
+        '연동된 구글 계정이 해당 캘린더에 “이벤트 변경(쓰기)” 이상 권한으로 공유되어 있는지 확인해주세요.'
+      const detail = apiReason || apiMessage ? ` (상세: ${[apiReason, apiMessage].filter(Boolean).join(' / ')})` : ''
+      const hint =
+        `대상 캘린더 ID: ${roomCalendarId}. ` +
+        '권한을 방금 변경했다면 5~30분 정도 후 다시 시도하거나, `/dashboard/connect-calendar`에서 재연동 후 재시도해주세요.'
+      return `${base}${detail} ${hint}`
+    }
+
     const base =
       '구글 캘린더 권한이 부족하거나(쓰기 권한 미승인), Google Workspace 정책으로 차단되었습니다.'
     const hint = '구글 캘린더를 재연동 후 모든 권한을 허용하고 다시 시도해주세요. (/dashboard/connect-calendar)'
@@ -362,6 +386,29 @@ async function persistAccessTokenToDB(userId: string, newAccessToken: string): P
   }
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isGoogleCalendarWriterAccessDenied(error: unknown): boolean {
+  const err = error as {
+    response?: { status?: number; data?: { error?: { message?: string; errors?: Array<{ reason?: string }> } } }
+    code?: number | string
+    message?: string
+  }
+
+  const status: number | undefined = err?.response?.status ?? (typeof err?.code === 'number' ? err.code : undefined)
+  if (status !== 403) return false
+
+  const apiMessage: string | undefined = err?.response?.data?.error?.message ?? err?.message
+  const apiReason: string | undefined = err?.response?.data?.error?.errors?.[0]?.reason
+
+  return (
+    apiReason === 'requiredAccessLevel' ||
+    (apiMessage?.toLowerCase().includes('writer access') ?? false)
+  )
+}
+
 /**
  * 구글 캘린더에 이벤트 생성 (block 일정용)
  */
@@ -382,6 +429,9 @@ export async function createCalendarEvent(
   try {
     const token = await refreshAccessTokenIfNeeded(accessToken, refreshToken)
     const calendar = await getCalendarClient(token)
+    // googleapis 타입 정의가 런타임 반환(GaxiosResponse)과 어긋나는 케이스가 있어,
+    // insert 응답은 최소한 `data`만 안전하게 사용합니다.
+    type CalendarEventsInsertLike = { data: calendar_v3.Schema$Event }
 
     const event = {
       summary: eventData.summary,
@@ -395,11 +445,54 @@ export async function createCalendarEvent(
       guestsCanInviteOthers: false,
     }
 
-    const response = await calendar.events.insert({
-      calendarId,
-      requestBody: event,
-      sendUpdates: 'all', // 참석자들에게 초대 전송
-    })
+    // 공유(그룹) 캘린더는 ACL 변경 직후 전파 지연으로 403(writer access)이 잠깐 발생할 수 있어,
+    // 해당 케이스에 한해 짧게 재시도합니다. (primary 캘린더에는 적용하지 않음)
+    const retryDelaysMs =
+      calendarId !== 'primary' ? [0, 750, 2000, 5000] : [0]
+
+    let response: CalendarEventsInsertLike | null = null
+    let lastInsertError: unknown = null
+
+    for (let attemptIndex = 0; attemptIndex < retryDelaysMs.length; attemptIndex++) {
+      const delayMs = retryDelaysMs[attemptIndex] ?? 0
+      if (delayMs > 0) {
+        await sleepMs(delayMs)
+      }
+
+      try {
+        response = (await calendar.events.insert({
+          calendarId,
+          requestBody: event,
+          sendUpdates: 'all', // 참석자들에게 초대 전송
+        })) as CalendarEventsInsertLike
+        lastInsertError = null
+        break
+      } catch (insertError: unknown) {
+        lastInsertError = insertError
+
+        const canRetry =
+          calendarId !== 'primary' &&
+          isGoogleCalendarWriterAccessDenied(insertError) &&
+          attemptIndex < retryDelaysMs.length - 1
+
+        if (canRetry) {
+          console.warn('[Google Calendar] 이벤트 생성 403(writer access) → 재시도', {
+            calendarId,
+            attempt: attemptIndex + 1,
+            maxAttempts: retryDelaysMs.length,
+            nextDelayMs: retryDelaysMs[attemptIndex + 1] ?? null,
+          })
+          continue
+        }
+
+        throw insertError
+      }
+    }
+
+    if (!response) {
+      // 정상 흐름에서는 위 루프에서 response가 채워지거나 throw 됩니다.
+      throw lastInsertError ?? new Error('이벤트 생성에 실패했습니다.')
+    }
 
     if (!response.data.id) {
       throw new Error('이벤트 생성에 실패했습니다.')

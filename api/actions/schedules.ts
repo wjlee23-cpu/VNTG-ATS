@@ -33,13 +33,14 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale/ko';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { extendDateRangeByWeek, shouldExtendDateRange, getDateRangeForRetry } from '@/api/utils/schedule-date-range';
-import { getStageNameByStageId } from '@/constants/stages';
+import { getInterviewStageLabelKo } from '@/constants/stages';
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { upsertScheduleAutomationTimeline } from '@/api/actions/timeline';
 import { InterviewerScheduleRequestEmail } from '@/emails/InterviewerScheduleRequestEmail';
 import { CandidateScheduleSelectionRequestEmail } from '@/emails/CandidateScheduleSelectionRequestEmail';
 import { CandidateScheduleConfirmedEmail } from '@/emails/CandidateScheduleConfirmedEmail';
+import { getInterviewRoomCalendarId as getRoomCalendarId } from '@/lib/calendar/interview-room-calendar';
 
 type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
 type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
@@ -61,19 +62,6 @@ const KST_TIMEZONE = 'Asia/Seoul';
 function isCalendarAvailabilityDebugEnabled(): boolean {
   const raw = process.env.CALENDAR_AVAILABILITY_DEBUG;
   return raw === '1' || raw === 'true';
-}
-
-// 인터뷰룸 전용 캘린더 ID를 "호출 시점"에 읽어옵니다.
-// Cloud Run 등 배포 환경에서 리비전/런타임 재시작 후 값을 안정적으로 반영하기 위함.
-function getRoomCalendarId(): string {
-  const DEFAULT_ROOM_CALENDAR_ID =
-    'c_7a0bedbaf87e6bc93e3b6944b4f5f61d29b01877c9644374a37c840a75c488d8@group.calendar.google.com';
-  const envValue = process.env.INTERVIEW_ROOM_CALENDAR_ID;
-  const value =
-    envValue && envValue.trim().length > 0 ? envValue.trim() : DEFAULT_ROOM_CALENDAR_ID;
-  // 운영 로그로 어떤 값이 사용되는지 남깁니다. (민감정보 아님)
-  console.log('[ScheduleActions] Using INTERVIEW_ROOM_CALENDAR_ID =', value);
-  return value;
 }
 
 type CalendarCapableUser = {
@@ -1845,13 +1833,15 @@ export async function scheduleInterviewAutomated(formData: FormData) {
         ? `\n\n⚠️ 주의: 이 일정은 일부 면접관(${missingInterviewerEmails.join(', ')})이 참석할 수 없습니다.`
         : '';
 
+      const stageLabelKo = getInterviewStageLabelKo(stageId);
+
       // 구글 캘린더에 block 일정 생성
       const createdEvent = await createCalendarEvent(
         organizerToken,
         organizer.calendar_refresh_token!,
         {
-          summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)${isPartialConflict ? ' [일부 면접관 제외]' : ''}`,
-          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageId}${conflictNote}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+          summary: `[Block][${stageLabelKo}] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)${isPartialConflict ? ' [일부 면접관 제외]' : ''}`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKo}${conflictNote}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
           start: {
             dateTime: slot.scheduledAt.toISOString(),
             timeZone: 'Asia/Seoul',
@@ -2419,13 +2409,15 @@ async function regenerateScheduleOptions(
     const endTime = new Date(slot.scheduledAt);
     endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
 
+    const stageLabelKo = getInterviewStageLabelKo(schedule.stage_id);
+
     // 구글 캘린더에 block 일정 생성
     const createdEvent = await createCalendarEvent(
       organizerToken,
       organizer.calendar_refresh_token,
       {
-        summary: `[Block] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
-        description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+        summary: `[Block][${stageLabelKo}] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
+        description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKo}\n\n이 일정은 아직 확정되지 않았습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
         start: {
           dateTime: slot.scheduledAt.toISOString(),
           timeZone: 'Asia/Seoul',
@@ -3725,13 +3717,15 @@ export async function confirmCandidateSchedule(
       const endTime = new Date(selectedOption.scheduled_at);
       endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
 
+      const stageLabelKo = getInterviewStageLabelKo(schedule.stage_id);
+
       await updateCalendarEvent(
         organizer.calendar_access_token,
         organizer.calendar_refresh_token,
         selectedOption.google_event_id,
         {
-          summary: `[확정] ${positionName} - ${candidate.name} 면접`,
-          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n면접 일정이 확정되었습니다.`,
+          summary: `[확정][${stageLabelKo}] ${positionName} - ${candidate.name} 면접`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKo}\n\n면접 일정이 확정되었습니다.`,
           start: {
             dateTime: selectedOption.scheduled_at,
             timeZone: 'Asia/Seoul',
@@ -3800,7 +3794,7 @@ export async function confirmCandidateSchedule(
     const confirmedDateKst = toZonedTime(new Date(selectedOption.scheduled_at), KST_TIMEZONE);
     const confirmedAtLabel = format(confirmedDateKst, 'yyyy. MM. dd (EEE) a h:mm', { locale: ko });
 
-    const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+    const stageName = getInterviewStageLabelKo(schedule.stage_id);
     const scheduleTitle = `${positionName} ${stageName}`;
 
     // 확정 완료 메일에서 “면접 상세 안내” 버튼은 후보자 일정 선택 페이지로 연결합니다.
@@ -3992,7 +3986,7 @@ export async function sendReminderEmailsToInterviewers() {
         // 응답하지 않은 면접관들에게 리마인드 메일 발송
         if (interviewersNeedingReminder.size > 0) {
           // stage ID를 프로세스 이름으로 변환
-          const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+          const stageName = getInterviewStageLabelKo(schedule.stage_id);
           
           // 일정 옵션 목록을 HTML로 포맷팅
           const optionsListHtml = options.map((opt, index) => {
@@ -4455,13 +4449,15 @@ export async function rescheduleInterview(scheduleId: string, formData: FormData
         organizer.id
       );
 
+      const stageLabelKo = getInterviewStageLabelKo(schedule.stage_id);
+
       // 구글 캘린더에 block 일정 생성
       const createdEvent = await createCalendarEvent(
         organizerToken,
         organizer.calendar_refresh_token,
         {
-          summary: `[재조율] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
-          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n재조율 사유: ${reschedulingReason}\n\n이 일정은 재조율로 인해 새로 생성되었습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+          summary: `[재조율][${stageLabelKo}] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKo}\n재조율 사유: ${reschedulingReason}\n\n이 일정은 재조율로 인해 새로 생성되었습니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
           start: {
             dateTime: slot.scheduledAt.toISOString(),
             timeZone: 'Asia/Seoul',
@@ -4784,13 +4780,14 @@ export async function addManualScheduleOption(scheduleId: string, formData: Form
     );
 
     const externalInterviewerEmails = schedule.external_interviewer_emails || [];
+    const stageLabelKoManualAdd = getInterviewStageLabelKo(schedule.stage_id);
     // 구글 캘린더에 block 일정 생성
     const createdEvent = await createCalendarEvent(
       organizerToken,
       organizer.calendar_refresh_token!,
       {
-        summary: `[수동 추가] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
-        description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n이 일정은 관리자가 수동으로 추가한 옵션입니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
+        summary: `[수동 추가][${stageLabelKoManualAdd}] ${positionName} - ${candidate.name} 면접 일정 (확정 대기)`,
+        description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKoManualAdd}\n\n이 일정은 관리자가 수동으로 추가한 옵션입니다. 모든 면접관이 수락하면 후보자에게 전송됩니다.`,
         start: {
           dateTime: scheduledAt.toISOString(),
           timeZone: 'Asia/Seoul',
@@ -4976,13 +4973,15 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
       const endTime = new Date(selectedOption.scheduled_at);
       endTime.setMinutes(endTime.getMinutes() + schedule.duration_minutes);
 
+      const stageLabelKoForce = getInterviewStageLabelKo(schedule.stage_id);
+
       await updateCalendarEvent(
         organizer.calendar_access_token,
         organizer.calendar_refresh_token,
         selectedOption.google_event_id,
         {
-          summary: `[강제 확정] ${positionName} - ${candidate.name} 면접`,
-          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n면접 일정이 관리자에 의해 강제 확정되었습니다.`,
+          summary: `[강제 확정][${stageLabelKoForce}] ${positionName} - ${candidate.name} 면접`,
+          description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKoForce}\n\n면접 일정이 관리자에 의해 강제 확정되었습니다.`,
           start: {
             dateTime: selectedOption.scheduled_at,
             timeZone: 'Asia/Seoul',
@@ -5058,7 +5057,7 @@ export async function forceConfirmSchedule(scheduleId: string, optionId?: string
     const confirmedDateKst = toZonedTime(new Date(selectedOption.scheduled_at), KST_TIMEZONE);
     const confirmedAtLabel = format(confirmedDateKst, 'yyyy. MM. dd (EEE) a h:mm', { locale: ko });
 
-    const stageName = getStageNameByStageId(schedule.stage_id) || schedule.stage_id;
+    const stageName = getInterviewStageLabelKo(schedule.stage_id);
     const scheduleTitle = `${positionName} ${stageName}`;
 
     // 강제 확정 메일 버튼은 “후보자 일정 선택 페이지”로 연결합니다.
@@ -5254,14 +5253,16 @@ export async function updateScheduleWithManualOverride(scheduleId: string, formD
         const newEndTime = new Date(newScheduledAt);
         newEndTime.setMinutes(newEndTime.getMinutes() + newDurationMinutes);
 
+        const stageLabelKoEdit = getInterviewStageLabelKo(schedule.stage_id);
+
         try {
           await updateCalendarEvent(
             organizer.calendar_access_token,
             organizer.calendar_refresh_token,
             schedule.google_event_id,
             {
-              summary: `[수동 수정] ${positionName} - ${candidate.name} 면접`,
-              description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${schedule.stage_id}\n\n이 일정은 관리자에 의해 수동으로 수정되었습니다.`,
+              summary: `[수동 수정][${stageLabelKoEdit}] ${positionName} - ${candidate.name} 면접`,
+              description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKoEdit}\n\n이 일정은 관리자에 의해 수동으로 수정되었습니다.`,
               start: {
                 dateTime: newScheduledAt.toISOString(),
                 timeZone: 'Asia/Seoul',
@@ -5547,6 +5548,8 @@ export async function createManualConfirmedSchedule(formData: FormData) {
       const endTime = new Date(scheduledAt);
       endTime.setMinutes(endTime.getMinutes() + durationMinutes);
 
+      const stageLabelKoConfirmed = getInterviewStageLabelKo(stageId);
+
       try {
         const organizerToken = await refreshAccessTokenIfNeeded(
           actingUser.calendar_access_token,
@@ -5557,8 +5560,8 @@ export async function createManualConfirmedSchedule(formData: FormData) {
           organizerToken,
           actingUser.calendar_refresh_token,
           {
-            summary: `[확정] ${positionName} - ${candidate.name} 면접`,
-            description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageId}\n\n채용담당자가 확정 일정을 직접 등록했습니다.`,
+            summary: `[확정][${stageLabelKoConfirmed}] ${positionName} - ${candidate.name} 면접`,
+            description: `포지션: ${positionName}\n후보자: ${candidate.name}\n면접 단계: ${stageLabelKoConfirmed}\n\n채용담당자가 확정 일정을 직접 등록했습니다.`,
             start: {
               dateTime: scheduledAt.toISOString(),
               timeZone: 'Asia/Seoul',
@@ -5598,7 +5601,7 @@ export async function createManualConfirmedSchedule(formData: FormData) {
       );
       const confirmedDateKst = toZonedTime(scheduledAt, KST_TIMEZONE);
       const confirmedAtLabel = format(confirmedDateKst, 'yyyy. MM. dd (EEE) a h:mm', { locale: ko });
-      const stageName = getStageNameByStageId(stageId) || stageId;
+      const stageName = getInterviewStageLabelKo(stageId);
       const scheduleTitle = `${positionName} ${stageName}`;
       const detailsLink = generateScheduleSelectionUrl(candidate.id, candidate.token);
 

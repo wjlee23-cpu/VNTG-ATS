@@ -5,6 +5,7 @@ import { withErrorHandling } from '@/api/utils/errors';
 import { getCurrentUser } from '@/api/utils/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createCalendarEvent, refreshAccessTokenIfNeeded } from '@/lib/calendar/google';
+import { getInterviewRoomCalendarId } from '@/lib/calendar/interview-room-calendar';
 
 type GoogleAccountDiagnostics = {
   ok: boolean;
@@ -146,6 +147,68 @@ export async function createGoogleCalendarTestEvent() {
       attendees: [],
       transparency: 'opaque',
     });
+
+    return { ok: true, eventId: created.id, htmlLink: created.htmlLink };
+  });
+}
+
+/**
+ * 인터뷰룸(공유) 캘린더에 “정말로 쓰기 권한이 있는지” 확인하는 테스트 이벤트를 생성합니다.
+ * - AI 일정 자동화는 block 일정을 `INTERVIEW_ROOM_CALENDAR_ID`에 직접 생성하므로, 여기서 막히면 자동화도 동일하게 실패합니다.
+ * - 생성된 이벤트의 htmlLink를 반환하여 사용자가 즉시 확인할 수 있습니다.
+ */
+export async function createGoogleCalendarInterviewRoomTestEvent() {
+  return withErrorHandling(async (): Promise<{ ok: true; eventId: string; htmlLink?: string }> => {
+    const user = await getCurrentUser();
+    const supabase = await createClient();
+
+    const { data: userRow, error: userError } = await supabase
+      .from('users')
+      .select('id, email, calendar_provider, calendar_access_token, calendar_refresh_token')
+      .eq('id', user.userId)
+      .single();
+
+    if (userError || !userRow) {
+      throw new Error('사용자 정보를 찾을 수 없습니다.');
+    }
+
+    if (
+      userRow.calendar_provider !== 'google' ||
+      !userRow.calendar_access_token ||
+      !userRow.calendar_refresh_token
+    ) {
+      throw new Error('테스트 이벤트를 만들려면 먼저 구글 캘린더를 연동해주세요. (/dashboard/connect-calendar)');
+    }
+
+    const freshAccessToken = await refreshAccessTokenIfNeeded(
+      userRow.calendar_access_token,
+      userRow.calendar_refresh_token,
+      userRow.id,
+    );
+    const googleEmail = await fetchGoogleEmailByAccessToken(freshAccessToken);
+    const roomCalendarId = getInterviewRoomCalendarId();
+
+    const now = new Date();
+    const start = new Date(now.getTime() + 5 * 60 * 1000);
+    const end = new Date(now.getTime() + 10 * 60 * 1000);
+
+    const created = await createCalendarEvent(
+      freshAccessToken,
+      userRow.calendar_refresh_token,
+      {
+        summary: '[TEST] VNTG ATS 인터뷰룸 캘린더 쓰기 테스트',
+        description:
+          `이 이벤트는 VNTG ATS가 인터뷰룸(공유) 캘린더에 쓰기 권한이 있는지 확인하기 위해 생성한 테스트 일정입니다.\n` +
+          `연동된 구글 계정(토큰 소유자): ${googleEmail}\n` +
+          `대상 캘린더 ID: ${roomCalendarId}\n\n` +
+          `문제가 있으면 인터뷰룸 캘린더 공유 권한(이벤트 변경 이상)을 확인하거나, /dashboard/connect-calendar 에서 재연동해주세요.`,
+        start: { dateTime: start.toISOString(), timeZone: 'Asia/Seoul' },
+        end: { dateTime: end.toISOString(), timeZone: 'Asia/Seoul' },
+        attendees: [],
+        transparency: 'opaque',
+      },
+      roomCalendarId,
+    );
 
     return { ok: true, eventId: created.id, htmlLink: created.htmlLink };
   });

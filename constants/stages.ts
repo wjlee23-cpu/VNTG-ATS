@@ -70,3 +70,24 @@ export function getStageNameByStageId(stageId: string | null): string | null {
   }
   return STAGE_ID_TO_NAME_MAP[stageId] || null;
 }
+
+/**
+ * 면접 일정·구글 캘린더 등에 쓰는 한글 단계 라벨 (stage-1 ~ stage-8)
+ * — STAGE_ID_TO_NAME_MAP(영문)과 분리: 평가·필터 등 기존 로직과 충돌하지 않도록 함
+ */
+export const INTERVIEW_STAGE_LABEL_KO: Record<string, string> = {
+  'stage-1': '스크리닝',
+  'stage-2': '서류 전형',
+  'stage-3': '역량 검사',
+  'stage-4': '기술 면접',
+  'stage-5': '1차 면접',
+  'stage-6': '레퍼런스',
+  'stage-7': '2차 면접',
+  'stage-8': '오퍼',
+};
+
+/** 캘린더/메일용 한글 단계명. 매핑 없으면 stageId 그대로 */
+export function getInterviewStageLabelKo(stageId: string | null | undefined): string {
+  if (!stageId) return '스크리닝';
+  return INTERVIEW_STAGE_LABEL_KO[stageId] ?? stageId;
+}

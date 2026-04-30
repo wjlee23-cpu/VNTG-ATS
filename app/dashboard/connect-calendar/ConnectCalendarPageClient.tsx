@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Calendar, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { diagnoseConnectedGoogleAccount, createGoogleCalendarTestEvent } from '@/api/actions/google-calendar';
+import {
+  diagnoseConnectedGoogleAccount,
+  createGoogleCalendarInterviewRoomTestEvent,
+  createGoogleCalendarTestEvent,
+} from '@/api/actions/google-calendar';
 import { toast } from 'sonner';
 
 /**
@@ -24,7 +28,8 @@ export function ConnectCalendarPageClient() {
   const [connectedGoogleEmail, setConnectedGoogleEmail] = useState<string | null>(null);
   const [isMismatch, setIsMismatch] = useState(false);
   const [diagnosticMessage, setDiagnosticMessage] = useState<string | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
+  const [isTestingPrimary, setIsTestingPrimary] = useState(false);
+  const [isTestingRoom, setIsTestingRoom] = useState(false);
 
   const supabase = createClient();
 
@@ -68,7 +73,7 @@ export function ConnectCalendarPageClient() {
           setIsMismatch(!!result.data.isMismatch);
           setDiagnosticMessage(result.data.message ?? null);
         }
-      } catch (e) {
+      } catch {
         // 진단 실패는 치명적이지 않으므로 조용히 처리 (연동 UI 자체는 계속 사용 가능)
         setDiagnosticMessage('연동된 구글 계정 정보를 확인할 수 없습니다. 필요 시 재연동해주세요.');
       }
@@ -93,8 +98,8 @@ export function ConnectCalendarPageClient() {
   };
 
   // ✅ 테스트 이벤트를 생성하여 “정말 캘린더에 보이는지”를 즉시 확인합니다.
-  const handleTestEvent = async () => {
-    setIsTesting(true);
+  const handleTestPrimaryEvent = async () => {
+    setIsTestingPrimary(true);
     try {
       const result = await createGoogleCalendarTestEvent();
       if (result.error) {
@@ -103,16 +108,40 @@ export function ConnectCalendarPageClient() {
       }
 
       const htmlLink = result.data?.htmlLink;
-      toast.success('테스트 일정이 생성되었습니다. 캘린더에서 확인해보세요.');
+      toast.success('내 캘린더(primary)에 테스트 일정이 생성되었습니다.');
       if (htmlLink) {
         window.open(htmlLink, '_blank', 'noopener,noreferrer');
       } else {
         toast('링크를 가져오지 못했습니다. Google Calendar에서 “방금 생성된 일정”을 직접 확인해주세요.');
       }
-    } catch (e) {
+    } catch {
       toast.error('테스트 일정 생성에 실패했습니다.');
     } finally {
-      setIsTesting(false);
+      setIsTestingPrimary(false);
+    }
+  };
+
+  // AI 일정 자동화가 실제로 이벤트를 생성하는 “인터뷰룸(공유) 캘린더”에 쓰기가 되는지 확인합니다.
+  const handleTestInterviewRoomEvent = async () => {
+    setIsTestingRoom(true);
+    try {
+      const result = await createGoogleCalendarInterviewRoomTestEvent();
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+
+      const htmlLink = result.data?.htmlLink;
+      toast.success('인터뷰룸(공유) 캘린더에 테스트 일정이 생성되었습니다.');
+      if (htmlLink) {
+        window.open(htmlLink, '_blank', 'noopener,noreferrer');
+      } else {
+        toast('링크를 가져오지 못했습니다. Google Calendar에서 “방금 생성된 일정”을 직접 확인해주세요.');
+      }
+    } catch {
+      toast.error('인터뷰룸 캘린더 테스트 일정 생성에 실패했습니다.');
+    } finally {
+      setIsTestingRoom(false);
     }
   };
 
@@ -170,23 +199,44 @@ export function ConnectCalendarPageClient() {
               </div>
             )}
 
-            <div className="mt-4">
+            <div className="mt-4 space-y-2">
               <Button
-                onClick={handleTestEvent}
-                disabled={isTesting || isConnecting}
+                onClick={handleTestPrimaryEvent}
+                disabled={isTestingPrimary || isTestingRoom || isConnecting}
                 variant="outline"
                 className="w-full"
               >
-                {isTesting ? (
+                {isTestingPrimary ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     테스트 일정 생성 중...
                   </>
                 ) : (
-                  '테스트 일정 생성(캘린더 확인)'
+                  '테스트 일정 생성(내 캘린더 / primary)'
                 )}
               </Button>
-              <p className="text-xs text-gray-500 mt-2">
+
+              <Button
+                onClick={handleTestInterviewRoomEvent}
+                disabled={isTestingPrimary || isTestingRoom || isConnecting}
+                variant="outline"
+                className="w-full"
+              >
+                {isTestingRoom ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    인터뷰룸 캘린더 테스트 중...
+                  </>
+                ) : (
+                  '테스트 일정 생성(인터뷰룸 / INTERVIEW_ROOM_CALENDAR_ID)'
+                )}
+              </Button>
+
+              <p className="text-xs text-gray-500">
+                AI 일정 자동화는 block 일정을 <span className="font-medium">인터뷰룸 캘린더</span>에 직접 생성합니다. 위의
+                “인터뷰룸” 테스트가 실패하면 자동화도 동일하게 실패할 수 있어요.
+              </p>
+              <p className="text-xs text-gray-500">
                 버튼을 누르면 5분 뒤 시작하는 테스트 일정이 생성되며, 가능하면 Google Calendar 링크가 새 탭으로 열립니다.
               </p>
             </div>
