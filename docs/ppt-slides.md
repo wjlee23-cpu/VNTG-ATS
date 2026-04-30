@@ -35,7 +35,7 @@
 | 4 | 후보자 상세 - AI Insight 탭 | 슬라이드 13 |
 | 5 | 후보자 상세 - Activity Timeline | 슬라이드 12 |
 | 6 | 프로세스 빌더 (드래그앤드롭) | 슬라이드 9 |
-| 7 | 일정 조율 폼 (CandidateSchedulingForm) | 슬라이드 10 |
+| 7 | 일정 조율 폼 (CandidateScheduleForm) | 슬라이드 10 |
 | 8 | 후보자 일정 선택 페이지 - 모바일 뷰 | 슬라이드 10 |
 | 9 | 이메일 발송 모달 (EmailModal) | 슬라이드 11 |
 | 10 | 이메일 템플릿 관리 화면 (/templates) | 슬라이드 11 |
