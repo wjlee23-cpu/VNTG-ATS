@@ -2,15 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Briefcase,
-  Calendar,
-  Cpu,
+  ChevronsUpDown,
+  Eye,
   FileText,
   LayoutTemplate,
   Loader2,
   Pencil,
   Trash2,
-  User,
   X,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -23,6 +21,14 @@ import {
   EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL,
   type EmailTemplateVariableGroupId,
 } from '@/constants/email-template-variables';
+import { sanitizeEmailHtml } from '@/lib/email/sanitize';
+import { normalizeEmailBodyToHtml } from '@/lib/email/render-themed-email';
+
+interface TemplatePreviewPayload {
+  title: string;
+  subject: string;
+  body: string;
+}
 
 export function TemplatesClient() {
   const [isLoading, setIsLoading] = useState(true);
@@ -32,6 +38,8 @@ export function TemplatesClient() {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [deletingTemplate, setDeletingTemplate] = useState<EmailTemplateItem | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewPayload, setPreviewPayload] = useState<TemplatePreviewPayload | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [form, setForm] = useState({
@@ -39,7 +47,6 @@ export function TemplatesClient() {
     subject: '',
     body: '',
   });
-  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const createBodyEditorRef = useRef<EmailHtmlEditorHandle | null>(null);
   const editBodyEditorRef = useRef<EmailHtmlEditorHandle | null>(null);
 
@@ -178,33 +185,6 @@ export function TemplatesClient() {
     return map;
   }, []);
 
-  const insertTokenToBody = (token: string) => {
-    // 사용자가 템플릿을 빠르게 작성할 수 있도록, 현재 커서 위치에 토큰을 삽입합니다.
-    const el = bodyTextareaRef.current;
-    const current = form.body || '';
-
-    if (!el) {
-      setForm((prev) => ({ ...prev, body: `${current}${token}` }));
-      return;
-    }
-
-    const start = el.selectionStart ?? current.length;
-    const end = el.selectionEnd ?? current.length;
-    const next = current.slice(0, start) + token + current.slice(end);
-    setForm((prev) => ({ ...prev, body: next }));
-
-    // React state 업데이트 후 커서를 토큰 뒤로 이동
-    requestAnimationFrame(() => {
-      try {
-        el.focus();
-        const cursor = start + token.length;
-        el.setSelectionRange(cursor, cursor);
-      } catch {
-        /* ignore */
-      }
-    });
-  };
-
   const insertTokenToActiveEditor = (token: string) => {
     // 생성/수정 모달 중 열려있는 에디터에 토큰을 "현재 커서 위치"로 삽입합니다.
     if (isEditOpen) {
@@ -213,6 +193,17 @@ export function TemplatesClient() {
     }
     createBodyEditorRef.current?.insertTokenAtCursor(token);
   };
+
+  const openPreview = (payload: TemplatePreviewPayload) => {
+    setPreviewPayload(payload);
+    setIsPreviewOpen(true);
+  };
+
+  const previewTitle = previewPayload?.title ?? '미리보기';
+  const previewSubject = previewPayload?.subject ?? '';
+  const previewBody = previewPayload?.body ?? '';
+  const previewBodyNormalizedHtml = normalizeEmailBodyToHtml(previewBody);
+  const previewBodySanitizedHtml = sanitizeEmailHtml(previewBodyNormalizedHtml);
 
   return (
     <div className="h-full min-w-0 overflow-auto">
@@ -281,6 +272,21 @@ export function TemplatesClient() {
                     <div className="flex shrink-0 items-center gap-2">
                       <button
                         type="button"
+                        onClick={() =>
+                          openPreview({
+                            title: template.name || '템플릿 미리보기',
+                            subject: template.subject,
+                            body: template.body,
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                        aria-label="템플릿 미리보기"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        미리보기
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => openEdit(template)}
                         className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
                         aria-label="템플릿 수정"
@@ -306,20 +312,73 @@ export function TemplatesClient() {
         )}
       </div>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="flex max-w-[1024px] flex-col gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
+      <Dialog
+        open={isPreviewOpen}
+        onOpenChange={(open) => {
+          setIsPreviewOpen(open);
+          if (!open) setPreviewPayload(null);
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-[1000px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
           {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
-          <DialogTitle className="sr-only">새 템플릿 생성</DialogTitle>
+          <DialogTitle className="sr-only">템플릿 미리보기</DialogTitle>
           <div className="relative flex flex-col bg-white">
             <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
 
             <div className="z-10 flex items-center justify-between bg-white px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/50 bg-neutral-100/80 shadow-sm">
+                  <Eye className="h-4 w-4 text-neutral-700" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="truncate text-sm font-bold tracking-tight text-neutral-900">{previewTitle}</h2>
+                  <p className="mt-0.5 truncate text-[11px] font-medium text-neutral-400">
+                    제목: {previewSubject || '(제목 없음)'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                onClick={() => setIsPreviewOpen(false)}
+                aria-label="모달 닫기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[85vh] overflow-y-auto p-6 pt-2">
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">제목</p>
+                <p className="mt-2 break-words text-sm font-semibold text-neutral-900">
+                  {previewSubject || '(제목 없음)'}
+                </p>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">본문</p>
+                <div
+                  className="email-editor-content prose prose-sm mt-3 max-w-none text-neutral-800"
+                  dangerouslySetInnerHTML={{ __html: previewBodySanitizedHtml }}
+                />
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="w-[95vw] max-w-[1100px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
+          {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
+          <DialogTitle className="sr-only">새 템플릿 생성</DialogTitle>
+          <div className="flex w-full flex-col overflow-hidden bg-white">
+            <div className="flex items-center justify-between border-b border-neutral-100 px-8 py-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-100">
                   <LayoutTemplate className="h-4 w-4 text-neutral-700" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold tracking-tight text-neutral-900">새 템플릿 생성</h2>
+                  <h2 className="text-base font-bold text-neutral-900">새 템플릿 생성</h2>
                   <p className="text-[11px] font-medium text-neutral-400">자주 사용하는 이메일 형식을 저장하세요.</p>
                 </div>
               </div>
@@ -329,157 +388,157 @@ export function TemplatesClient() {
                 onClick={() => setIsCreateOpen(false)}
                 aria-label="모달 닫기"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateTemplate}>
-              <div className="flex h-[600px]">
-                <div className="flex-1 space-y-6 overflow-y-auto p-8">
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                    <div className="group">
-                      <label
-                        htmlFor="template_name"
-                        className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                      >
-                        템플릿 이름
-                      </label>
-                      <input
-                        id="template_name"
-                        type="text"
-                        required
-                        maxLength={100}
-                        value={form.name}
-                        onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                        className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
-                        placeholder="예: 1차 면접 안내"
-                        disabled={isSubmitting}
-                      />
-                    </div>
-
-                    <div className="group">
-                      <label
-                        htmlFor="template_subject"
-                        className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                      >
-                        이메일 제목
-                      </label>
-                      <input
-                        id="template_subject"
-                        type="text"
-                        required
-                        value={form.subject}
-                        onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
-                        className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
-                        placeholder="예: [VNTG] 1차 면접 안내"
-                        disabled={isSubmitting}
-                      />
-                    </div>
+              <div className="max-h-[85vh] space-y-6 overflow-y-auto p-8 md:p-10">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="group">
+                    <label
+                      htmlFor="template_name"
+                      className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      템플릿 이름
+                    </label>
+                    <input
+                      id="template_name"
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={form.name}
+                      onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                      className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
+                      placeholder="예: 1차 면접 안내"
+                      disabled={isSubmitting}
+                    />
                   </div>
 
-                  <div className="group min-w-0">
-                    <div className="mb-2 flex items-center justify-between">
-                      <label
-                        htmlFor="template_body"
-                        className="block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                      >
-                        이메일 본문
-                      </label>
-                    </div>
-
-                    <div className="flex h-[380px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
-                      <div className="flex-1 p-5">
-                        <EmailHtmlEditor
-                          ref={createBodyEditorRef}
-                          value={form.body}
-                          onChange={(next) => setForm((prev) => ({ ...prev, body: next }))}
-                          disabled={isSubmitting}
-                          placeholder="우측 패널의 변수를 클릭하여 내용에 삽입할 수 있습니다."
-                          minEditorHeightPx={260}
-                          showModeTabs
-                          showToolbar
-                          showHelperText={false}
-                        />
-                      </div>
-                      <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-2.5 text-[10px] font-medium text-neutral-400">
-                        우측 패널에서 변수를 선택하면 커서 위치에 삽입됩니다.
-                      </div>
-                    </div>
+                  <div className="group">
+                    <label
+                      htmlFor="template_subject"
+                      className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      이메일 제목
+                    </label>
+                    <input
+                      id="template_subject"
+                      type="text"
+                      required
+                      value={form.subject}
+                      onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
+                      className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
+                      placeholder="예: [VNTG] 1차 면접 안내"
+                      disabled={isSubmitting}
+                    />
                   </div>
                 </div>
 
-                <div className="flex w-[280px] shrink-0 flex-col border-l border-neutral-200 bg-neutral-50/50 p-6">
-                  <h3 className="mb-5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-900">
-                    <Cpu className="h-4 w-4 text-indigo-500" />
-                    동적 변수 삽입
-                  </h3>
-                  <p className="mb-4 text-[10px] leading-relaxed text-neutral-500">
-                    버튼을 클릭하면 에디터 커서 위치에 변수가 삽입됩니다. 발송 시 실제 데이터로 치환됩니다.
-                  </p>
+                <div className="group min-w-0">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label
+                      htmlFor="template_body"
+                      className="block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      이메일 본문
+                    </label>
+                  </div>
 
-                  <div className="flex-1 space-y-6 overflow-y-auto pr-2">
-                    {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
-                      <div key={groupId}>
-                        <p className="mb-2 text-[10px] font-bold text-neutral-400">
-                          {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
-                        </p>
-                        <div className="flex flex-col gap-2">
-                          {variablesByGroup[groupId].map((v) => {
-                            const icon =
-                              v.groupId === 'candidate' ? (
-                                <User className="h-3.5 w-3.5" />
-                              ) : v.groupId === 'job' ? (
-                                <Briefcase className="h-3.5 w-3.5" />
-                              ) : v.groupId === 'interview' ? (
-                                <Calendar className="h-3.5 w-3.5" />
-                              ) : (
-                                <FileText className="h-3.5 w-3.5" />
-                              );
-
-                            return (
-                              <button
-                                key={v.key}
-                                type="button"
-                                onClick={() => insertTokenToActiveEditor(v.token)}
-                                className="flex w-full items-center gap-2 rounded-lg border border-indigo-100 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-indigo-600 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50 active:scale-[0.98]"
-                                disabled={isSubmitting}
-                                title={v.token}
-                              >
-                                {icon}
-                                {v.token}
-                              </button>
-                            );
-                          })}
+                  <div className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
+                    <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-white px-4 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">동적 변수 삽입</p>
+                      <div className="relative w-[260px] max-w-full">
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            const token = e.currentTarget.value;
+                            if (!token) return;
+                            insertTokenToActiveEditor(token);
+                            e.currentTarget.value = '';
+                          }}
+                          className="pro-input w-full cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-900 transition-all"
+                          disabled={isSubmitting}
+                          aria-label="동적 변수 삽입"
+                        >
+                          <option value="">변수 선택…</option>
+                          {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[])
+                            .filter((groupId) => variablesByGroup[groupId].length > 0)
+                            .map((groupId) => (
+                              <optgroup key={groupId} label={EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}>
+                                {variablesByGroup[groupId].map((v) => (
+                                  <option key={v.key} value={v.token}>
+                                    {v.token}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center">
+                          <ChevronsUpDown className="h-4 w-4 text-neutral-400" />
                         </div>
                       </div>
-                    ))}
+                    </div>
+                    <div className="flex-1 p-5">
+                      <EmailHtmlEditor
+                        ref={createBodyEditorRef}
+                        value={form.body}
+                        onChange={(next) => setForm((prev) => ({ ...prev, body: next }))}
+                        disabled={isSubmitting}
+                        placeholder="상단의 동적 변수를 선택해 내용에 삽입할 수 있습니다."
+                        minEditorHeightPx={400}
+                        showModeTabs
+                        showToolbar
+                        showHelperText={false}
+                      />
+                    </div>
+                    <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-2.5 text-[10px] font-medium text-neutral-400">
+                      상단에서 변수를 선택하면 커서 위치에 삽입됩니다.
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="z-10 flex justify-end gap-3 border-t border-neutral-100 bg-white px-8 py-5">
+              <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50/50 px-8 py-5">
                 <button
                   type="button"
-                  className="rounded-xl px-5 py-2.5 text-sm font-semibold text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
-                  onClick={() => setIsCreateOpen(false)}
+                  className="flex items-center gap-2 text-sm font-semibold text-neutral-500 transition-colors hover:text-neutral-900"
+                  onClick={() =>
+                    openPreview({
+                      title: form.name ? `${form.name} (작성 중)` : '작성 중 템플릿 미리보기',
+                      subject: form.subject,
+                      body: form.body,
+                    })
+                  }
                   disabled={isSubmitting}
                 >
-                  취소
+                  <Eye className="h-4 w-4" />
+                  미리보기
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      생성 중...
-                    </>
-                  ) : (
-                    '템플릿 생성'
-                  )}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="rounded-xl px-5 py-2.5 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-200"
+                    onClick={() => setIsCreateOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        생성 중...
+                      </>
+                    ) : (
+                      '템플릿 생성'
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -496,19 +555,17 @@ export function TemplatesClient() {
           }
         }}
       >
-        <DialogContent className="flex max-w-[1024px] flex-col gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
+        <DialogContent className="w-[95vw] max-w-[1100px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
           {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
           <DialogTitle className="sr-only">템플릿 수정</DialogTitle>
-          <div className="relative flex flex-col bg-white">
-            <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-300 to-transparent opacity-50" />
-
-            <div className="z-10 flex items-center justify-between bg-white px-6 py-4">
+          <div className="flex w-full flex-col overflow-hidden bg-white">
+            <div className="flex items-center justify-between border-b border-neutral-100 px-8 py-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/50 bg-neutral-100/80 shadow-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-100">
                   <Pencil className="h-4 w-4 text-neutral-700" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold tracking-tight text-neutral-900">템플릿 수정</h2>
+                  <h2 className="text-base font-bold text-neutral-900">템플릿 수정</h2>
                   <p className="text-[11px] font-medium text-neutral-400">저장된 이메일 형식을 업데이트합니다.</p>
                 </div>
               </div>
@@ -518,157 +575,157 @@ export function TemplatesClient() {
                 onClick={() => setIsEditOpen(false)}
                 aria-label="모달 닫기"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             <form onSubmit={handleUpdateTemplate}>
-              <div className="flex h-[600px]">
-                <div className="flex-1 space-y-6 overflow-y-auto p-8">
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                    <div className="group">
-                      <label
-                        htmlFor="edit_template_name"
-                        className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                      >
-                        템플릿 이름
-                      </label>
-                      <input
-                        id="edit_template_name"
-                        type="text"
-                        required
-                        maxLength={100}
-                        value={form.name}
-                        onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                        className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
-                        placeholder="예: 1차 면접 안내"
-                        disabled={isSubmitting}
-                      />
-                    </div>
-
-                    <div className="group">
-                      <label
-                        htmlFor="edit_template_subject"
-                        className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                      >
-                        이메일 제목
-                      </label>
-                      <input
-                        id="edit_template_subject"
-                        type="text"
-                        required
-                        value={form.subject}
-                        onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
-                        className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
-                        placeholder="예: [VNTG] 1차 면접 안내"
-                        disabled={isSubmitting}
-                      />
-                    </div>
+              <div className="max-h-[85vh] space-y-6 overflow-y-auto p-8 md:p-10">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="group">
+                    <label
+                      htmlFor="edit_template_name"
+                      className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      템플릿 이름
+                    </label>
+                    <input
+                      id="edit_template_name"
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={form.name}
+                      onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                      className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
+                      placeholder="예: 1차 면접 안내"
+                      disabled={isSubmitting}
+                    />
                   </div>
 
-                  <div className="group min-w-0">
-                    <div className="mb-2 flex items-center justify-between">
-                      <label
-                        htmlFor="edit_template_body"
-                        className="block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
-                      >
-                        이메일 본문
-                      </label>
-                    </div>
-
-                    <div className="flex h-[380px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
-                      <div className="flex-1 p-5">
-                        <EmailHtmlEditor
-                          ref={editBodyEditorRef}
-                          value={form.body}
-                          onChange={(next) => setForm((prev) => ({ ...prev, body: next }))}
-                          disabled={isSubmitting}
-                          placeholder="우측 패널의 변수를 클릭하여 내용에 삽입할 수 있습니다."
-                          minEditorHeightPx={260}
-                          showModeTabs
-                          showToolbar
-                          showHelperText={false}
-                        />
-                      </div>
-                      <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-2.5 text-[10px] font-medium text-neutral-400">
-                        우측 패널에서 변수를 선택하면 커서 위치에 삽입됩니다.
-                      </div>
-                    </div>
+                  <div className="group">
+                    <label
+                      htmlFor="edit_template_subject"
+                      className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      이메일 제목
+                    </label>
+                    <input
+                      id="edit_template_subject"
+                      type="text"
+                      required
+                      value={form.subject}
+                      onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
+                      className="pro-input w-full rounded-xl border border-neutral-200 bg-[#FCFCFC] px-4 py-3 text-sm font-medium text-neutral-900 transition-all placeholder:text-neutral-400"
+                      placeholder="예: [VNTG] 1차 면접 안내"
+                      disabled={isSubmitting}
+                    />
                   </div>
                 </div>
 
-                <div className="flex w-[280px] shrink-0 flex-col border-l border-neutral-200 bg-neutral-50/50 p-6">
-                  <h3 className="mb-5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-900">
-                    <Cpu className="h-4 w-4 text-indigo-500" />
-                    동적 변수 삽입
-                  </h3>
-                  <p className="mb-4 text-[10px] leading-relaxed text-neutral-500">
-                    버튼을 클릭하면 에디터 커서 위치에 변수가 삽입됩니다. 발송 시 실제 데이터로 치환됩니다.
-                  </p>
+                <div className="group min-w-0">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label
+                      htmlFor="edit_template_body"
+                      className="block text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-colors group-focus-within:text-neutral-900"
+                    >
+                      이메일 본문
+                    </label>
+                  </div>
 
-                  <div className="flex-1 space-y-6 overflow-y-auto pr-2">
-                    {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[]).map((groupId) => (
-                      <div key={groupId}>
-                        <p className="mb-2 text-[10px] font-bold text-neutral-400">
-                          {EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}
-                        </p>
-                        <div className="flex flex-col gap-2">
-                          {variablesByGroup[groupId].map((v) => {
-                            const icon =
-                              v.groupId === 'candidate' ? (
-                                <User className="h-3.5 w-3.5" />
-                              ) : v.groupId === 'job' ? (
-                                <Briefcase className="h-3.5 w-3.5" />
-                              ) : v.groupId === 'interview' ? (
-                                <Calendar className="h-3.5 w-3.5" />
-                              ) : (
-                                <FileText className="h-3.5 w-3.5" />
-                              );
-
-                            return (
-                              <button
-                                key={v.key}
-                                type="button"
-                                onClick={() => insertTokenToActiveEditor(v.token)}
-                                className="flex w-full items-center gap-2 rounded-lg border border-indigo-100 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-indigo-600 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50 active:scale-[0.98]"
-                                disabled={isSubmitting}
-                                title={v.token}
-                              >
-                                {icon}
-                                {v.token}
-                              </button>
-                            );
-                          })}
+                  <div className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-[#FCFCFC] transition-all focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
+                    <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-white px-4 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">동적 변수 삽입</p>
+                      <div className="relative w-[260px] max-w-full">
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            const token = e.currentTarget.value;
+                            if (!token) return;
+                            insertTokenToActiveEditor(token);
+                            e.currentTarget.value = '';
+                          }}
+                          className="pro-input w-full cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-900 transition-all"
+                          disabled={isSubmitting}
+                          aria-label="동적 변수 삽입"
+                        >
+                          <option value="">변수 선택…</option>
+                          {(Object.keys(variablesByGroup) as EmailTemplateVariableGroupId[])
+                            .filter((groupId) => variablesByGroup[groupId].length > 0)
+                            .map((groupId) => (
+                              <optgroup key={groupId} label={EMAIL_TEMPLATE_VARIABLE_GROUP_LABEL[groupId]}>
+                                {variablesByGroup[groupId].map((v) => (
+                                  <option key={v.key} value={v.token}>
+                                    {v.token}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center">
+                          <ChevronsUpDown className="h-4 w-4 text-neutral-400" />
                         </div>
                       </div>
-                    ))}
+                    </div>
+                    <div className="flex-1 p-5">
+                      <EmailHtmlEditor
+                        ref={editBodyEditorRef}
+                        value={form.body}
+                        onChange={(next) => setForm((prev) => ({ ...prev, body: next }))}
+                        disabled={isSubmitting}
+                        placeholder="상단의 동적 변수를 선택해 내용에 삽입할 수 있습니다."
+                        minEditorHeightPx={400}
+                        showModeTabs
+                        showToolbar
+                        showHelperText={false}
+                      />
+                    </div>
+                    <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-2.5 text-[10px] font-medium text-neutral-400">
+                      상단에서 변수를 선택하면 커서 위치에 삽입됩니다.
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="z-10 flex justify-end gap-3 border-t border-neutral-100 bg-white px-8 py-5">
+              <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50/50 px-8 py-5">
                 <button
                   type="button"
-                  className="rounded-xl px-5 py-2.5 text-sm font-semibold text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
-                  onClick={() => setIsEditOpen(false)}
+                  className="flex items-center gap-2 text-sm font-semibold text-neutral-500 transition-colors hover:text-neutral-900"
+                  onClick={() =>
+                    openPreview({
+                      title: form.name ? `${form.name} (수정 중)` : '수정 중 템플릿 미리보기',
+                      subject: form.subject,
+                      body: form.body,
+                    })
+                  }
                   disabled={isSubmitting}
                 >
-                  취소
+                  <Eye className="h-4 w-4" />
+                  미리보기
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      저장 중...
-                    </>
-                  ) : (
-                    '저장'
-                  )}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="rounded-xl px-5 py-2.5 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-200"
+                    onClick={() => setIsEditOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        저장 중...
+                      </>
+                    ) : (
+                      '저장'
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
