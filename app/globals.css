@@ -145,6 +145,10 @@
 }
 
 @theme inline {
+  /* next/font Inter (--font-inter는 root layout body에서 주입) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -196,10 +200,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-background;
   }
 }
 
