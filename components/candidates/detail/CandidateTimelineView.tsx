@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Paperclip,
@@ -33,7 +33,11 @@ import { normalizeStageEvalResult } from './timeline-utils';
 import { Button } from '@/components/ui/button';
 import { createQuotedActivityTimelineEntry } from '@/api/actions/activity-quotes';
 import { toggleTimelineEventReaction } from '@/api/actions/timeline-reactions';
-import { getTimelineReactionSummariesForCandidate } from '@/api/queries/timeline-reactions';
+import {
+  getTimelineReactionSummariesForCandidate,
+  getTimelineReactionUsersForTimelineEvent,
+  type TimelineReactionUser,
+} from '@/api/queries/timeline-reactions';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 
 /** 타임라인에서 평가 수정 시 매칭용 (getStageEvaluations 결과) */
@@ -251,6 +255,11 @@ export function CandidateTimelineView({
   const [reactionSummaries, setReactionSummaries] = useState<{
     byTimelineEventId: Record<string, Array<{ emoji: string; count: number; reactedByMe: boolean }>>;
   }>({ byTimelineEventId: {} });
+  /** 이벤트별 리액션 사용자 목록(이모지별) — hover 시 on-demand 로드 */
+  const [reactionUsers, setReactionUsers] = useState<{
+    byTimelineEventId: Record<string, Record<string, TimelineReactionUser[]>>;
+  }>({ byTimelineEventId: {} });
+  const reactionUsersLoadingRef = useRef<Set<string>>(new Set());
   /** 이모지 피커가 열려있는 타임라인 이벤트 ID */
   const [emojiPickerEventId, setEmojiPickerEventId] = useState<string | null>(null);
   const [quoteTargetEvent, setQuoteTargetEvent] = useState<TimelineEvent | null>(null);
@@ -269,6 +278,35 @@ export function CandidateTimelineView({
     if (res.error) return;
     if (res.data) setReactionSummaries(res.data);
   }, [candidateId, events]);
+
+  const ensureReactionUsersForEvent = useCallback(
+    async (eventId: string) => {
+      if (!eventId || eventId.startsWith('email-')) return;
+      // 이미 있으면 스킵
+      if (reactionUsers.byTimelineEventId[eventId]) return;
+      // 동시 로딩 방지
+      if (reactionUsersLoadingRef.current.has(eventId)) return;
+      reactionUsersLoadingRef.current.add(eventId);
+
+      try {
+        const res = await getTimelineReactionUsersForTimelineEvent(candidateId, eventId);
+        if (res.error) return;
+        if (!res.data) return;
+        setReactionUsers((prev) => {
+          if (prev.byTimelineEventId[eventId]) return prev;
+          return {
+            byTimelineEventId: {
+              ...prev.byTimelineEventId,
+              [eventId]: res.data.byEmoji ?? {},
+            },
+          };
+        });
+      } finally {
+        reactionUsersLoadingRef.current.delete(eventId);
+      }
+    },
+    [candidateId, reactionUsers.byTimelineEventId],
+  );
 
   useEffect(() => {
     if (!hasLoaded || !candidateId) return;
@@ -640,7 +678,17 @@ export function CandidateTimelineView({
           return;
         }
         await refreshReactionSummaries();
+        // 리액션을 토글하면 사용자 목록 캐시가 stale 될 수 있어 제거합니다.
+        setReactionUsers((prev) => {
+          if (!prev.byTimelineEventId[event.id]) return prev;
+          const next = { ...prev.byTimelineEventId };
+          delete next[event.id];
+          return { byTimelineEventId: next };
+        });
       },
+      reactionUsersByEmoji: reactionUsers.byTimelineEventId[event.id],
+      onEnsureReactionUsers: () => void ensureReactionUsersForEvent(event.id),
+      currentUserId,
       threadPreview:
         onActivityThreadOpen && s && s.count >= 1
           ? { count: s.count, onOpen: () => openThreadSheet(event) }
@@ -1040,7 +1088,16 @@ export function CandidateTimelineView({
                                 onClick={async () => {
                                   const res = await toggleTimelineEventReaction(event.id, e);
                                   if (res.error) toast.error(res.error);
-                                  else await refreshReactionSummaries();
+                                  else {
+                                    await refreshReactionSummaries();
+                                    // 리액션이 바뀌면 사용자 목록 캐시는 오래된 값이 될 수 있어 제거합니다.
+                                    setReactionUsers((prev) => {
+                                      if (!prev.byTimelineEventId[event.id]) return prev;
+                                      const next = { ...prev.byTimelineEventId };
+                                      delete next[event.id];
+                                      return { byTimelineEventId: next };
+                                    });
+                                  }
                                   setEmojiPickerEventId(null);
                                 }}
                               >

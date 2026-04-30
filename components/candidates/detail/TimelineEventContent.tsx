@@ -5,6 +5,8 @@ import { Star, Calendar, SmilePlus, Pencil, Quote, MessageSquareText } from 'luc
 import { STAGE_ID_TO_NAME_MAP } from '@/constants/stages';
 import { normalizeStageEvalResult } from './timeline-utils';
 import { formatEmailBodyForDisplay, isLongEmail } from '@/lib/candidate-detail-utils';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
   renderBlockTextWithMentions,
   renderBlockTextWithResolvedMentions,
@@ -12,6 +14,7 @@ import {
 } from '@/lib/render-mention-text';
 import { cn } from '@/lib/utils';
 import type { TimelineEvent } from '@/types/candidate-detail';
+import type { TimelineReactionUser } from '@/api/queries/timeline-reactions';
 
 /** 타임라인 코멘트 본문 필드 우선순위 */
 function getCommentTimelineBody(content: TimelineEvent['content'] | undefined): string {
@@ -110,7 +113,28 @@ export type TimelineEventChrome = {
   reactions: { emoji: string; count: number; reactedByMe?: boolean }[];
   onToggleReaction?: (emoji: string) => void;
   threadPreview?: { count: number; onOpen: () => void };
+  /** 이모지별 반응한 사용자 목록 (구글챗 툴팁처럼 표시용) */
+  reactionUsersByEmoji?: Record<string, TimelineReactionUser[]>;
+  /** hover/click 시, 사용자 목록이 없으면 서버에서 가져오도록 트리거 */
+  onEnsureReactionUsers?: () => void;
+  /** 현재 로그인 사용자 ID ("나" 표시용) */
+  currentUserId?: string | null;
 };
+
+function reactionUserDisplayName(u: TimelineReactionUser, currentUserId?: string | null) {
+  // 사용자가 본인인 경우 구글챗처럼 "나"로 표기합니다.
+  if (currentUserId && u.id === currentUserId) return '나';
+  const name = (u.name ?? '').trim();
+  if (name) return name;
+  const email = String(u.email ?? '').trim();
+  if (email) return email.split('@')[0] || email;
+  return '사용자';
+}
+
+function reactionUserInitial(label: string) {
+  const v = String(label ?? '').trim();
+  return v.length > 0 ? v.slice(0, 1).toUpperCase() : '?';
+}
 
 function TimelineChromeShell({
   children,
@@ -121,7 +145,15 @@ function TimelineChromeShell({
   layout: 'full' | 'memo';
   chrome: TimelineEventChrome;
 }) {
-  const { interaction, reactions, onToggleReaction, threadPreview } = chrome;
+  const {
+    interaction,
+    reactions,
+    onToggleReaction,
+    threadPreview,
+    reactionUsersByEmoji,
+    onEnsureReactionUsers,
+    currentUserId,
+  } = chrome;
   const outerClass =
     layout === 'memo'
       ? 'relative w-full min-w-0 max-w-full group'
@@ -183,31 +215,87 @@ function TimelineChromeShell({
           {reactions.map((r, idx) => {
             const primary = idx === 0;
             const mine = !!r.reactedByMe;
+            const users = reactionUsersByEmoji?.[r.emoji] ?? [];
             return (
-              <button
+              <HoverCard
                 key={r.emoji}
-                type="button"
-                onClick={() => onToggleReaction?.(r.emoji)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors',
-                  mine && primary && 'border-indigo-300 bg-indigo-100 hover:bg-indigo-100',
-                  mine && !primary && 'border-neutral-400 bg-neutral-100 hover:bg-neutral-100',
-                  !mine &&
-                    (primary
-                      ? 'border-indigo-100 bg-indigo-50 hover:bg-indigo-100'
-                      : 'border-neutral-200 bg-white shadow-sm hover:bg-neutral-50')
-                )}
+                openDelay={200}
+                onOpenChange={(open) => {
+                  // ✅ hover 시 사용자 목록이 없으면 서버에서 가져옵니다.
+                  if (open && (!reactionUsersByEmoji || !reactionUsersByEmoji[r.emoji])) {
+                    onEnsureReactionUsers?.();
+                  }
+                }}
               >
-                <span className="text-[12px]">{r.emoji}</span>
-                <span
-                  className={cn(
-                    'text-[10px] font-bold',
-                    primary ? 'text-indigo-600' : 'text-neutral-500'
-                  )}
+                <HoverCardTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onToggleReaction?.(r.emoji)}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors',
+                      mine && primary && 'border-indigo-300 bg-indigo-100 hover:bg-indigo-100',
+                      mine && !primary && 'border-neutral-400 bg-neutral-100 hover:bg-neutral-100',
+                      !mine &&
+                        (primary
+                          ? 'border-indigo-100 bg-indigo-50 hover:bg-indigo-100'
+                          : 'border-neutral-200 bg-white shadow-sm hover:bg-neutral-50')
+                    )}
+                  >
+                    <span className="text-[12px]">{r.emoji}</span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold',
+                        primary ? 'text-indigo-600' : 'text-neutral-500'
+                      )}
+                    >
+                      {r.count}
+                    </span>
+                  </button>
+                </HoverCardTrigger>
+                <HoverCardContent
+                  align="start"
+                  side="top"
+                  className="w-64 rounded-xl border border-neutral-200 bg-white p-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.25)]"
                 >
-                  {r.count}
-                </span>
-              </button>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-neutral-900">{r.emoji} 반응</div>
+                    <div className="text-[11px] font-medium text-neutral-500">{r.count}명</div>
+                  </div>
+
+                  <div className="mt-2 space-y-1.5">
+                    {users.length === 0 ? (
+                      <div className="text-[11px] text-neutral-500">불러오는 중…</div>
+                    ) : (
+                      users.slice(0, 12).map((u) => {
+                        const label = reactionUserDisplayName(u, currentUserId);
+                        return (
+                          <div key={u.id} className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6 border border-neutral-200">
+                              <AvatarImage src={u.avatar_url || undefined} alt={label} />
+                              <AvatarFallback className="bg-neutral-900 text-white text-[10px] font-semibold">
+                                {reactionUserInitial(label)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12px] font-medium text-neutral-900">
+                                {label}
+                              </div>
+                              {u.email ? (
+                                <div className="truncate text-[10px] text-neutral-400">{u.email}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    {users.length > 12 ? (
+                      <div className="pt-1 text-[10px] text-neutral-400">
+                        + {users.length - 12}명 더 있음
+                      </div>
+                    ) : null}
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
             );
           })}
         </div>

@@ -11,6 +11,13 @@ export type TimelineReactionSummary = {
   reactedByMe: boolean;
 };
 
+export type TimelineReactionUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
+};
+
 /**
  * 후보자 타임라인 이벤트들의 리액션 집계를 조회합니다.
  * - 이벤트별로 emoji 카운트와 '내가 눌렀는지'를 함께 제공합니다.
@@ -84,6 +91,73 @@ export async function getTimelineReactionSummariesForCandidate(
     }
 
     return { byTimelineEventId };
+  });
+}
+
+/**
+ * 특정 타임라인 이벤트의 리액션 "사용자 목록"을 조회합니다.
+ * - 구글챗처럼 이모지별로 누가 눌렀는지 UI에서 보여주기 위한 용도입니다.
+ * - (성능) 타임라인 전체를 한 번에 가져오지 않고, hover/click 시 이벤트 단위로 요청합니다.
+ */
+export async function getTimelineReactionUsersForTimelineEvent(
+  candidateId: string,
+  timelineEventId: string,
+) {
+  return withErrorHandling(async () => {
+    await verifyCandidateAccess(candidateId);
+    await getCurrentUser(); // RLS + 조직 검증은 정책에서, 여기서는 로그인 여부만 보장
+
+    const validatedCandidateId = validateUUID(candidateId, '후보자 ID');
+    const validatedEventId = validateUUID(timelineEventId, '타임라인 이벤트 ID');
+
+    // ✅ 방어: eventId가 해당 후보자의 timeline_events인지 확인
+    const supabase = createServiceClient();
+    const { data: te, error: teError } = await supabase
+      .from('timeline_events')
+      .select('id')
+      .eq('candidate_id', validatedCandidateId)
+      .eq('id', validatedEventId)
+      .maybeSingle();
+
+    if (teError) throw new Error(`타임라인 이벤트 검증 실패: ${teError.message}`);
+    if (!te?.id) {
+      return { byEmoji: {} as Record<string, TimelineReactionUser[]> };
+    }
+
+    const { data: rows, error } = await supabase
+      .from('timeline_event_reactions')
+      .select(
+        `
+        emoji,
+        created_at,
+        user:users!timeline_event_reactions_user_id_fkey (
+          id,
+          email,
+          name,
+          avatar_url
+        )
+      `,
+      )
+      .eq('timeline_event_id', validatedEventId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(`리액션 사용자 조회 실패: ${error.message}`);
+
+    const byEmoji: Record<string, TimelineReactionUser[]> = {};
+    for (const r of rows || []) {
+      const emoji = String((r as any).emoji ?? '');
+      const u = (r as any).user as TimelineReactionUser | null | undefined;
+      if (!emoji || !u?.id) continue;
+      byEmoji[emoji] = byEmoji[emoji] || [];
+      byEmoji[emoji].push({
+        id: String(u.id),
+        email: String(u.email ?? ''),
+        name: (u.name ?? null) as string | null,
+        avatar_url: (u.avatar_url ?? null) as string | null,
+      });
+    }
+
+    return { byEmoji };
   });
 }
 
