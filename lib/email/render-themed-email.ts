@@ -21,7 +21,17 @@ function escapeHtml(text: string) {
 export function normalizeEmailBodyToHtml(body: string) {
   const raw = body ?? '';
   const looksLikeHtml = /<([a-z][\w-]*)(\s[^>]*)?>/i.test(raw);
-  if (looksLikeHtml) return raw;
+  if (looksLikeHtml) {
+    // 관리자가 전체 HTML 문서(doctype/html/head/body 포함)를 그대로 붙여넣는 경우가 있습니다.
+    // sanitize 단계에서 head/title 같은 태그는 제거되지만 "title 텍스트"는 본문에 남아
+    // 제목이 2번 보이는 현상이 생길 수 있어, 여기서 body 내부만 추출합니다.
+    const bodyMatch = raw.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+    if (bodyMatch?.[1]) return bodyMatch[1].trim();
+
+    // body 태그가 없고 html/head만 있는 경우를 방어적으로 제거합니다.
+    const withoutHead = raw.replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, '');
+    return withoutHead.trim();
+  }
   return escapeHtml(raw).replace(/\n/g, '<br>');
 }
 

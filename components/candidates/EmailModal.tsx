@@ -11,7 +11,7 @@ import { getCandidateById } from '@/api/queries/candidates';
 import { getMyOrganization } from '@/api/queries/organizations';
 import { getStageNameByStageId } from '@/constants/stages';
 import { applyEmailTemplate, type EmailTemplateContext } from '@/lib/email/template';
-import { normalizeEmailBodyToHtml, renderThemedEmailHtmlFromHtml } from '@/lib/email/render-themed-email';
+import { normalizeEmailBodyToHtml } from '@/lib/email/render-themed-email';
 import { sanitizeEmailHtml } from '@/lib/email/sanitize';
 import { EmailHtmlEditor } from '@/components/email/EmailHtmlEditor';
 
@@ -122,16 +122,10 @@ export function EmailModal({
 
   const finalSubject = applyEmailTemplate(formData.subject, templateContext);
   const finalBodyRaw = applyEmailTemplate(formData.body, templateContext);
-  const orgNameForPreview = templateContext.organization?.name || 'VNTG ATS';
   const normalizedBodyHtmlForPreview = normalizeEmailBodyToHtml(finalBodyRaw);
-  const sanitizedBodyHtmlForPreview = sanitizeEmailHtml(normalizedBodyHtmlForPreview);
-  const finalBodyHtmlForPreview = sanitizeEmailHtml(
-    renderThemedEmailHtmlFromHtml({
-      subject: finalSubject,
-      bodyHtml: sanitizedBodyHtmlForPreview,
-      organizationName: orgNameForPreview,
-    })
-  );
+  // 미리보기는 “기본 템플릿으로 감싸지 않고”, 작성한 HTML 그대로 보여줍니다.
+  // (XSS 방지를 위해 sanitize는 유지)
+  const finalBodyHtmlForPreview = sanitizeEmailHtml(normalizedBodyHtmlForPreview);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,7 +168,7 @@ export function EmailModal({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-w-[800px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
+      <DialogContent className="w-[95vw] max-w-[1100px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-sm [&>button]:hidden">
         {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
         <DialogTitle className="sr-only">이메일 발송</DialogTitle>
         <div className="flex w-full flex-col overflow-hidden bg-white">
@@ -199,7 +193,7 @@ export function EmailModal({
           </div>
 
           <form onSubmit={handleSubmit}>
-            <div className="max-h-[75vh] space-y-6 overflow-y-auto p-8">
+            <div className="max-h-[85vh] space-y-6 overflow-y-auto p-8 md:p-10">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-neutral-400">
@@ -295,24 +289,11 @@ export function EmailModal({
                         onChange={(next) => setFormData((prev) => ({ ...prev, body: next }))}
                         disabled={isLoading}
                         placeholder="이메일 내용을 입력하세요..."
-                        minEditorHeightPx={260}
+                        minEditorHeightPx={400}
                         showModeTabs
                         showToolbar
                         showHelperText={false}
                       />
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-neutral-100 bg-white px-4 py-2.5">
-                      <button
-                        type="button"
-                        className="flex items-center gap-2 text-sm font-semibold text-neutral-500 transition-colors hover:text-neutral-900 disabled:opacity-60"
-                        onClick={() => setIsPreviewOpen(true)}
-                        disabled={isLoading}
-                      >
-                        <Eye className="h-4 w-4" />
-                        미리보기
-                      </button>
-                      <span className="text-[10px] font-medium text-neutral-400">하단 바 중심으로 정리된 작성 환경</span>
                     </div>
                   </div>
                 </div>
@@ -384,7 +365,7 @@ export function EmailPreviewDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[820px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
+      <DialogContent className="w-[95vw] max-w-[1000px] gap-0 overflow-hidden rounded-2xl border-neutral-200 p-0 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] [&>button]:hidden">
         {/* 접근성: Radix DialogContent는 DialogTitle을 요구합니다. (화면에는 숨김) */}
         <DialogTitle className="sr-only">이메일 미리보기</DialogTitle>
         <div className="relative flex flex-col bg-white">
@@ -412,16 +393,11 @@ export function EmailPreviewDialog({
             </button>
           </div>
 
-          <div className="max-h-[75vh] overflow-y-auto p-6 pt-2">
-            <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
-              <div className="border-b border-neutral-100 bg-neutral-50/50 px-5 py-3">
-                <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Body</p>
-              </div>
-              <div
-                className="prose prose-sm max-w-none p-5 text-neutral-800"
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
-            </div>
+          <div className="max-h-[85vh] overflow-y-auto p-6 pt-2">
+            <div
+              className="email-editor-content max-w-none text-neutral-800"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
           </div>
         </div>
       </DialogContent>

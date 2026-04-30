@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   Code2,
+  Columns3,
   Eye,
   Grid2X2,
   Link2,
@@ -10,10 +11,13 @@ import {
   ListOrdered,
   Minus,
   Paintbrush,
+  Rows3,
+  Trash2,
   Type,
   Redo2,
   Undo2,
 } from 'lucide-react';
+import { Node } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -22,12 +26,101 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { FontFamily } from '@tiptap/extension-font-family';
+import Heading from '@tiptap/extension-heading';
+import Paragraph from '@tiptap/extension-paragraph';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+
+// TipTap 기본 TextStyle 익스텐션은 fontSize 속성을 지원하지 않습니다.
+// 글자 크기 셀렉트가 실제로 HTML에 반영되려면 fontSize 속성을 추가한 확장이 필요합니다.
+const FontSizeTextStyle = TextStyle.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      fontSize: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).style.fontSize || null,
+        renderHTML: (attrs) => {
+          if (!attrs.fontSize) return {};
+          return { style: `font-size: ${attrs.fontSize}` };
+        },
+      },
+    };
+  },
+});
+
+// HTML 템플릿을 그대로 붙여넣는 경우, div/heading/paragraph에 인라인 style이 붙어있을 수 있습니다.
+// TipTap 기본 노드는 style을 보존하지 않기 때문에, 이메일 템플릿 편집용으로 style 속성을 허용합니다.
+const StyledHeading = Heading.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('style') || null,
+        renderHTML: (attrs) => (attrs.style ? { style: attrs.style } : {}),
+      },
+    };
+  },
+});
+
+const StyledParagraph = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('style') || null,
+        renderHTML: (attrs) => (attrs.style ? { style: attrs.style } : {}),
+      },
+    };
+  },
+});
+
+const DivBlock = Node.create({
+  name: 'divBlock',
+  group: 'block',
+  content: 'block*',
+  defining: true,
+  addAttributes() {
+    return {
+      style: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('style') || null,
+        renderHTML: (attrs) => (attrs.style ? { style: attrs.style } : {}),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', HTMLAttributes, 0];
+  },
+});
+
+function normalizeHtmlForEditor(raw: string) {
+  const v = raw ?? '';
+  const trimmed = v.trim();
+  if (!trimmed) return '';
+
+  // 전체 HTML 문서 형태면 body 내부만 추출합니다.
+  const bodyMatch = trimmed.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch?.[1]) return bodyMatch[1].trim();
+
+  // 혹시 head가 남아 있다면 제거합니다.
+  const withoutHead = trimmed.replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, '');
+  // doctype/html/body 태그를 제거해 “편집 가능한 조각”으로 만듭니다.
+  return withoutHead
+    .replace(/<!doctype[\s\S]*?>/gi, '')
+    .replace(/<\/?html\b[^>]*>/gi, '')
+    .replace(/<\/?body\b[^>]*>/gi, '')
+    .trim();
+}
 
 export type EmailHtmlEditorHandle = {
   insertTokenAtCursor: (token: string) => void;
@@ -84,10 +177,13 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
   ref
 ) {
   const htmlValue = safeString(value);
+  const normalizedHtmlForEditor = useMemo(() => normalizeHtmlForEditor(htmlValue), [htmlValue]);
   const [activeTab, setActiveTab] = useState<'editor' | 'html'>('editor');
   const [fontSize, setFontSize] = useState<string>('14px');
   const [fontFamily, setFontFamily] = useState<string>('inherit');
   const [textColor, setTextColor] = useState<string>('#171717');
+  // 표 안에 커서가 있는지 여부 — true일 때만 표 편집 컨트롤이 노출됩니다.
+  const [isTableActive, setIsTableActive] = useState<boolean>(false);
   const lastHtmlRef = useRef<string>(htmlValue);
   const htmlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -102,10 +198,14 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
     immediatelyRender: false,
     extensions: [
       StarterKit.configure({
-        // 이메일 본문에서 heading은 클라이언트별 렌더 편차가 크므로 일단 paragraph 중심으로.
+        // 기본 heading/paragraph 대신 style 보존 버전을 사용합니다.
         heading: false,
+        paragraph: false,
       }),
-      TextStyle,
+      DivBlock,
+      StyledHeading.configure({ levels: [1, 2, 3, 4] }),
+      StyledParagraph,
+      FontSizeTextStyle,
       Color,
       FontFamily,
       Underline,
@@ -125,17 +225,22 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
       TableHeader,
       TableCell,
     ],
-    content: htmlValue || '',
+    content: normalizedHtmlForEditor || '',
     editable: !disabled,
     onUpdate: ({ editor }) => {
       const next = editor.getHTML();
       lastHtmlRef.current = next;
       onChange(next);
+      setIsTableActive(editor.isActive('table'));
+    },
+    onSelectionUpdate: ({ editor }) => {
+      // 커서가 표 안/밖으로 이동할 때마다 상태를 갱신해 표 편집 툴바를 토글합니다.
+      setIsTableActive(editor.isActive('table'));
     },
     editorProps: {
       attributes: {
         class:
-          'min-h-[220px] outline-none whitespace-pre-wrap leading-relaxed text-sm text-neutral-800',
+          'email-editor-content min-h-[220px] outline-none whitespace-pre-wrap leading-relaxed text-sm text-neutral-800',
         'data-placeholder': placeholder,
       },
     },
@@ -146,12 +251,12 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
     if (!editor) return;
     if (activeTab !== 'editor') return;
 
-    if (htmlValue === lastHtmlRef.current) return;
+    if (normalizedHtmlForEditor === lastHtmlRef.current) return;
 
     // TipTap v2 타입에서는 2번째 인자가 옵션 객체입니다.
-    editor.commands.setContent(htmlValue || '', { emitUpdate: false });
-    lastHtmlRef.current = htmlValue;
-  }, [editor, htmlValue, activeTab]);
+    editor.commands.setContent(normalizedHtmlForEditor || '', { emitUpdate: false });
+    lastHtmlRef.current = normalizedHtmlForEditor;
+  }, [editor, normalizedHtmlForEditor, activeTab]);
 
   const insertTokenAtCursor = (token: string) => {
     if (!token) return;
@@ -359,6 +464,87 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
             테이블
           </button>
 
+          {/* 표 안에 커서가 있을 때만 행/열 추가·삭제 컨트롤이 활성화됩니다. */}
+          {isTableActive ? (
+            <div className="flex items-center gap-1 rounded-xl border border-dashed border-neutral-300 bg-white px-1.5 py-1 shadow-sm">
+              <span className="px-1 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                표
+              </span>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().addRowBefore().run())}
+                disabled={disabled}
+                aria-label="행 위에 추가"
+                title="행 위에 추가"
+              >
+                <Rows3 className="h-4 w-4 -scale-y-100" />
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().addRowAfter().run())}
+                disabled={disabled}
+                aria-label="행 아래에 추가"
+                title="행 아래에 추가"
+              >
+                <Rows3 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().addColumnBefore().run())}
+                disabled={disabled}
+                aria-label="열 왼쪽에 추가"
+                title="열 왼쪽에 추가"
+              >
+                <Columns3 className="h-4 w-4 -scale-x-100" />
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().addColumnAfter().run())}
+                disabled={disabled}
+                aria-label="열 오른쪽에 추가"
+                title="열 오른쪽에 추가"
+              >
+                <Columns3 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().deleteRow().run())}
+                disabled={disabled}
+                aria-label="행 삭제"
+                title="행 삭제"
+              >
+                <Rows3 className="h-4 w-4 text-red-500" />
+                <span className="sr-only">행 삭제</span>
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().deleteColumn().run())}
+                disabled={disabled}
+                aria-label="열 삭제"
+                title="열 삭제"
+              >
+                <Columns3 className="h-4 w-4 text-red-500" />
+                <span className="sr-only">열 삭제</span>
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                onClick={() => run(() => editor?.chain().focus().deleteTable().run())}
+                disabled={disabled}
+                aria-label="표 삭제"
+                title="표 전체 삭제"
+              >
+                <Trash2 className="h-4 w-4 text-red-500" />
+              </button>
+            </div>
+          ) : null}
+
           <button
             type="button"
             className={btnBase}
@@ -391,7 +577,7 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
         </div>
       </div>
     );
-  }, [disabled, editor, fontFamily, fontSize, textColor]);
+  }, [disabled, editor, fontFamily, fontSize, textColor, isTableActive]);
 
   return (
     <div className={className}>
@@ -403,8 +589,13 @@ export const EmailHtmlEditor = forwardRef<EmailHtmlEditorHandle, EmailHtmlEditor
 
           // HTML 탭 → Editor 탭으로 돌아올 때, HTML 내용을 에디터로 반영합니다.
           if (nextTab === 'editor' && editor) {
-            editor.commands.setContent(htmlValue || '', { emitUpdate: false });
-            lastHtmlRef.current = htmlValue;
+            const normalized = normalizeHtmlForEditor(htmlValue || '');
+            editor.commands.setContent(normalized || '', { emitUpdate: false });
+            lastHtmlRef.current = normalized;
+            // HTML 문서 형태가 들어왔다면, 상태도 body 조각으로 정리해 둡니다.
+            if (normalized && normalized !== htmlValue) {
+              onChange(normalized);
+            }
           }
         }}
         className="gap-3"

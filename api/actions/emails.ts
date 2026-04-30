@@ -6,7 +6,7 @@ import { getCurrentUser, verifyCandidateAccess } from '@/api/utils/auth';
 import { validateRequired, validateEmail, validateUUID } from '@/api/utils/validation';
 import { withErrorHandling } from '@/api/utils/errors';
 import { sendEmailViaGmail, listMessages, getMessage } from '@/lib/email/gmail';
-import { normalizeEmailBodyToHtml, renderThemedEmailHtmlFromHtml } from '@/lib/email/render-themed-email';
+import { normalizeEmailBodyToHtml } from '@/lib/email/render-themed-email';
 import { sanitizeEmailHtml } from '@/lib/email/sanitize';
 
 /**
@@ -61,14 +61,6 @@ export async function sendEmailToCandidate(formData: FormData) {
       throw new Error('수신자 이메일이 후보자 이메일과 일치하지 않습니다.');
     }
 
-    // 조직명 조회 (이메일 헤더에 표시)
-    const { data: orgRow } = await supabase
-      .from('organizations')
-      .select('name')
-      .eq('id', user.organizationId)
-      .maybeSingle();
-    const organizationName = orgRow?.name || 'VNTG ATS';
-
     // 이메일 테이블에 저장 (Phase 2)
     const { data: emailRecord, error: emailError } = await supabase
       .from('emails')
@@ -94,15 +86,6 @@ export async function sendEmailToCandidate(formData: FormData) {
     const normalizedBodyHtml = normalizeEmailBodyToHtml(body);
     const sanitizedBodyHtml = sanitizeEmailHtml(normalizedBodyHtml);
 
-    // 공통 레이아웃도 최종적으로 sanitize를 한 번 더 적용합니다. (방어적으로)
-    const themedHtml = sanitizeEmailHtml(
-      renderThemedEmailHtmlFromHtml({
-        subject,
-        bodyHtml: sanitizedBodyHtml,
-        organizationName,
-      })
-    );
-
     const emailResult = await sendEmailViaGmail(
       currentUserData.calendar_access_token,
       currentUserData.calendar_refresh_token,
@@ -110,7 +93,8 @@ export async function sendEmailToCandidate(formData: FormData) {
         to: toEmail,
         from: currentUserData.email || user.email,
         subject,
-        html: themedHtml,
+        // 기본 템플릿으로 감싸지 않고, 작성한 HTML 그대로 발송합니다.
+        html: sanitizedBodyHtml,
         replyTo: currentUserData.email || user.email,
       },
       user.userId
